@@ -32,3 +32,7 @@ build/
 # Node (future frontend)
 node_modules/
 npm-debug.log*
+
+# AWS SAM
+.aws-sam/
+

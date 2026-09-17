@@ -1,0 +1,199 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  PrimeX EventGate - Phase 2
+  Serverless AWS Runtime + DynamoDB Persistence for Consumer-Aware Event Safety Gate
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: primex-eventgate
+    Description: Project identifier for resource naming and tagging
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Deployment stage environment
+
+Globals:
+  Function:
+    Timeout: 10
+    MemorySize: 256
+    Runtime: python3.14
+    Architectures:
+      - x86_64
+    Tags:
+      Project: EventGate
+      Team: PrimeX
+      Phase: Phase2
+      Environment: !Ref Environment
+
+Resources:
+  # ---------------------------------------------------------------------------
+  # DynamoDB: Event Contracts Table
+  # Partition key: eventType (String), Sort key: version (Number)
+  # Access patterns: GetItem(eventType, version), Query(eventType)
+  # ---------------------------------------------------------------------------
+  EventContractsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${ProjectName}-${Environment}-event-contracts"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: eventType
+          AttributeType: S
+        - AttributeName: version
+          AttributeType: N
+      KeySchema:
+        - AttributeName: eventType
+          KeyType: HASH
+        - AttributeName: version
+          KeyType: RANGE
+      Tags:
+        - Key: Project
+          Value: EventGate
+        - Key: Team
+          Value: PrimeX
+        - Key: Phase
+          Value: Phase2
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ---------------------------------------------------------------------------
+  # DynamoDB: Consumer Contracts Table
+  # Partition key: consumerId (String)
+  # GSI: EventTypeIndex (eventType HASH, consumerId RANGE)
+  # Access patterns: GetItem(consumerId), Query(EventTypeIndex, eventType)
+  # ---------------------------------------------------------------------------
+  ConsumerContractsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${ProjectName}-${Environment}-consumer-contracts"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: consumerId
+          AttributeType: S
+        - AttributeName: eventType
+          AttributeType: S
+      KeySchema:
+        - AttributeName: consumerId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: EventTypeIndex
+          KeySchema:
+            - AttributeName: eventType
+              KeyType: HASH
+            - AttributeName: consumerId
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: Project
+          Value: EventGate
+        - Key: Team
+          Value: PrimeX
+        - Key: Phase
+          Value: Phase2
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ---------------------------------------------------------------------------
+  # API Gateway HTTP API
+  # ---------------------------------------------------------------------------
+  EventGateHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: $default
+      CorsConfiguration:
+        AllowOrigins:
+          - "*"
+        AllowMethods:
+          - GET
+          - POST
+          - OPTIONS
+        AllowHeaders:
+          - Content-Type
+          - X-Request-ID
+          - Authorization
+        ExposeHeaders:
+          - X-Request-ID
+        MaxAge: 300
+      Tags:
+        Project: EventGate
+        Team: PrimeX
+        Phase: Phase2
+        Environment: !Ref Environment
+
+  # ---------------------------------------------------------------------------
+  # Lambda Function: EventGate Runtime
+  # ---------------------------------------------------------------------------
+  EventGateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-${Environment}-api"
+      Description: EventGate consumer-aware compatibility analysis engine
+      CodeUri: backend/src
+      Handler: eventgate.lambda_handler.handler
+      Environment:
+        Variables:
+          EVENTGATE_STORAGE_BACKEND: dynamodb
+          EVENT_CONTRACTS_TABLE_NAME: !Ref EventContractsTable
+          CONSUMER_CONTRACTS_TABLE_NAME: !Ref ConsumerContractsTable
+      Policies:
+        # Least privilege: Read-only access to EventContractsTable (GetItem, Query)
+        - Statement:
+            - Sid: ReadEventContractsTable
+              Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:Query
+              Resource: !GetAtt EventContractsTable.Arn
+        # Least privilege: Read-only access to ConsumerContractsTable and GSI
+        - Statement:
+            - Sid: ReadConsumerContractsTable
+              Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:Query
+              Resource:
+                - !GetAtt ConsumerContractsTable.Arn
+                - !Sub "${ConsumerContractsTable.Arn}/index/*"
+      Events:
+        HealthCheck:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref EventGateHttpApi
+            Path: /health
+            Method: GET
+        Analyze:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref EventGateHttpApi
+            Path: /api/v1/analyze
+            Method: POST
+        ProxyCatchAll:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref EventGateHttpApi
+            Path: /{proxy+}
+            Method: ANY
+
+Outputs:
+  ApiUrl:
+    Description: HTTP API Gateway endpoint base URL
+    Value: !Sub "https://${EventGateHttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+
+  EventContractsTableName:
+    Description: DynamoDB Event Contracts Table Name
+    Value: !Ref EventContractsTable
+
+  ConsumerContractsTableName:
+    Description: DynamoDB Consumer Contracts Table Name
+    Value: !Ref ConsumerContractsTable
+
+  LambdaFunctionName:
+    Description: EventGate Lambda Function Name
+    Value: !Ref EventGateFunction

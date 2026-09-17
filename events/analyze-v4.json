@@ -1,0 +1,21 @@
+{
+  "version": "2.0",
+  "routeKey": "POST /api/v1/analyze",
+  "rawPath": "/api/v1/analyze",
+  "rawQueryString": "",
+  "headers": {
+    "accept": "application/json",
+    "content-type": "application/json",
+    "x-request-id": "sam-local-test-v4"
+  },
+  "requestContext": {
+    "http": {
+      "method": "POST",
+      "path": "/api/v1/analyze",
+      "protocol": "HTTP/1.1",
+      "sourceIp": "127.0.0.1"
+    }
+  },
+  "body": "{\"eventType\": \"OrderPlaced\", \"currentVersion\": 1, \"proposedVersion\": 4}",
+  "isBase64Encoded": false
+}
