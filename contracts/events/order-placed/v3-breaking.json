@@ -1,0 +1,26 @@
+{
+  "eventType": "OrderPlaced",
+  "version": 3,
+  "fields": {
+    "orderId": {
+      "type": "string",
+      "required": true
+    },
+    "amount": {
+      "type": "number",
+      "required": true
+    },
+    "items": {
+      "type": "array",
+      "required": true
+    },
+    "shippingMethod": {
+      "type": "object",
+      "required": true
+    },
+    "couponCode": {
+      "type": "string",
+      "required": false
+    }
+  }
+}

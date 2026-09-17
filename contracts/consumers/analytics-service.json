@@ -1,0 +1,18 @@
+{
+  "consumerId": "analytics-service",
+  "eventType": "OrderPlaced",
+  "expectedFields": {
+    "orderId": {
+      "type": "string",
+      "required": true
+    },
+    "amount": {
+      "type": "number",
+      "required": true
+    },
+    "couponCode": {
+      "type": "string",
+      "required": false
+    }
+  }
+}

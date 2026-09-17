@@ -1,0 +1,18 @@
+{
+  "consumerId": "billing-service",
+  "eventType": "OrderPlaced",
+  "expectedFields": {
+    "orderId": {
+      "type": "string",
+      "required": true
+    },
+    "amount": {
+      "type": "number",
+      "required": true
+    },
+    "currency": {
+      "type": "string",
+      "required": false
+    }
+  }
+}

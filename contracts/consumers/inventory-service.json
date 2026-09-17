@@ -1,0 +1,18 @@
+{
+  "consumerId": "inventory-service",
+  "eventType": "OrderPlaced",
+  "expectedFields": {
+    "orderId": {
+      "type": "string",
+      "required": true
+    },
+    "items": {
+      "type": "array",
+      "required": true
+    },
+    "shippingMethod": {
+      "type": "string",
+      "required": true
+    }
+  }
+}
