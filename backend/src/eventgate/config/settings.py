@@ -20,6 +20,9 @@ SERVICE_VERSION = "0.1.0"
 # Default contracts directory (can be overridden via environment variable).
 CONTRACTS_DIR = _PROJECT_ROOT / "contracts"
 
+STORAGE_BACKEND_LOCAL = "local"
+STORAGE_BACKEND_DYNAMODB = "dynamodb"
+
 
 def get_contracts_dir() -> Path:
     """Return the contracts directory, falling back to the default."""
@@ -29,3 +32,36 @@ def get_contracts_dir() -> Path:
     if override:
         return Path(override)
     return CONTRACTS_DIR
+
+
+def get_storage_backend() -> str:
+    """Return the storage backend ('local' or 'dynamodb'), defaulting to 'local'."""
+    import os
+
+    backend = os.environ.get("EVENTGATE_STORAGE_BACKEND", STORAGE_BACKEND_LOCAL).strip().lower()
+    if backend not in (STORAGE_BACKEND_LOCAL, STORAGE_BACKEND_DYNAMODB):
+        return STORAGE_BACKEND_LOCAL
+    return backend
+
+
+def get_event_contracts_table_name() -> str:
+    """Return the DynamoDB table name for event contracts."""
+    import os
+
+    return os.environ.get("EVENT_CONTRACTS_TABLE_NAME", "primex-eventgate-dev-event-contracts")
+
+
+def get_consumer_contracts_table_name() -> str:
+    """Return the DynamoDB table name for consumer contracts."""
+    import os
+
+    return os.environ.get(
+        "CONSUMER_CONTRACTS_TABLE_NAME", "primex-eventgate-dev-consumer-contracts"
+    )
+
+
+def get_aws_region() -> str:
+    """Return the configured AWS region, falling back to us-east-1."""
+    import os
+
+    return os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-east-1"

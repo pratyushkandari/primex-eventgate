@@ -47,6 +47,7 @@ def _get_request_id(request: Request) -> str:
 def _error_response(code: str, message: str, request_id: str, status: int) -> JSONResponse:
     return JSONResponse(
         status_code=status,
+        headers={"X-Request-ID": request_id},
         content={
             "error": {
                 "code": code,

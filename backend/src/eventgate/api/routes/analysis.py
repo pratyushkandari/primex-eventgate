@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, Field
 
 from eventgate.api.dependencies import get_analysis_service, get_request_id
@@ -164,9 +164,11 @@ def _to_response(result: AnalysisResult) -> AnalysisResponse:
 )
 async def analyze_event(
     body: AnalyzeRequest,
+    response: Response,
     request_id: str = Depends(get_request_id),
     service: EventAnalysisService = Depends(get_analysis_service),
 ):
+    response.headers["X-Request-ID"] = request_id
     result = service.analyze(
         event_type=body.event_type,
         current_version=body.current_version,
