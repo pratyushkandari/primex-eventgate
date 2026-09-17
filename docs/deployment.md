@@ -112,7 +112,7 @@ After the CloudFormation stack completes, populate the DynamoDB tables from the 
 python scripts/seed_dynamodb.py `
   --event-table primex-eventgate-dev-event-contracts `
   --consumer-table primex-eventgate-dev-consumer-contracts `
-  --region us-east-1 `
+  --region ap-south-1 `
   --contracts-dir contracts
 ```
 
@@ -127,7 +127,7 @@ The seed script uses `put_item`, allowing it to be safely rerun at any time with
 Run the comprehensive smoke test against your live API Gateway URL:
 
 ```powershell
-python scripts/aws_smoke_test.py https://abc123xyz.execute-api.us-east-1.amazonaws.com
+python scripts/aws_smoke_test.py https://ux8bwi3i8l.execute-api.ap-south-1.amazonaws.com
 ```
 
 ### 6.2 Manual Verification with curl / Invoke-RestMethod

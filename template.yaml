@@ -174,12 +174,6 @@ Resources:
             ApiId: !Ref EventGateHttpApi
             Path: /api/v1/analyze
             Method: POST
-        ProxyCatchAll:
-          Type: HttpApi
-          Properties:
-            ApiId: !Ref EventGateHttpApi
-            Path: /{proxy+}
-            Method: ANY
 
 Outputs:
   ApiUrl:
