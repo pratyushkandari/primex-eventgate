@@ -142,6 +142,8 @@ Resources:
           EVENTGATE_STORAGE_BACKEND: dynamodb
           EVENT_CONTRACTS_TABLE_NAME: !Ref EventContractsTable
           CONSUMER_CONTRACTS_TABLE_NAME: !Ref ConsumerContractsTable
+          EVENTGATE_EVENT_PUBLISHER: eventbridge
+          EVENTBRIDGE_BUS_NAME: !Ref EventGateEventBus
       Policies:
         # Least privilege: Read-only access to EventContractsTable (GetItem, Query)
         - Statement:
@@ -161,6 +163,13 @@ Resources:
               Resource:
                 - !GetAtt ConsumerContractsTable.Arn
                 - !Sub "${ConsumerContractsTable.Arn}/index/*"
+        # Least privilege: PutEvents on EventGate custom event bus only
+        - Statement:
+            - Sid: PublishToEventGateBus
+              Effect: Allow
+              Action:
+                - events:PutEvents
+              Resource: !GetAtt EventGateEventBus.Arn
       Events:
         HealthCheck:
           Type: HttpApi
@@ -174,6 +183,148 @@ Resources:
             ApiId: !Ref EventGateHttpApi
             Path: /api/v1/analyze
             Method: POST
+        PublishEvent:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref EventGateHttpApi
+            Path: /api/v1/events/publish
+            Method: POST
+
+  # ---------------------------------------------------------------------------
+  # EventBridge: Custom Event Bus
+  # ---------------------------------------------------------------------------
+  EventGateEventBus:
+    Type: AWS::Events::EventBus
+    Properties:
+      Name: !Sub "${ProjectName}-${Environment}-bus"
+      Tags:
+        - Key: Project
+          Value: EventGate
+        - Key: Team
+          Value: PrimeX
+        - Key: Phase
+          Value: Phase3
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ---------------------------------------------------------------------------
+  # Consumer Lambda Functions (Lightweight Demonstration Handlers)
+  # ---------------------------------------------------------------------------
+  BillingConsumerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-${Environment}-consumer-billing"
+      Description: "Consumer service demonstration: Billing"
+      CodeUri: consumers/src
+      Handler: consumer_handler.handler
+      Runtime: python3.14
+      Architectures:
+        - x86_64
+      MemorySize: 128
+      Timeout: 5
+      Environment:
+        Variables:
+          CONSUMER_ID: billing-service
+      Tags:
+        Project: EventGate
+        Team: PrimeX
+        Phase: Phase3
+        Environment: !Ref Environment
+
+  InventoryConsumerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-${Environment}-consumer-inventory"
+      Description: "Consumer service demonstration: Inventory"
+      CodeUri: consumers/src
+      Handler: consumer_handler.handler
+      Runtime: python3.14
+      Architectures:
+        - x86_64
+      MemorySize: 128
+      Timeout: 5
+      Environment:
+        Variables:
+          CONSUMER_ID: inventory-service
+      Tags:
+        Project: EventGate
+        Team: PrimeX
+        Phase: Phase3
+        Environment: !Ref Environment
+
+  AnalyticsConsumerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-${Environment}-consumer-analytics"
+      Description: "Consumer service demonstration: Analytics"
+      CodeUri: consumers/src
+      Handler: consumer_handler.handler
+      Runtime: python3.14
+      Architectures:
+        - x86_64
+      MemorySize: 128
+      Timeout: 5
+      Environment:
+        Variables:
+          CONSUMER_ID: analytics-service
+      Tags:
+        Project: EventGate
+        Team: PrimeX
+        Phase: Phase3
+        Environment: !Ref Environment
+
+  # ---------------------------------------------------------------------------
+  # EventBridge: Rule & Fan-Out Targets
+  # ---------------------------------------------------------------------------
+  OrderPlacedEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Ref EventGateEventBus
+      Name: !Sub "${ProjectName}-${Environment}-order-placed-rule"
+      Description: "Routes approved OrderPlaced events to registered consumer demonstration Lambdas"
+      State: ENABLED
+      EventPattern:
+        source:
+          - primex.eventgate
+        detail-type:
+          - EventGateEvent
+        detail:
+          eventType:
+            - OrderPlaced
+      Targets:
+        - Id: BillingConsumerTarget
+          Arn: !GetAtt BillingConsumerFunction.Arn
+        - Id: InventoryConsumerTarget
+          Arn: !GetAtt InventoryConsumerFunction.Arn
+        - Id: AnalyticsConsumerTarget
+          Arn: !GetAtt AnalyticsConsumerFunction.Arn
+
+  # ---------------------------------------------------------------------------
+  # Lambda Resource-Based Permissions (EventBridge -> Consumers)
+  # ---------------------------------------------------------------------------
+  BillingConsumerPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt BillingConsumerFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt OrderPlacedEventRule.Arn
+
+  InventoryConsumerPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt InventoryConsumerFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt OrderPlacedEventRule.Arn
+
+  AnalyticsConsumerPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt AnalyticsConsumerFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt OrderPlacedEventRule.Arn
 
 Outputs:
   ApiUrl:
@@ -191,3 +342,23 @@ Outputs:
   LambdaFunctionName:
     Description: EventGate Lambda Function Name
     Value: !Ref EventGateFunction
+
+  EventBusName:
+    Description: EventGate Custom EventBus Name
+    Value: !Ref EventGateEventBus
+
+  EventBusArn:
+    Description: EventGate Custom EventBus ARN
+    Value: !GetAtt EventGateEventBus.Arn
+
+  BillingConsumerFunctionName:
+    Description: Billing Consumer Lambda Function Name
+    Value: !Ref BillingConsumerFunction
+
+  InventoryConsumerFunctionName:
+    Description: Inventory Consumer Lambda Function Name
+    Value: !Ref InventoryConsumerFunction
+
+  AnalyticsConsumerFunctionName:
+    Description: Analytics Consumer Lambda Function Name
+    Value: !Ref AnalyticsConsumerFunction
