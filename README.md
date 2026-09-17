@@ -137,6 +137,8 @@ Every scenario below was verified against the live AWS deployment using `scripts
 
 ## 🚀 Getting Started (Local Development)
 
+### Backend (Python + FastAPI + AWS SAM)
+
 ```powershell
 # 1. Activate virtual environment
 .\.venv\Scripts\Activate.ps1
@@ -153,13 +155,42 @@ sam validate --lint
 sam build
 ```
 
+### Frontend (React + Vite + Tailwind CSS)
+
+```powershell
+# 1. Navigate to frontend directory
+cd frontend
+
+# 2. Install dependencies
+npm install
+
+# 3. Configure API target (optional, defaults to live AWS endpoint)
+$env:VITE_EVENTGATE_API_URL = "https://ux8bwi3i8l.execute-api.ap-south-1.amazonaws.com"
+
+# 4. Run local development server
+npm run dev
+
+# 5. Run test suite (44 tests)
+npm test
+
+# 6. Run linter
+npm run lint
+
+# 7. Build production bundle
+npm run build
+```
+
+> [!NOTE]
+> **Frontend Hosting Status:**
+> The EventGate frontend is verified locally and bundled for production (`frontend/dist/`). Cloud hosting deployment preparation is underway (Phase 4.3); it is not yet publicly deployed.
+
 ---
 
 ## 🔮 Future Extensions
 
 - Automated consumer pull-request notifications for `REVIEW` decisions
 - Dead-letter queues (DLQs) and automated replay policies
-- Web UI dashboard for schema management and compatibility inspection
+- Bedrock-powered natural language schema evolution insights
 
 ---
 

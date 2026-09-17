@@ -105,7 +105,7 @@ export function PublishResultPanel({
           {publishResult.analysis?.requestId && (
             <div className="flex items-center space-x-1 font-mono text-[11px] text-slate-500">
               <ArrowUpRight className="h-3 w-3" />
-              <span>Trace: {publishResult.analysis.requestId}</span>
+              <span>Request ID: {publishResult.analysis.requestId}</span>
             </div>
           )}
         </div>

@@ -36,7 +36,7 @@ describe('PublishResultPanel component', () => {
     expect(screen.getByText(/Published to Amazon EventBridge/i)).toBeInTheDocument()
     expect(screen.getByText('evt-12345')).toBeInTheDocument()
     expect(screen.getByText('eb-entry-999')).toBeInTheDocument()
-    expect(screen.getByText(/Trace: req-trace-101/i)).toBeInTheDocument()
+    expect(screen.getByText(/Request ID: req-trace-101/i)).toBeInTheDocument()
     expect(screen.getByText('INGESTED')).toBeInTheDocument()
   })
 

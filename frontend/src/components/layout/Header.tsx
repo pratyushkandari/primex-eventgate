@@ -8,8 +8,7 @@ export function Header() {
   const [healthStatus, setHealthStatus] = React.useState<'checking' | 'healthy' | 'unreachable'>('checking')
   const [apiVersion, setApiVersion] = React.useState<string | null>(null)
 
-  const verifyHealth = React.useCallback(async () => {
-    setHealthStatus('checking')
+  const performHealthCheck = React.useCallback(async () => {
     try {
       const res = await eventGateApi.checkHealth()
       if (res.status === 'ok') {
@@ -23,9 +22,34 @@ export function Header() {
     }
   }, [])
 
+  const handleManualRefresh = React.useCallback(async () => {
+    setHealthStatus('checking')
+    await performHealthCheck()
+  }, [performHealthCheck])
+
   React.useEffect(() => {
-    verifyHealth()
-  }, [verifyHealth])
+    let ignore = false
+    async function check() {
+      try {
+        const res = await eventGateApi.checkHealth()
+        if (ignore) return
+        if (res.status === 'ok') {
+          setHealthStatus('healthy')
+          setApiVersion(res.version)
+        } else {
+          setHealthStatus('unreachable')
+        }
+      } catch {
+        if (!ignore) {
+          setHealthStatus('unreachable')
+        }
+      }
+    }
+    check()
+    return () => {
+      ignore = true
+    }
+  }, [])
 
   return (
     <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur sticky top-0 z-50">
@@ -59,7 +83,7 @@ export function Header() {
 
           <div
             className="flex items-center space-x-2 bg-slate-900/90 border border-slate-800 rounded-md px-2.5 py-1 cursor-pointer hover:border-slate-700 transition-colors"
-            onClick={verifyHealth}
+            onClick={handleManualRefresh}
             title="Click to re-verify live backend health"
           >
             {healthStatus === 'checking' && (
