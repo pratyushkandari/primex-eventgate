@@ -223,7 +223,7 @@ python scripts/seed_dynamodb.py `
   --consumer-table primex-eventgate-dev-consumer-contracts
 
 # 5. Run smoke tests against the deployed API Gateway URL
-python scripts/aws_smoke_test.py https://<api-id>.execute-api.<region>.amazonaws.com
+python scripts/aws_smoke_test.py https://ux8bwi3i8l.execute-api.ap-south-1.amazonaws.com
 ```
 
 ---

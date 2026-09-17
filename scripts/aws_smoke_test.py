@@ -47,7 +47,7 @@ def http_request(
             return status, {"error": str(err)}
 
 
-def run_smoke_tests(base_url: str) -> bool:
+def run_smoke_tests(base_url: str, verbose: bool = True) -> bool:
     """Run verification tests against the deployed API Gateway endpoint."""
     base_url = base_url.rstrip("/")
     print(f"\n{'=' * 65}")
@@ -87,6 +87,8 @@ def run_smoke_tests(base_url: str) -> bool:
         findings_count = len(body.get("findings", []))
         if status == 200 and decision == "ALLOW" and severity == "LOW":
             print(f"PASS (decision={decision}, severity={severity}, findings={findings_count})")
+            if verbose:
+                _print_scenario_details(body)
         else:
             print(f"FAIL (status={status}, decision={decision}, severity={severity})")
             print(f"      Body: {body}")
@@ -111,6 +113,8 @@ def run_smoke_tests(base_url: str) -> bool:
 
         if status == 200 and decision == "BLOCK" and severity == "HIGH" and has_break:
             print(f"PASS (decision={decision}, severity={severity}, inventory BREAK verified)")
+            if verbose:
+                _print_scenario_details(body)
         else:
             print(
                 f"FAIL (status={status}, decision={decision}, "
@@ -138,6 +142,8 @@ def run_smoke_tests(base_url: str) -> bool:
 
         if status == 200 and decision == "REVIEW" and severity == "MEDIUM" and has_risk:
             print(f"PASS (decision={decision}, severity={severity}, analytics RISK verified)")
+            if verbose:
+                _print_scenario_details(body)
         else:
             print(
                 f"FAIL (status={status}, decision={decision}, "
@@ -158,15 +164,56 @@ def run_smoke_tests(base_url: str) -> bool:
     return all_passed
 
 
+def _print_scenario_details(body: dict) -> None:
+    """Print detailed change set and consumer findings matching API schemas."""
+    summary = body.get("summary")
+    if summary:
+        print(f"      Summary: {summary}")
+
+    change_set = body.get("changeSet", {})
+    added = change_set.get("addedFields", [])
+    removed = change_set.get("removedFields", [])
+    type_changes = change_set.get("typeChanges", [])
+    req_changes = change_set.get("requirednessChanges", [])
+
+    print("      Changes:")
+    print(f"        Added fields: {added if added else 'None'}")
+    print(f"        Removed fields: {removed if removed else 'None'}")
+    for tc in type_changes:
+        print(
+            f"        - Type change: {tc.get('field')} ({tc.get('fromType')} -> {tc.get('toType')})"
+        )
+    for rc in req_changes:
+        print(
+            f"        - Requiredness change: {rc.get('field')} "
+            f"({rc.get('fromRequired')} -> {rc.get('toRequired')})"
+        )
+
+    print("      Consumer Findings:")
+    for f in body.get("findings", []):
+        print(
+            f"        - Consumer: {f.get('consumerId')}, "
+            f"Status: {f.get('status')}, "
+            f"Rule: {f.get('ruleId')}, "
+            f"Severity: {f.get('severity')}"
+        )
+        print(f"          Reason: {f.get('reason')}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run smoke tests against deployed EventGate API")
     parser.add_argument(
         "api_url",
         help="Base URL of deployed API Gateway (e.g. https://xyz.execute-api.us-east-1.amazonaws.com)",
     )
+    parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress detailed change set and finding breakdown",
+    )
     args = parser.parse_args()
 
-    success = run_smoke_tests(args.api_url)
+    success = run_smoke_tests(args.api_url, verbose=not args.quiet)
     return 0 if success else 1
 
 
