@@ -1,126 +1,90 @@
 # Enforcement & Gated Publishing (Phase 3)
 
-EventGate moves beyond advisory compatibility reporting to **active cloud enforcement**. This document details the decision-to-enforcement mapping, two-phase payload-first validation pipeline, fail-closed guarantees, and error semantics.
+EventGate moves beyond advisory compatibility reporting to **active cloud enforcement**. Rather than merely reporting compatibility findings, EventGate acts as an authoritative publication gate at the cloud boundary, preventing breaking schema changes from ever propagating to downstream consumers.
 
 ---
 
 ## 1. Decision-to-Enforcement Mapping
 
-Every event submitted to `POST /api/v1/events/publish` is subjected to the deterministic compatibility engine. The aggregate decision dictates whether the event is published to Amazon EventBridge or blocked at the boundary:
+Every event submitted to `POST /api/v1/events/publish` is subjected to the deterministic compatibility engine. The aggregate decision dictates transport behavior:
 
 | Decision | Severity | HTTP Status | `published` | EventBridge Action | Consumer Invocations | Downstream Impact |
 | :---: | :---: | :---: | :---: | :--- | :---: | :--- |
-| **`ALLOW`** | `LOW` | **`200 OK`** | `true` | `events:PutEvents` called | **3** (`Billing`, `Inventory`, `Analytics`) | Event delivered safely |
-| **`BLOCK`** | `HIGH` | **`409 Conflict`** | `false` | `PutEvents` **prevented** | **0** | Breaking change intercepted |
-| **`REVIEW`** | `MEDIUM` | **`409 Conflict`** | `false` | `PutEvents` **prevented** | **0** | Risky change quarantined |
+| **`ALLOW`** | `LOW` | **`200 OK`** | `true` | EventBridge publication permitted | **3** (`Billing`, `Inventory`, `Analytics`) | Downstream consumers receive event |
+| **`BLOCK`** | `HIGH` | **`409 Conflict`** | `false` | **EventBridge publication is prevented** | **0** | Zero downstream consumer delivery |
+| **`REVIEW`** | `MEDIUM` | **`409 Conflict`** | `false` | **EventBridge publication is prevented pending future review** | **0** | Zero downstream consumer delivery |
+
+---
+
+## 2. Exact Orchestration Sequence
+
+Event publication execution follows a strict 8-step pipeline:
 
 ```text
-                    POST /api/v1/events/publish
-                               |
-                               v
-                  +-------------------------+
-                  | Phase 1: Validate Event |
-                  |    Payload Structure    |
-                  +-------------------------+
-                     /                   \
-            (invalid)                     (valid)
-               /                             \
-              v                               v
-       HTTP 422 Error           +-------------------------+
-     INVALID_EVENT_PAYLOAD      |  Phase 2: Analyze All   |
-                                |   Downstream Consumers  |
-                                +-------------------------+
-                                             |
-                                 +-----------+-----------+
-                                 |           |           |
-                               ALLOW      REVIEW       BLOCK
-                                 |           |           |
-                                 v           v           v
-                            HTTP 200     HTTP 409    HTTP 409
-                            Published    Rejected    Rejected
-                                 |           |           |
-                                 v           v           v
-                            EventBridge   0 Events    0 Events
-                            Custom Bus    Published   Published
-                                 |
-                        +--------+--------+
-                        |        |        |
-                        v        v        v
-                     Billing  Inventory Analytics
+Producer Request (POST /api/v1/events/publish)
+       │
+       ▼
+ 1. Generate eventId (UUIDv4)
+       │
+       ▼
+ 2. Load Proposed Contract from DynamoDB / local repo
+       │
+       ▼
+ 3. Validate Event Payload Schema (payload_validator)
+       │
+       ├─► (Invalid Payload) ─────────────────────────► Return HTTP 422 (INVALID_EVENT_PAYLOAD)
+       │                                                [Transport Bypassed]
+       ▼ (Valid Payload)
+ 4. Analyze Downstream Consumer Impact (EventAnalysisService)
+       │  - Compute field-level ChangeSet
+       │  - Evaluate compatibility rules (EVT001 - EVT008)
+       ▼
+ 5. Aggregate Decision (ALLOW / REVIEW / BLOCK)
+       │
+       ├─► (BLOCK)  ──────────────────────────────────► 7. Do NOT publish -> Return HTTP 409
+       ├─► (REVIEW) ──────────────────────────────────► 7. Do NOT publish -> Return HTTP 409
+       ▼ (ALLOW)
+ 6. Publish to Amazon EventBridge (EventBridgeEventPublisher.PutEvents)
+       │
+       ▼
+ 8. Return Structured Result (PublishResponse)
 ```
 
----
-
-## 2. Two-Phase Validation Pipeline
-
-### Phase 1: Payload Validation (`payload_validator.py`)
-Before executing consumer analysis, EventGate validates the submitted event payload against the proposed schema:
-1. **Required Fields:** All required fields declared in the proposed contract must be present.
-2. **Type Checking:** Field values must match declared JSON primitive types (`string`, `number`, `integer`, `boolean`, `object`, `array`, `null`).
-3. **Boolean vs Numeric Distinction:** Explicitly prevents Python `bool` (which is a subclass of `int`) from masquerading as a valid `integer` or `number`.
-4. **Open-World Extensibility:** Extra fields not defined in the contract are permitted under open-world semantics.
-
-If payload validation fails:
-- Returns **`HTTP 422 Unprocessable Entity`**
-- Error code: **`INVALID_EVENT_PAYLOAD`**
-- Event analysis and EventBridge publishing are completely bypassed.
-
-### Phase 2: Consumer Impact Analysis (`EventAnalysisService`)
-Once the payload structure is verified, EventGate retrieves the baseline and proposed event contracts alongside all active consumer contracts for that event type:
-1. Computes the field-level `ChangeSet` (added fields, removed fields, type changes, requiredness changes).
-2. Runs the deterministic compatibility rules engine (`EVT001` through `EVT008`).
-3. Determines consumer-level statuses (`SAFE`, `RISK`, `BREAK`).
-4. Derives the aggregate decision:
-   - Any `BREAK` $\to$ **`BLOCK`**
-   - Any `RISK` $\to$ **`REVIEW`**
-   - All `SAFE` $\to$ **`ALLOW`**
-
-### Phase 3: Gated Publication (`EventPublishService`)
-- If decision is `ALLOW`, calls `IEventPublisher.publish(...)`.
-- If decision is `BLOCK` or `REVIEW`, returns an HTTP 409 response containing the full consumer findings, breaking fields, and decision reasons. `IEventPublisher` is never called.
-
----
-
-## 3. Strict PutEvents Invariant & Fail-Closed Design
-
-EventGate implements a **fail-closed** design philosophy:
-
-1. **Strict PutEvents Invariant:**
-   When publishing to EventBridge, AWS returns `FailedEntryCount` and an array of `Entries`. EventGate checks both conditions:
+### Safety Invariants
+1. **Publisher Never Called on Rejection:** The event publisher is never invoked if payload validation fails, or if the consumer analysis decision is `BLOCK` or `REVIEW`.
+2. **Payload-First Ordering:** Payload validation occurs **before** any consumer contract querying or rule computation. A producer sending malformed data cannot consume engine resources or reach transport.
+3. **Strict PutEvents Invariant:** When publishing to Amazon EventBridge, AWS returns `FailedEntryCount` and an array of `Entries`. EventGate enforces that:
    ```python
    if failed_count > 0 or not entry.get("EventId"):
        raise EventPublishFailedError(f"EventBridge publication failed: {error_message}")
    ```
-   Even if `FailedEntryCount == 0`, if AWS fails to return an `EventId`, the operation is treated as a critical failure and returns **`HTTP 503 Service Unavailable`** (`EVENT_PUBLISH_FAILED`).
-
-2. **Negative-Path Invariant (Zero Downstream Receipt):**
-   In the smoke test suite and real-world operation, when an event receives `BLOCK` or `REVIEW`:
-   - The API Gateway returns `HTTP 409 Conflict`.
-   - The consumer CloudWatch log groups are polled across the entire delivery window.
-   - **PASS condition:** The test confirms zero occurrences of the `eventId` across all three consumer functions (`Billing`, `Inventory`, `Analytics`).
-   - **FAIL condition:** If an event with that `eventId` appears in any consumer log, the test immediately fails.
+   A `PutEvents` response that lacks a valid `EventId` is treated as a critical publishing failure and returns **`HTTP 503 Service Unavailable`** (`EVENT_PUBLISH_FAILED`).
 
 ---
 
-## 4. End-to-End Traceability & Correlation
+## 3. Verified Live AWS Enforcement Evidence
 
-Every request carries a consistent correlation thread:
-1. **`X-Request-ID`**: Propagated from HTTP headers (or auto-generated UUID) into:
-   - Response headers (`X-Request-ID`)
-   - Response JSON body (`requestId`)
-   - EventGate structured Lambda execution log
-   - EventBridge detail envelope (`requestId`)
-   - Consumer Lambda structured CloudWatch execution log
-2. **`eventId`**: Generated at the gate, passed inside the EventBridge envelope, and emitted in consumer execution logs:
-   ```json
-   {
-     "level": "INFO",
-     "message": "Consumer processed event successfully",
-     "consumerId": "billing-service",
-     "eventId": "evt-7a9b1c2d-3e4f-5678-90ab-cdef12345678",
-     "eventType": "OrderPlaced",
-     "version": 2,
-     "requestId": "smoke-test-req-101"
-   }
-   ```
-3. **`eventBridgeEventId`**: The native AWS EventBridge entry UUID returned by AWS `PutEvents` and included in `POST /api/v1/events/publish` `200 OK` responses.
+The enforcement loop was verified against the live AWS stack (`primex-eventgate-dev` in `ap-south-1`):
+
+| Test Stage | Scenario | Verified Event ID | EventBridge EventId | Consumer Log Receipt | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| **Health Check** | `GET /health` | — | — | — | ✅ PASS (`200 OK`) |
+| **Scenario A** | v1 $\to$ v2 (`ALLOW`) | `4d22c323-2506-42ec-af22-8ac6ed99e18b` | `a983ef0d-1ffa-fe94-a3be-012aba52c883` | Billing: YES<br/>Inventory: YES<br/>Analytics: YES | ✅ PASS (`200 OK`) |
+| **Scenario B** | v1 $\to$ v3 (`BLOCK`) | `8a4cafba-f9a6-48b1-af5b-57cb397e3d43` | `None` (Prevented) | Billing: NO<br/>Inventory: NO<br/>Analytics: NO | ✅ PASS (`409 Conflict`) |
+| **Scenario C** | v1 $\to$ v4 (`REVIEW`) | `f8705a9f-63cd-4194-be22-0869fe01d5b6` | `None` (Prevented) | Billing: NO<br/>Inventory: NO<br/>Analytics: NO | ✅ PASS (`409 Conflict`) |
+| **Malformed Payload** | Missing required `orderId` | — | `None` (Bypassed) | Billing: NO<br/>Inventory: NO<br/>Analytics: NO | ✅ PASS (`422 Unproc`) |
+
+### Negative-Path Verification (Confirmed Absence)
+In Scenarios B and C, the live smoke test script actively polls the CloudWatch log groups for all three consumer Lambdas across a 15-second observation window:
+- If the tested `eventId` is recorded in any consumer log, the test immediately **fails**.
+- Expiration of the polling window with zero occurrences of `eventId` provides empirical proof of **zero downstream consumer delivery**.
+
+---
+
+## 4. End-to-End Correlation Thread
+
+Each publication request establishes a complete correlation chain across AWS services:
+
+1. **`X-Request-ID`**: Propagates across HTTP headers, API Gateway access logs, EventGate Lambda execution logs, EventBridge detail payload, and consumer Lambda execution logs.
+2. **`eventId`**: UUID generated by EventGate, returned in the HTTP response, embedded in the EventBridge event detail envelope, and recorded in consumer execution receipts.
+3. **`eventBridgeEventId`**: Native AWS EventBridge event identifier returned by AWS on successful ingestion.

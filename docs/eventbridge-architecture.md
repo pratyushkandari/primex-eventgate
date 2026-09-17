@@ -1,89 +1,92 @@
 # EventBridge Architecture & Consumer Fan-Out (Phase 3)
 
-EventGate turns deterministic compatibility evaluation into real cloud event enforcement using **Amazon EventBridge**. This document specifies the EventBridge topology, routing rule patterns, consumer fan-out configuration, event envelope formats, and security policies.
+EventGate utilizes **Amazon EventBridge** as the cloud enforcement and event transport layer. This document details the architectural topology, event schema envelope, routing rules, consumer demonstration handlers, and IAM security boundaries.
 
 ---
 
 ## 1. Architectural Topology
 
 ```text
-                                  +-----------------------+
-                                  |    Event Producer     |
-                                  +-----------------------+
-                                              |
-                                              | POST /api/v1/events/publish
-                                              v
-+-----------------------------------------------------------------------------------------+
-|                                 Amazon API Gateway                                      |
-+-----------------------------------------------------------------------------------------+
-                                              |
-                                              v
-+-----------------------------------------------------------------------------------------+
-|                            EventGate Lambda Function                                    |
-|                                                                                         |
-|   1. Payload Validation   --> Validates event against proposed contract                 |
-|   2. Consumer Analysis    --> Evaluates against all active consumer contracts           |
-|   3. Decision Gate:                                                                     |
-|      - BLOCK / REVIEW     --> HTTP 409 Conflict (0 events sent to EventBridge)          |
-|      - ALLOW              --> Invokes events:PutEvents on EventBridge custom bus        |
-+-----------------------------------------------------------------------------------------+
-                                              |
-                                 events:PutEvents (ALLOW only)
-                                              v
-+-----------------------------------------------------------------------------------------+
-|                  Amazon EventBridge Custom Bus: primex-eventgate-dev-bus                |
-+-----------------------------------------------------------------------------------------+
-                                              |
-                        Rule: primex-eventgate-dev-order-placed-rule
-                                              |
-                     +------------------------+------------------------+
-                     |                        |                        |
-                     v                        v                        v
-          +--------------------+   +--------------------+   +--------------------+
-          |  Billing Consumer  |   | Inventory Consumer |   | Analytics Consumer |
-          |   Lambda (128MB)   |   |   Lambda (128MB)   |   |   Lambda (128MB)   |
-          +--------------------+   +--------------------+   +--------------------+
+Client / Event Producer
+  │
+  │ POST /api/v1/events/publish
+  ▼
+API Gateway HTTP API (EventGateHttpApi)
+  │
+  ▼
+EventGate Lambda (EventGateFunction)
+  │
+  ▼
+EventPublishService
+  │
+  ▼
+Consumer Compatibility Analysis
+  │
+  ▼
+Decision Policy
+  ├── BLOCK  ──► HTTP 409 (EventBridge publication is prevented)
+  ├── REVIEW ──► HTTP 409 (EventBridge publication is prevented)
+  └── ALLOW
+          │
+          │ events:PutEvents
+          ▼
+    Amazon EventBridge Custom Bus (primex-eventgate-dev-bus)
+          │
+          ▼
+    EventBridge Rule (primex-eventgate-dev-order-placed-rule)
+          │
+          ├──────────────────────┼──────────────────────┐
+          ▼                      ▼                      ▼
+    Billing Consumer      Inventory Consumer     Analytics Consumer
+    Lambda (128MB)        Lambda (128MB)         Lambda (128MB)
 ```
 
 ---
 
 ## 2. EventBridge Custom Event Bus
 
-- **Bus Name:** `primex-eventgate-dev-bus` (parameterized via `${ProjectName}-${Environment}-bus`)
-- **Type:** Custom EventBridge Bus (`AWS::Events::EventBus`)
-- **Pricing:** $1.00 per million custom events ingested.
-- **Isolation:** Decoupled from the AWS `default` event bus to ensure strict access boundaries, prevent noisy neighbor interference, and isolate project event streams.
+- **Bus Name:** `primex-eventgate-dev-bus`
+- **Resource Type:** `AWS::Events::EventBus`
+- **Pricing:** $1.00 per million custom events.
+- **Isolation:** Decoupled from the AWS account `default` bus to isolate project events, prevent noise, and establish strict IAM boundaries.
 
 ---
 
 ## 3. Event Envelope Specification
 
-When an event is approved (`ALLOW`), `EventBridgeEventPublisher` packages the event into the canonical AWS EventBridge entry format:
+When an event passes validation and receives an `ALLOW` decision, `EventBridgeEventPublisher` publishes it with the following envelope:
 
+- **Source:** `primex.eventgate`
+- **DetailType:** `EventGateEvent`
+- **EventBusName:** `primex-eventgate-dev-bus`
+- **Detail Envelope Fields:**
+  - `eventId` (`string`): Unique event identifier.
+  - `eventType` (`string`): Canonical event type name (e.g. `OrderPlaced`).
+  - `version` (`integer`): Verified contract version.
+  - `decision` (`string`): Compatibility decision (`ALLOW`).
+  - `analysisId` (`string`): UUID of the compatibility evaluation.
+  - `requestId` (`string`): Correlation identifier (`X-Request-ID`).
+  - `payload` (`object`): Verified domain payload.
+
+### Example Event Entry
 ```json
 {
   "Source": "primex.eventgate",
   "DetailType": "EventGateEvent",
   "EventBusName": "primex-eventgate-dev-bus",
   "Detail": {
-    "eventId": "evt-7a9b1c2d-3e4f-5678-90ab-cdef12345678",
+    "eventId": "4d22c323-2506-42ec-af22-8ac6ed99e18b",
     "eventType": "OrderPlaced",
     "version": 2,
     "decision": "ALLOW",
-    "timestamp": "2026-09-18T01:15:30.123456Z",
-    "requestId": "test-req-1726622130",
+    "analysisId": "197ada2a-5e37-4028-9c08-56af25fed6f4",
+    "requestId": "smoke-test-req-101",
     "payload": {
-      "orderId": "ord-101",
-      "customerId": "cust-202",
-      "totalAmount": 149.99,
-      "items": [
-        {
-          "sku": "ITEM-A",
-          "quantity": 2,
-          "price": 49.99
-        }
-      ],
+      "orderId": "O1001",
+      "amount": 500,
+      "items": [],
       "shippingMethod": "standard",
+      "couponCode": "SAVE10",
       "metadata": {
         "source": "web-checkout"
       }
@@ -92,22 +95,11 @@ When an event is approved (`ALLOW`), `EventBridgeEventPublisher` packages the ev
 }
 ```
 
-### Envelope Fields
-| Field | Type | Description |
-| :--- | :--- | :--- |
-| `eventId` | `string` | Unique identifier generated for the event instance. |
-| `eventType` | `string` | Canonical event name (`OrderPlaced`). |
-| `version` | `integer` | Verified contract version of the payload. |
-| `decision` | `string` | Deterministic compatibility decision (`ALLOW`). |
-| `timestamp` | `string` | ISO 8601 UTC timestamp of gate evaluation. |
-| `requestId` | `string` | Inbound `X-Request-ID` correlation ID. |
-| `payload` | `object` | Verified domain event body. |
-
 ---
 
-## 4. Routing Rule & Event Pattern
+## 4. Routing Rule & Fan-Out Targets
 
-The EventBridge rule filters events by source and type, fanning out to registered consumer demonstration Lambdas:
+The routing rule is scoped specifically to `OrderPlaced` events:
 
 - **Rule Name:** `primex-eventgate-dev-order-placed-rule`
 - **State:** `ENABLED`
@@ -122,44 +114,34 @@ The EventBridge rule filters events by source and type, fanning out to registere
 }
 ```
 
-### Fan-Out Targets
-The rule routes matched events simultaneously to three targets:
+> [!NOTE]
+> **Scope Precision:** The current EventBridge rule pattern explicitly matches `detail.eventType = ["OrderPlaced"]`. Supporting additional event types requires registering corresponding routing rules or generalizing the pattern.
 
-| Target ID | Lambda Resource | Function Name | Environment Variable |
-| :--- | :--- | :--- | :--- |
-| `BillingConsumerTarget` | `BillingConsumerFunction` | `primex-eventgate-dev-consumer-billing` | `CONSUMER_ID=billing-service` |
-| `InventoryConsumerTarget` | `InventoryConsumerFunction` | `primex-eventgate-dev-consumer-inventory` | `CONSUMER_ID=inventory-service` |
-| `AnalyticsConsumerTarget` | `AnalyticsConsumerFunction` | `primex-eventgate-dev-consumer-analytics` | `CONSUMER_ID=analytics-service` |
+### Consumer Lambda Targets
+
+| Target ID | Function Name | Memory | Timeout | Environment Variable |
+| :--- | :--- | :--- | :--- | :--- |
+| `BillingConsumerTarget` | `primex-eventgate-dev-consumer-billing` | 128 MB | 5s | `CONSUMER_ID=billing-service` |
+| `InventoryConsumerTarget` | `primex-eventgate-dev-consumer-inventory` | 128 MB | 5s | `CONSUMER_ID=inventory-service` |
+| `AnalyticsConsumerTarget` | `primex-eventgate-dev-consumer-analytics` | 128 MB | 5s | `CONSUMER_ID=analytics-service` |
 
 ---
 
 ## 5. Consumer Demonstration Handlers
 
-Each consumer function runs a lightweight Python 3.14 handler (`consumers/src/consumer_handler.py`):
-1. Extracts `CONSUMER_ID` from the environment.
-2. Extracts `eventId`, `eventType`, `version`, `decision`, `requestId`, and `payload` from `event["detail"]`.
-3. Logs a structured JSON receipt to Amazon CloudWatch:
-```json
-{
-  "level": "INFO",
-  "message": "Consumer processed event successfully",
-  "consumerId": "billing-service",
-  "eventId": "evt-7a9b1c2d-3e4f-5678-90ab-cdef12345678",
-  "eventType": "OrderPlaced",
-  "version": 2,
-  "requestId": "test-req-1726622130",
-  "receivedAt": "2026-09-18T01:15:31.456Z"
-}
-```
-4. Returns `{"status": "SUCCESS", "consumerId": "billing-service", "eventId": "..."}`.
-5. Does **not** re-publish events or loop back into EventGate.
+The three consumer Lambdas execute a lightweight Python 3.14 handler (`consumers/src/consumer_handler.py`). Their scope is intentionally minimal to demonstrate observable receipt without side effects:
+1. **Receive:** Accepts EventBridge invocation payload.
+2. **Extract Metadata:** Pulls `CONSUMER_ID` from the environment, and `eventId`, `eventType`, `version`, `decision`, and `requestId` from `event["detail"]`.
+3. **Structured CloudWatch Log:** Emits a structured JSON log entry for automated discovery and verification.
+4. **Return Success:** Returns `{"status": "SUCCESS", "consumerId": "...", "eventId": "..."}`.
+5. **No Republishing:** Consumers do **not** publish downstream events or loop back into EventGate.
 
 ---
 
-## 6. Security & Least-Privilege IAM Policies
+## 6. IAM Security & Permission Boundaries
 
-1. **Producer Privileges (`EventGateFunction`):**
-   - The API Lambda role is granted `events:PutEvents` **only** on `EventGateEventBus.Arn`:
+1. **Publisher Permission (`EventGateFunctionRole`):**
+   Least-privilege policy granting `events:PutEvents` **only** on the custom event bus ARN:
    ```yaml
    - Statement:
        - Sid: PublishToEventGateBus
@@ -168,10 +150,10 @@ Each consumer function runs a lightweight Python 3.14 handler (`consumers/src/co
            - events:PutEvents
          Resource: !GetAtt EventGateEventBus.Arn
    ```
-   - It cannot publish to the `default` bus or any unrelated bus.
+   The function cannot write to the default bus or any other AWS event bus.
 
-2. **Consumer Invocation Privileges (`AWS::Lambda::Permission`):**
-   - Each consumer Lambda has an explicit resource-based policy granting `events.amazonaws.com` permission to invoke it, constrained strictly to `OrderPlacedEventRule.Arn`:
+2. **Consumer Invocation Permissions (`AWS::Lambda::Permission`):**
+   Each consumer function is protected by an explicit resource-based policy granting `events.amazonaws.com` permission to invoke it, constrained strictly by the rule's ARN:
    ```yaml
    BillingConsumerPermission:
      Type: AWS::Lambda::Permission
@@ -181,6 +163,3 @@ Each consumer function runs a lightweight Python 3.14 handler (`consumers/src/co
        Principal: events.amazonaws.com
        SourceArn: !GetAtt OrderPlacedEventRule.Arn
    ```
-
-3. **Consumer Execution Roles:**
-   - Standard `AWSLambdaBasicExecutionRole` allowing CloudWatch log stream creation and log writing. No additional AWS service permissions.
