@@ -1,6 +1,7 @@
 """Domain models for EventGate.
 
-All models are plain dataclasses — independent of FastAPI, Pydantic, and AWS.
+All models are plain frozen dataclasses (providing shallow immutability
+against attribute reassignment) — independent of FastAPI, Pydantic, and AWS.
 Pydantic is used only at API/configuration boundaries.
 """
 
