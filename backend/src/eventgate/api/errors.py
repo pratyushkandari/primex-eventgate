@@ -21,8 +21,10 @@ from fastapi.responses import JSONResponse
 from eventgate.domain.errors import (
     ContractNotFoundError,
     EventGateError,
+    EventPublishFailedError,
     InvalidAnalysisRequestError,
     InvalidContractError,
+    InvalidEventPayloadError,
     UnsupportedEventTypeError,
     UnsupportedEventVersionError,
 )
@@ -36,6 +38,8 @@ _ERROR_STATUS_MAP: dict[type, int] = {
     UnsupportedEventVersionError: 404,
     InvalidContractError: 400,
     InvalidAnalysisRequestError: 400,
+    InvalidEventPayloadError: 422,
+    EventPublishFailedError: 503,
 }
 
 

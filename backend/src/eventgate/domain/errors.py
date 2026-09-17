@@ -49,3 +49,17 @@ class InvalidAnalysisRequestError(EventGateError):
 
     def __init__(self, message: str):
         super().__init__(message, code="INVALID_ANALYSIS_REQUEST")
+
+
+class InvalidEventPayloadError(EventGateError):
+    """Raised when an event payload violates its proposed event contract."""
+
+    def __init__(self, message: str):
+        super().__init__(message, code="INVALID_EVENT_PAYLOAD")
+
+
+class EventPublishFailedError(EventGateError):
+    """Raised when an event cannot be published to the downstream transport."""
+
+    def __init__(self, message: str = "The event could not be published."):
+        super().__init__(message, code="EVENT_PUBLISH_FAILED")

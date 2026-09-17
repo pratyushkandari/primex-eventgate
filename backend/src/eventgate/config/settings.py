@@ -65,3 +65,24 @@ def get_aws_region() -> str:
     import os
 
     return os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-east-1"
+
+
+PUBLISHER_BACKEND_LOCAL = "local"
+PUBLISHER_BACKEND_EVENTBRIDGE = "eventbridge"
+
+
+def get_event_publisher_backend() -> str:
+    """Return the publisher backend ('local' or 'eventbridge'), defaulting to 'local'."""
+    import os
+
+    backend = os.environ.get("EVENTGATE_EVENT_PUBLISHER", PUBLISHER_BACKEND_LOCAL).strip().lower()
+    if backend not in (PUBLISHER_BACKEND_LOCAL, PUBLISHER_BACKEND_EVENTBRIDGE):
+        return PUBLISHER_BACKEND_LOCAL
+    return backend
+
+
+def get_eventbridge_bus_name() -> str:
+    """Return the configured EventBridge bus name, falling back to dev default."""
+    import os
+
+    return os.environ.get("EVENTBRIDGE_BUS_NAME", "primex-eventgate-dev-bus")
