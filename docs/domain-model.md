@@ -94,10 +94,12 @@ class CompatibilityStatus(StrEnum):
     RISK = "RISK"
     BREAK = "BREAK"
 
+
 class Decision(StrEnum):
     ALLOW = "ALLOW"
     REVIEW = "REVIEW"
     BLOCK = "BLOCK"
+
 
 class Severity(StrEnum):
     LOW = "LOW"
