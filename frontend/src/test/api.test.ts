@@ -120,6 +120,37 @@ describe('eventGateApi service', () => {
     ).rejects.toThrow(EventGateApiError)
   })
 
+  it('throws EventGateApiError with 503 on EVENT_PUBLISH_FAILED', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      json: async () => ({
+        error: {
+          code: 'EVENT_PUBLISH_FAILED',
+          message: 'Failed to publish event to EventBridge',
+          requestId: 'test-req-503',
+        },
+      }),
+    } as Response)
+
+    try {
+      await eventGateApi.publishEvent({
+        eventType: 'OrderPlaced',
+        currentVersion: 1,
+        proposedVersion: 2,
+        payload: { orderId: 'O1' },
+      })
+      expect.unreachable()
+    } catch (err) {
+      expect(err).toBeInstanceOf(EventGateApiError)
+      if (err instanceof EventGateApiError) {
+        expect(err.statusCode).toBe(503)
+        expect(err.code).toBe('EVENT_PUBLISH_FAILED')
+        expect(err.message).toBe('Failed to publish event to EventBridge')
+      }
+    }
+  })
+
   it('throws EventGateApiError with NETWORK_ERROR on connection failure', async () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error('Failed to fetch'))
 

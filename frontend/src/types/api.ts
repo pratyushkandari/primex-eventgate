@@ -19,15 +19,15 @@ export interface AnalysisRequest {
 }
 
 export interface TypeChange {
-  fieldName: string
-  oldType: string
-  newType: string
+  field: string
+  fromType: string
+  toType: string
 }
 
 export interface RequirednessChange {
-  fieldName: string
-  oldRequired: boolean
-  newRequired: boolean
+  field: string
+  fromRequired: boolean
+  toRequired: boolean
 }
 
 export interface ChangeSet {
