@@ -21,17 +21,15 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
+from eventgate.application.ports.repositories import (
+    IConsumerContractRepository,
+    IEventContractRepository,
+)
 from eventgate.domain.changes import compute_change_set
 from eventgate.domain.compatibility import CompatibilityEngine
 from eventgate.domain.decision import aggregate_decision, generate_summary
 from eventgate.domain.errors import InvalidAnalysisRequestError
 from eventgate.domain.models import AnalysisResult, Finding
-from eventgate.infrastructure.repositories.consumer_contract_repository import (
-    JsonConsumerContractRepository,
-)
-from eventgate.infrastructure.repositories.event_contract_repository import (
-    JsonEventContractRepository,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +39,8 @@ class EventAnalysisService:
 
     def __init__(
         self,
-        event_repo: JsonEventContractRepository,
-        consumer_repo: JsonConsumerContractRepository,
+        event_repo: IEventContractRepository,
+        consumer_repo: IConsumerContractRepository,
         engine: CompatibilityEngine,
     ):
         self._event_repo = event_repo
