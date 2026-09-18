@@ -14,7 +14,7 @@ describe('Header component', () => {
     vi.clearAllMocks()
   })
 
-  it('renders branding and displays API Live on health success', async () => {
+  it('renders branding and displays API Healthy on health success', async () => {
     vi.mocked(eventGateApi.checkHealth).mockResolvedValue({
       status: 'ok',
       service: 'eventgate',
@@ -23,22 +23,23 @@ describe('Header component', () => {
 
     render(<Header />)
 
-    expect(screen.getByText('PrimeX EventGate')).toBeInTheDocument()
+    expect(screen.getByText('EventGate')).toBeInTheDocument()
+    expect(screen.getByText('Event compatibility and release gating')).toBeInTheDocument()
     expect(screen.getByText(/Connecting.../i)).toBeInTheDocument()
 
     await waitFor(() => {
-      expect(screen.getByText('API Live')).toBeInTheDocument()
+      expect(screen.getByText('API Healthy')).toBeInTheDocument()
       expect(screen.getByText('v0.1.0')).toBeInTheDocument()
     })
   })
 
-  it('displays Offline when health check fails', async () => {
+  it('displays API Unavailable when health check fails', async () => {
     vi.mocked(eventGateApi.checkHealth).mockRejectedValue(new Error('Connection refused'))
 
     render(<Header />)
 
     await waitFor(() => {
-      expect(screen.getByText('Offline')).toBeInTheDocument()
+      expect(screen.getByText('API Unavailable')).toBeInTheDocument()
     })
   })
 
@@ -52,7 +53,7 @@ describe('Header component', () => {
     render(<Header />)
 
     await waitFor(() => {
-      expect(screen.getByText('API Live')).toBeInTheDocument()
+      expect(screen.getByText('API Healthy')).toBeInTheDocument()
     })
 
     vi.mocked(eventGateApi.checkHealth).mockResolvedValueOnce({

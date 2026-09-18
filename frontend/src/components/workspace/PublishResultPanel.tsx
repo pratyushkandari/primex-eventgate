@@ -1,4 +1,5 @@
-import { CheckCircle, XCircle, AlertTriangle, ArrowUpRight, Cpu } from 'lucide-react'
+import * as React from 'react'
+import { CheckCircle2, Copy, Check, AlertCircle } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import type { PublishResponse } from '@/types/api'
@@ -6,24 +7,36 @@ import type { PublishResponse } from '@/types/api'
 interface PublishResultPanelProps {
   publishResult: PublishResponse | null
   publishError: string | null
-  onClose?: () => void
 }
 
 export function PublishResultPanel({
   publishResult,
   publishError,
 }: PublishResultPanelProps) {
+  const [copiedKey, setCopiedKey] = React.useState<string | null>(null)
+
+  const handleCopy = React.useCallback(async (key: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopiedKey(key)
+      setTimeout(() => setCopiedKey(null), 2000)
+    } catch {
+      // fallback
+    }
+  }, [])
+
   if (!publishResult && !publishError) {
     return null
   }
 
+  // Publication Error state
   if (publishError) {
     return (
-      <Card className="border-rose-500/50 bg-rose-950/20 shadow-xl animate-in fade-in slide-in-from-bottom-2">
-        <CardHeader className="pb-3">
+      <Card className="border-rose-500/40 bg-rose-950/20">
+        <CardHeader className="py-3 px-4">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-semibold text-rose-400 flex items-center space-x-2">
-              <XCircle className="h-4 w-4 text-rose-400 flex-shrink-0" />
+            <CardTitle className="text-xs font-mono uppercase tracking-wider text-rose-400 flex items-center space-x-2">
+              <AlertCircle className="h-3.5 w-3.5 text-rose-400" />
               <span>EventGate Publication Error</span>
             </CardTitle>
             <Badge variant="block" size="sm">
@@ -31,12 +44,12 @@ export function PublishResultPanel({
             </Badge>
           </div>
         </CardHeader>
-        <CardContent className="space-y-2">
-          <p className="text-xs text-rose-200 font-mono bg-rose-950/40 p-3 rounded border border-rose-500/20">
+        <CardContent className="p-4 space-y-2">
+          <p className="text-xs text-rose-200 font-mono bg-rose-950/40 p-2.5 rounded border border-rose-500/20 break-words">
             {publishError}
           </p>
-          <p className="text-[11px] text-slate-400">
-            EventBridge publication was prevented. Downstream consumers were not invoked.
+          <p className="text-[11px] text-slate-400 font-mono">
+            EventBridge publication was prevented. Zero downstream consumers were invoked.
           </p>
         </CardContent>
       </Card>
@@ -45,76 +58,107 @@ export function PublishResultPanel({
 
   if (!publishResult) return null
 
-  const isSuccess = publishResult.published && publishResult.decision === 'ALLOW'
+  const { eventId, eventBridgeEventId, analysis } = publishResult
+  const requestId = analysis?.requestId || null
 
   return (
-    <Card
-      className={`shadow-xl transition-all ${
-        isSuccess
-          ? 'border-emerald-500/50 bg-emerald-950/20'
-          : 'border-rose-500/50 bg-rose-950/20'
-      }`}
-    >
-      <CardHeader className="pb-3">
+    <Card className="border-emerald-500/40 bg-emerald-950/10">
+      <CardHeader className="py-3 px-4">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-semibold flex items-center space-x-2">
-            {isSuccess ? (
-              <>
-                <CheckCircle className="h-4 w-4 text-emerald-400 flex-shrink-0" />
-                <span className="text-emerald-300">Published to Amazon EventBridge</span>
-              </>
-            ) : (
-              <>
-                <AlertTriangle className="h-4 w-4 text-rose-400 flex-shrink-0" />
-                <span className="text-rose-300">EventBridge Publication Prevented</span>
-              </>
-            )}
-          </CardTitle>
-          <Badge variant={isSuccess ? 'safe' : 'block'} size="sm">
-            {isSuccess ? 'INGESTED' : 'BLOCKED'}
+          <div className="flex items-center space-x-2">
+            <CheckCircle2 className="h-4 w-4 text-emerald-400 flex-shrink-0" />
+            <CardTitle className="text-xs font-mono uppercase tracking-wider text-slate-200">
+              Published to Amazon EventBridge
+            </CardTitle>
+          </div>
+          <Badge variant="safe" size="sm">
+            INGESTED
           </Badge>
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-3">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs font-mono">
-          <div className="bg-slate-950/80 p-2.5 rounded border border-slate-800">
-            <span className="text-slate-500 block text-[10px] uppercase">EventGate Event ID</span>
-            <span className="text-slate-200 break-all select-all font-semibold">
-              {publishResult.eventId}
-            </span>
-          </div>
-
-          <div className="bg-slate-950/80 p-2.5 rounded border border-slate-800">
-            <span className="text-slate-500 block text-[10px] uppercase">EventBridge Entry ID</span>
-            <span className="text-blue-400 break-all select-all font-semibold">
-              {publishResult.eventBridgeEventId || 'None (Publication Prevented)'}
-            </span>
-          </div>
-        </div>
-
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between text-xs text-slate-400 pt-1 border-t border-slate-800/60 gap-2">
-          <div className="flex items-center space-x-2">
-            <Cpu className="h-3.5 w-3.5 text-slate-500" />
-            <span className="font-mono text-[11px]">
-              Decision: <strong className="text-slate-200">{publishResult.decision}</strong> | Severity:{' '}
-              <strong className="text-slate-200">{publishResult.severity}</strong>
-            </span>
-          </div>
-
-          {publishResult.analysis?.requestId && (
-            <div className="flex items-center space-x-1 font-mono text-[11px] text-slate-500">
-              <ArrowUpRight className="h-3 w-3" />
-              <span>Request ID: {publishResult.analysis.requestId}</span>
+      <CardContent className="p-4 space-y-3 font-mono text-xs">
+        {/* IDs Strip */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+          {/* Event ID */}
+          <div className="p-2.5 rounded border border-slate-800 bg-[#0a0e17] space-y-1">
+            <div className="flex items-center justify-between text-[10px] text-slate-500 uppercase">
+              <span>Event ID</span>
+              <button
+                type="button"
+                onClick={() => handleCopy('eventId', eventId)}
+                title="Copy event ID"
+                className="hover:text-slate-200 flex items-center space-x-1 cursor-pointer transition-colors"
+              >
+                {copiedKey === 'eventId' ? (
+                  <Check className="h-3 w-3 text-emerald-400" />
+                ) : (
+                  <Copy className="h-3 w-3" />
+                )}
+                <span>{copiedKey === 'eventId' ? 'Copied' : 'Copy'}</span>
+              </button>
             </div>
-          )}
+            <div className="font-semibold text-slate-200 break-all select-all">
+              {eventId}
+            </div>
+          </div>
+
+          {/* EventBridge ID */}
+          <div className="p-2.5 rounded border border-slate-800 bg-[#0a0e17] space-y-1">
+            <div className="flex items-center justify-between text-[10px] text-slate-500 uppercase">
+              <span>EventBridge ID</span>
+              {eventBridgeEventId && (
+                <button
+                  type="button"
+                  onClick={() => handleCopy('ebId', eventBridgeEventId)}
+                  title="Copy EventBridge ID"
+                  className="hover:text-slate-200 flex items-center space-x-1 cursor-pointer transition-colors"
+                >
+                  {copiedKey === 'ebId' ? (
+                    <Check className="h-3 w-3 text-emerald-400" />
+                  ) : (
+                    <Copy className="h-3 w-3" />
+                  )}
+                  <span>{copiedKey === 'ebId' ? 'Copied' : 'Copy'}</span>
+                </button>
+              )}
+            </div>
+            <div className="font-semibold text-blue-400 break-all select-all">
+              {eventBridgeEventId || 'None'}
+            </div>
+          </div>
+
+          {/* Request ID */}
+          <div className="p-2.5 rounded border border-slate-800 bg-[#0a0e17] space-y-1">
+            <div className="flex items-center justify-between text-[10px] text-slate-500 uppercase">
+              <span>Request ID</span>
+              {requestId && (
+                <button
+                  type="button"
+                  onClick={() => handleCopy('reqId', requestId)}
+                  title="Copy request ID"
+                  className="hover:text-slate-200 flex items-center space-x-1 cursor-pointer transition-colors"
+                >
+                  {copiedKey === 'reqId' ? (
+                    <Check className="h-3 w-3 text-emerald-400" />
+                  ) : (
+                    <Copy className="h-3 w-3" />
+                  )}
+                  <span>{copiedKey === 'reqId' ? 'Copied' : 'Copy'}</span>
+                </button>
+              )}
+            </div>
+            <div className="text-slate-400 break-all select-all">
+              {requestId ? `Request ID: ${requestId}` : 'N/A'}
+            </div>
+          </div>
         </div>
 
-        <p className="text-[11px] text-slate-400 leading-relaxed bg-slate-900/50 p-2 rounded border border-slate-800/40">
-          {isSuccess
-            ? 'Event successfully published to custom bus primex-eventgate-dev-bus. EventBridge rule primex-eventgate-dev-order-placed-rule matches this event and fans out to subscribed demonstration Lambdas.'
-            : 'Deterministic compatibility engine intercepted breaking changes. Zero events were dispatched to Amazon EventBridge.'}
-        </p>
+        {/* Metadata Footer */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-800/60 gap-1">
+          <span>Destination: primex-eventgate-dev-bus</span>
+          <span>Status: Ingested & fanning out to subscribed lambdas</span>
+        </div>
       </CardContent>
     </Card>
   )

@@ -22,23 +22,23 @@ export function Badge({
   children,
   ...props
 }: BadgeProps) {
-  const baseStyles = 'inline-flex items-center font-mono font-medium rounded-full'
+  const baseStyles = 'inline-flex items-center font-mono font-medium rounded'
 
   const variants = {
-    default: 'bg-slate-800 text-slate-200 border border-slate-700',
-    allow: 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30',
-    safe: 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30',
-    block: 'bg-rose-500/15 text-rose-400 border border-rose-500/30',
-    break: 'bg-rose-500/15 text-rose-400 border border-rose-500/30',
-    review: 'bg-amber-500/15 text-amber-400 border border-amber-500/30',
-    risk: 'bg-amber-500/15 text-amber-400 border border-amber-500/30',
-    neutral: 'bg-slate-800/80 text-slate-400 border border-slate-700/60',
-    outline: 'bg-transparent text-slate-300 border border-slate-700',
+    default: 'bg-slate-800/80 text-slate-300 border border-slate-700/60',
+    allow: 'bg-emerald-950/40 text-emerald-400 border border-emerald-500/30',
+    safe: 'bg-emerald-950/40 text-emerald-400 border border-emerald-500/30',
+    block: 'bg-rose-950/40 text-rose-400 border border-rose-500/30',
+    break: 'bg-rose-950/40 text-rose-400 border border-rose-500/30',
+    review: 'bg-amber-950/40 text-amber-400 border border-amber-500/30',
+    risk: 'bg-amber-950/40 text-amber-400 border border-amber-500/30',
+    neutral: 'bg-slate-800/60 text-slate-400 border border-slate-700/50',
+    outline: 'bg-transparent text-slate-400 border border-slate-700/60',
   }
 
   const sizes = {
-    sm: 'text-xs px-2 py-0.5',
-    md: 'text-xs px-2.5 py-1',
+    sm: 'text-[10px] px-1.5 py-0.5 tracking-wide uppercase',
+    md: 'text-xs px-2 py-0.5 tracking-wide uppercase',
   }
 
   return (

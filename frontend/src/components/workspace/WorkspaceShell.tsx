@@ -6,10 +6,11 @@ import { DecisionHero } from '@/components/workspace/DecisionHero'
 import { ConsumerImpactPanel } from '@/components/workspace/ConsumerImpactPanel'
 import { FindingsPanel } from '@/components/workspace/FindingsPanel'
 import { PublishResultPanel } from '@/components/workspace/PublishResultPanel'
+import { EventPath } from '@/components/workspace/EventPath'
 import { DEMO_SCENARIOS, type DemoScenario } from '@/data/scenarios'
 import { eventGateApi } from '@/services/api'
 import type { AnalysisResponse, PublishResponse } from '@/types/api'
-import { ArrowRight, AlertTriangle } from 'lucide-react'
+import { AlertCircle } from 'lucide-react'
 
 export function WorkspaceShell() {
   const [selectedScenarioId, setSelectedScenarioId] = React.useState<DemoScenario['id']>('safe')
@@ -145,11 +146,11 @@ export function WorkspaceShell() {
   }, [analysis, eventType, currentVersion, proposedVersion, payloadText, jsonError])
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
+    <div className="min-h-screen bg-[#090d16] text-slate-100 flex flex-col">
       <Header />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        {/* Scenario Quick Selector Banner */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-4">
+        {/* Scenario Toolbar */}
         <ScenarioSelector
           selectedScenario={selectedScenarioId}
           onSelectScenario={handleSelectScenario}
@@ -158,8 +159,8 @@ export function WorkspaceShell() {
 
         {/* Global Analysis Error Banner */}
         {analysisError && (
-          <div className="bg-rose-950/40 border border-rose-500/50 rounded-lg p-3.5 flex items-start space-x-3 text-xs text-rose-300 font-mono">
-            <AlertTriangle className="h-4 w-4 text-rose-400 flex-shrink-0 mt-0.5" />
+          <div className="bg-rose-950/30 border border-rose-500/50 rounded-lg p-3 flex items-start space-x-2.5 text-xs text-rose-300 font-mono">
+            <AlertCircle className="h-4 w-4 text-rose-400 flex-shrink-0 mt-0.5" />
             <div>
               <span className="font-bold block mb-0.5">Compatibility Analysis Failed</span>
               <p>{analysisError}</p>
@@ -167,10 +168,10 @@ export function WorkspaceShell() {
           </div>
         )}
 
-        {/* 3-Column Core Workspace */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-          {/* Column 1: Input & Payload Editor (Col 4) */}
-          <div className="lg:col-span-4">
+        {/* 3-Column Engineering Console Workspace */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
+          {/* Column 1: Contract Change & Code Editor (Col 4) */}
+          <div className="lg:col-span-4 flex flex-col">
             <EventInputPanel
               eventType={eventType}
               currentVersion={currentVersion}
@@ -186,8 +187,8 @@ export function WorkspaceShell() {
             />
           </div>
 
-          {/* Column 2: Decision Hero (Col 4) */}
-          <div className="lg:col-span-4">
+          {/* Column 2: Release Decision Gate (Col 4) */}
+          <div className="lg:col-span-4 flex flex-col">
             <DecisionHero
               analysis={analysis}
               isAnalyzing={isAnalyzing}
@@ -197,100 +198,34 @@ export function WorkspaceShell() {
             />
           </div>
 
-          {/* Column 3: Consumer Impact Panel (Col 4) */}
-          <div className="lg:col-span-4">
+          {/* Column 3: Downstream Consumers (Col 4) */}
+          <div className="lg:col-span-4 flex flex-col">
             <ConsumerImpactPanel analysis={analysis} />
           </div>
         </div>
 
-        {/* Live Publication Outcome Panel */}
+        {/* Live Publication Outcome Section */}
         <PublishResultPanel
           publishResult={publishResult}
           publishError={publishError}
         />
 
-        {/* Technical Findings & ChangeSet Breakdown */}
+        {/* Compatibility Findings & Schema Diff */}
         {analysis && <FindingsPanel analysis={analysis} />}
 
-        {/* Bottom Cloud Architecture Transport Flow */}
-        <section className="bg-slate-900/60 border border-slate-800 rounded-xl p-5 space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-mono uppercase tracking-wider text-slate-400 flex items-center space-x-2">
-              <span>Cloud Transport Flow</span>
-              <span className="text-slate-600">•</span>
-              <span className="text-slate-500">Live Amazon EventBridge Routing</span>
-            </h3>
-            <span className="text-xs text-slate-500 font-mono">
-              Bus: primex-eventgate-dev-bus
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-center text-center">
-            <div className="bg-slate-950 border border-slate-800 rounded-lg p-3">
-              <span className="block text-xs font-semibold text-slate-200">Producer</span>
-              <span className="text-[11px] font-mono text-slate-400">API Gateway HTTP API</span>
-            </div>
-
-            <div className="hidden md:flex justify-center text-slate-600">
-              <ArrowRight className="h-4 w-4" />
-            </div>
-
-            <div
-              className={`border rounded-lg p-3 transition-colors ${
-                analysis?.decision === 'ALLOW'
-                  ? 'bg-emerald-950/20 border-emerald-500/40'
-                  : analysis?.decision === 'BLOCK'
-                  ? 'bg-rose-950/20 border-rose-500/40'
-                  : analysis?.decision === 'REVIEW'
-                  ? 'bg-amber-950/20 border-amber-500/40'
-                  : 'bg-slate-950 border-blue-500/30'
-              }`}
-            >
-              <span
-                className={`block text-xs font-semibold ${
-                  analysis?.decision === 'ALLOW'
-                    ? 'text-emerald-400'
-                    : analysis?.decision === 'BLOCK'
-                    ? 'text-rose-400'
-                    : analysis?.decision === 'REVIEW'
-                    ? 'text-amber-400'
-                    : 'text-blue-400'
-                }`}
-              >
-                EventGate Core Gate
-              </span>
-              <span className="text-[11px] font-mono text-slate-400">
-                {analysis ? `Gate: ${analysis.decision}` : 'Payload + Consumer Analysis'}
-              </span>
-            </div>
-
-            <div className="hidden md:flex justify-center text-slate-600">
-              <ArrowRight className="h-4 w-4" />
-            </div>
-
-            <div
-              className={`border rounded-lg p-3 transition-colors ${
-                publishResult?.published
-                  ? 'bg-emerald-950/30 border-emerald-500/60'
-                  : 'bg-slate-950 border-slate-800'
-              }`}
-            >
-              <span
-                className={`block text-xs font-semibold ${
-                  publishResult?.published ? 'text-emerald-300' : 'text-slate-200'
-                }`}
-              >
-                Amazon EventBridge
-              </span>
-              <span className="text-[11px] font-mono text-slate-400">
-                {publishResult?.published
-                  ? 'Entry Ingested (Fan-out Active)'
-                  : 'Custom Bus (ALLOW Only)'}
-              </span>
-            </div>
-          </div>
-        </section>
+        {/* Event Path Pipeline Strip */}
+        <EventPath
+          decision={analysis?.decision ?? null}
+          isPublished={Boolean(publishResult?.published)}
+        />
       </main>
+
+      <footer className="border-t border-slate-800/80 bg-[#070a10] py-3 text-center text-[11px] font-mono text-slate-500">
+        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+          <span>EventGate • Enterprise Event Release Control Plane</span>
+          <span>Amazon EventBridge • DynamoDB • ap-south-1</span>
+        </div>
+      </footer>
     </div>
   )
 }

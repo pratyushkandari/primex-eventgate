@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { WorkspaceShell } from '@/components/workspace/WorkspaceShell'
 import { eventGateApi } from '@/services/api'
@@ -14,7 +14,7 @@ vi.mock('@/services/api', () => ({
 
 describe('WorkspaceShell integrated workflow', () => {
   const mockAllowAnalysis: AnalysisResponse = {
-    analysisId: 'an-allow-101',
+    analysisId: 'an-safe-1',
     eventType: 'OrderPlaced',
     currentVersion: 1,
     proposedVersion: 2,
@@ -22,7 +22,7 @@ describe('WorkspaceShell integrated workflow', () => {
     severity: 'LOW',
     summary: 'All 3 consumers are safe with the proposed change.',
     timestamp: '2026-09-18T00:00:00Z',
-    requestId: 'req-allow-1',
+    requestId: 'req-allow-123',
     changeSet: {
       addedFields: ['metadata'],
       removedFields: [],
@@ -33,26 +33,46 @@ describe('WorkspaceShell integrated workflow', () => {
       {
         consumerId: 'billing-service',
         status: 'SAFE',
-        ruleId: 'EVT005_OPTIONAL_FIELD_ADDED',
+        ruleId: 'NONE',
         field: '*',
         expectedType: null,
         proposedType: null,
         severity: 'LOW',
-        reason: 'Billing Service unaffected.',
+        reason: 'No conflicting fields.',
+      },
+      {
+        consumerId: 'inventory-service',
+        status: 'SAFE',
+        ruleId: 'NONE',
+        field: '*',
+        expectedType: null,
+        proposedType: null,
+        severity: 'LOW',
+        reason: 'No conflicting fields.',
+      },
+      {
+        consumerId: 'analytics-service',
+        status: 'SAFE',
+        ruleId: 'NONE',
+        field: '*',
+        expectedType: null,
+        proposedType: null,
+        severity: 'LOW',
+        reason: 'No conflicting fields.',
       },
     ],
   }
 
   const mockBlockAnalysis: AnalysisResponse = {
-    analysisId: 'an-block-102',
+    analysisId: 'an-block-1',
     eventType: 'OrderPlaced',
     currentVersion: 1,
     proposedVersion: 3,
     decision: 'BLOCK',
     severity: 'HIGH',
-    summary: '1 consumer would break.',
+    summary: 'inventory-service is broken by type mutation on shippingMethod.',
     timestamp: '2026-09-18T00:00:00Z',
-    requestId: 'req-block-1',
+    requestId: 'req-block-456',
     changeSet: {
       addedFields: [],
       removedFields: [],
@@ -68,21 +88,21 @@ describe('WorkspaceShell integrated workflow', () => {
         expectedType: 'string',
         proposedType: 'object',
         severity: 'HIGH',
-        reason: 'Type changed from string to object.',
+        reason: "Field 'shippingMethod' type changed from string to object.",
       },
     ],
   }
 
   const mockReviewAnalysis: AnalysisResponse = {
-    analysisId: 'an-review-103',
+    analysisId: 'an-risk-1',
     eventType: 'OrderPlaced',
     currentVersion: 1,
     proposedVersion: 4,
     decision: 'REVIEW',
     severity: 'MEDIUM',
-    summary: '1 consumer has a potential risk.',
+    summary: 'analytics-service impacted by couponCode removal.',
     timestamp: '2026-09-18T00:00:00Z',
-    requestId: 'req-review-1',
+    requestId: 'req-risk-789',
     changeSet: {
       addedFields: [],
       removedFields: ['couponCode'],
@@ -93,9 +113,9 @@ describe('WorkspaceShell integrated workflow', () => {
       {
         consumerId: 'analytics-service',
         status: 'RISK',
-        ruleId: 'EVT008_OPTIONAL_FIELD_REMOVED',
+        ruleId: 'EVT006_OPTIONAL_FIELD_REMOVED',
         field: 'couponCode',
-        expectedType: null,
+        expectedType: 'string',
         proposedType: null,
         severity: 'MEDIUM',
         reason: 'Field couponCode was removed.',
@@ -123,30 +143,31 @@ describe('WorkspaceShell integrated workflow', () => {
 
   it('renders all main panels and connects to live health', async () => {
     render(<WorkspaceShell />)
-    await waitFor(() => expect(screen.getByText('API Live')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('API Healthy')).toBeInTheDocument())
 
-    expect(screen.getByText('PrimeX EventGate')).toBeInTheDocument()
-    expect(screen.getByText(/Contract & Payload/i)).toBeInTheDocument()
+    expect(screen.getAllByText('EventGate').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText(/Contract change/i)).toBeInTheDocument()
     expect(screen.getByText(/Ready to Analyze/i)).toBeInTheDocument()
-    expect(screen.getByText(/Downstream Impact/i)).toBeInTheDocument()
+    expect(screen.getAllByText(/Consumers/i).length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText(/Event path/i)).toBeInTheDocument()
   })
 
   it('switches between sample scenarios without fabricating analysis', async () => {
     render(<WorkspaceShell />)
-    await waitFor(() => expect(screen.getByText('API Live')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('API Healthy')).toBeInTheDocument())
 
     // Initial state is Safe scenario (v2)
     const select = screen.getByRole('combobox') as HTMLSelectElement
     expect(select.value).toBe('2')
 
     // Click Breaking scenario button
-    const breakingBtn = screen.getByRole('button', { name: /2\. BREAKING/i })
+    const breakingBtn = screen.getByRole('button', { name: /Breaking/i })
     fireEvent.click(breakingBtn)
     expect(select.value).toBe('3')
     expect(screen.getByText('Ready to Analyze')).toBeInTheDocument()
 
     // Click Risk scenario button
-    const riskBtn = screen.getByRole('button', { name: /3\. RISK/i })
+    const riskBtn = screen.getByRole('button', { name: /Risk/i })
     fireEvent.click(riskBtn)
     expect(select.value).toBe('4')
     expect(screen.getByText('Ready to Analyze')).toBeInTheDocument()
@@ -156,9 +177,9 @@ describe('WorkspaceShell integrated workflow', () => {
     vi.mocked(eventGateApi.analyzeCompatibility).mockResolvedValue(mockAllowAnalysis)
 
     render(<WorkspaceShell />)
-    await waitFor(() => expect(screen.getByText('API Live')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('API Healthy')).toBeInTheDocument())
 
-    const analyzeBtn = screen.getByRole('button', { name: /Analyze Compatibility/i })
+    const analyzeBtn = screen.getByRole('button', { name: /Analyze/i })
     fireEvent.click(analyzeBtn)
 
     await waitFor(() => {
@@ -179,12 +200,12 @@ describe('WorkspaceShell integrated workflow', () => {
     vi.mocked(eventGateApi.analyzeCompatibility).mockResolvedValue(mockBlockAnalysis)
 
     render(<WorkspaceShell />)
-    await waitFor(() => expect(screen.getByText('API Live')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('API Healthy')).toBeInTheDocument())
 
-    const breakingBtn = screen.getByRole('button', { name: /2\. BREAKING/i })
+    const breakingBtn = screen.getByRole('button', { name: /Breaking/i })
     fireEvent.click(breakingBtn)
 
-    const analyzeBtn = screen.getByRole('button', { name: /Analyze Compatibility/i })
+    const analyzeBtn = screen.getByRole('button', { name: /Analyze/i })
     fireEvent.click(analyzeBtn)
 
     await waitFor(() => {
@@ -199,12 +220,12 @@ describe('WorkspaceShell integrated workflow', () => {
     vi.mocked(eventGateApi.analyzeCompatibility).mockResolvedValue(mockReviewAnalysis)
 
     render(<WorkspaceShell />)
-    await waitFor(() => expect(screen.getByText('API Live')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('API Healthy')).toBeInTheDocument())
 
-    const riskBtn = screen.getByRole('button', { name: /3\. RISK/i })
+    const riskBtn = screen.getByRole('button', { name: /Risk/i })
     fireEvent.click(riskBtn)
 
-    const analyzeBtn = screen.getByRole('button', { name: /Analyze Compatibility/i })
+    const analyzeBtn = screen.getByRole('button', { name: /Analyze/i })
     fireEvent.click(analyzeBtn)
 
     await waitFor(() => {
@@ -220,10 +241,10 @@ describe('WorkspaceShell integrated workflow', () => {
     vi.mocked(eventGateApi.publishEvent).mockResolvedValue(mockPublishResponse)
 
     render(<WorkspaceShell />)
-    await waitFor(() => expect(screen.getByText('API Live')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('API Healthy')).toBeInTheDocument())
 
     // Step 1: Analyze
-    const analyzeBtn = screen.getByRole('button', { name: /Analyze Compatibility/i })
+    const analyzeBtn = screen.getByRole('button', { name: /Analyze/i })
     fireEvent.click(analyzeBtn)
     await waitFor(() => expect(screen.getByText('Safe to Publish')).toBeInTheDocument())
 
@@ -232,7 +253,7 @@ describe('WorkspaceShell integrated workflow', () => {
     fireEvent.click(publishBtn)
 
     await waitFor(() => {
-      expect(screen.getByText(/Published to Amazon EventBridge/i)).toBeInTheDocument()
+      expect(screen.getByText(/Published/i)).toBeInTheDocument()
       expect(screen.getByText('evt-allow-verified-1')).toBeInTheDocument()
       expect(screen.getByText('eb-verified-entry-888')).toBeInTheDocument()
     })
@@ -242,12 +263,12 @@ describe('WorkspaceShell integrated workflow', () => {
 
   it('prevents analysis submission when JSON payload has syntax errors', async () => {
     render(<WorkspaceShell />)
-    await waitFor(() => expect(screen.getByText('API Live')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('API Healthy')).toBeInTheDocument())
 
     const textarea = screen.getByPlaceholderText('Enter JSON payload...')
     fireEvent.change(textarea, { target: { value: '{"orderId": INVALID_SYNTAX}' } })
 
-    const analyzeBtn = screen.getByRole('button', { name: /Analyze Compatibility/i })
+    const analyzeBtn = screen.getByRole('button', { name: /Analyze/i })
     expect(analyzeBtn).toBeDisabled()
 
     fireEvent.click(analyzeBtn)
@@ -258,10 +279,10 @@ describe('WorkspaceShell integrated workflow', () => {
     vi.mocked(eventGateApi.analyzeCompatibility).mockResolvedValue(mockAllowAnalysis)
 
     render(<WorkspaceShell />)
-    await waitFor(() => expect(screen.getByText('API Live')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('API Healthy')).toBeInTheDocument())
 
     // Initial valid analysis produces ALLOW
-    const analyzeBtn = screen.getByRole('button', { name: /Analyze Compatibility/i })
+    const analyzeBtn = screen.getByRole('button', { name: /Analyze/i })
     fireEvent.click(analyzeBtn)
 
     await waitFor(() => {
@@ -296,10 +317,10 @@ describe('WorkspaceShell integrated workflow', () => {
     vi.mocked(eventGateApi.analyzeCompatibility).mockResolvedValue(mockAllowAnalysis)
 
     render(<WorkspaceShell />)
-    await waitFor(() => expect(screen.getByText('API Live')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('API Healthy')).toBeInTheDocument())
 
     const textarea = screen.getByPlaceholderText('Enter JSON payload...')
-    const analyzeBtn = screen.getByRole('button', { name: /Analyze Compatibility/i })
+    const analyzeBtn = screen.getByRole('button', { name: /Analyze/i })
 
     // Step 1: Corrupt JSON
     fireEvent.change(textarea, { target: { value: '{"broken": ' } })
@@ -326,9 +347,9 @@ describe('WorkspaceShell integrated workflow', () => {
     vi.mocked(eventGateApi.analyzeCompatibility).mockRejectedValue(new Error('Network timeout'))
 
     render(<WorkspaceShell />)
-    await waitFor(() => expect(screen.getByText('API Live')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('API Healthy')).toBeInTheDocument())
 
-    const analyzeBtn = screen.getByRole('button', { name: /Analyze Compatibility/i })
+    const analyzeBtn = screen.getByRole('button', { name: /Analyze/i })
     fireEvent.click(analyzeBtn)
 
     await waitFor(() => {

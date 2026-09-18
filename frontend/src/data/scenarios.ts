@@ -6,6 +6,8 @@ export interface DemoScenario {
   id: 'safe' | 'breaking' | 'risk'
   name: string
   label: string
+  action: string
+  transition: string
   currentVersion: number
   proposedVersion: number
   expectedDecision: 'ALLOW' | 'BLOCK' | 'REVIEW'
@@ -16,8 +18,10 @@ export interface DemoScenario {
 export const DEMO_SCENARIOS: Record<'safe' | 'breaking' | 'risk', DemoScenario> = {
   safe: {
     id: 'safe',
-    name: 'Scenario A: Safe Evolution',
-    label: '1. SAFE (v1 → v2)',
+    name: 'Safe change',
+    label: 'Safe',
+    action: 'Add optional field',
+    transition: 'v1 → v2',
     currentVersion: 1,
     proposedVersion: 2,
     expectedDecision: 'ALLOW',
@@ -35,8 +39,10 @@ export const DEMO_SCENARIOS: Record<'safe' | 'breaking' | 'risk', DemoScenario> 
   },
   breaking: {
     id: 'breaking',
-    name: 'Scenario B: Breaking Change',
-    label: '2. BREAKING (v1 → v3)',
+    name: 'Breaking change',
+    label: 'Breaking',
+    action: 'Change field type',
+    transition: 'v1 → v3',
     currentVersion: 1,
     proposedVersion: 3,
     expectedDecision: 'BLOCK',
@@ -54,8 +60,10 @@ export const DEMO_SCENARIOS: Record<'safe' | 'breaking' | 'risk', DemoScenario> 
   },
   risk: {
     id: 'risk',
-    name: 'Scenario C: Risky Removal',
-    label: '3. RISK (v1 → v4)',
+    name: 'Risky change',
+    label: 'Risk',
+    action: 'Remove optional field',
+    transition: 'v1 → v4',
     currentVersion: 1,
     proposedVersion: 4,
     expectedDecision: 'REVIEW',

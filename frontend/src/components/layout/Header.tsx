@@ -1,8 +1,7 @@
 import * as React from 'react'
-import { ShieldCheck, Cloud, RefreshCw, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { Shield, RefreshCw, Cloud, HelpCircle } from 'lucide-react'
 import { API_CONFIG } from '@/config/env'
 import { eventGateApi } from '@/services/api'
-import { Badge } from '@/components/ui/Badge'
 
 export function Header() {
   const [healthStatus, setHealthStatus] = React.useState<'checking' | 'healthy' | 'unreachable'>('checking')
@@ -52,63 +51,76 @@ export function Header() {
   }, [])
 
   return (
-    <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-        {/* Left: Branding & Tagline */}
+    <header className="border-b border-slate-800 bg-[#0b0f19] sticky top-0 z-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
+        {/* Left: Brand & Product Purpose */}
         <div className="flex items-center space-x-3">
-          <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
-            <ShieldCheck className="h-5 w-5" />
+          <div className="h-7 w-7 rounded bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400">
+            <Shield className="h-4 w-4" />
           </div>
           <div>
             <div className="flex items-center space-x-2">
-              <span className="font-bold text-lg tracking-tight text-white">PrimeX EventGate</span>
-              <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
+              <span className="font-semibold text-sm tracking-tight text-slate-100">
+                EventGate
+              </span>
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700/60">
                 v{apiVersion || '0.1.0'}
               </span>
             </div>
-            <p className="text-xs text-slate-400 hidden sm:block">
-              Break it before it breaks — Consumer-aware cloud event enforcement
+            <p className="text-[11px] text-slate-400 font-mono hidden sm:block">
+              Event compatibility and release gating
             </p>
           </div>
         </div>
 
-        {/* Right: AWS Status & Health Indicator */}
-        <div className="flex items-center space-x-3">
-          <div className="hidden md:flex items-center space-x-2 text-xs font-mono text-slate-400 bg-slate-900 border border-slate-800 rounded-md px-2.5 py-1">
-            <Cloud className="h-3.5 w-3.5 text-blue-400" />
-            <span>AWS {API_CONFIG.region}</span>
-            <span className="text-slate-600">|</span>
-            <span className="text-slate-300">{API_CONFIG.stackName}</span>
+        {/* Right: Technical Metadata & Live Status */}
+        <div className="flex items-center space-x-2 text-xs font-mono">
+          {/* AWS Region */}
+          <div className="hidden md:flex items-center space-x-1 bg-slate-900 border border-slate-800/80 px-2 py-1 rounded text-slate-400">
+            <Cloud className="h-3 w-3 text-slate-500" />
+            <span>{API_CONFIG.region}</span>
           </div>
 
-          <div
-            className="flex items-center space-x-2 bg-slate-900/90 border border-slate-800 rounded-md px-2.5 py-1 cursor-pointer hover:border-slate-700 transition-colors"
+          {/* Environment */}
+          <div className="hidden sm:flex items-center bg-slate-900 border border-slate-800/80 px-2 py-1 rounded text-slate-400">
+            <span>dev</span>
+          </div>
+
+          {/* Health Status Indicator */}
+          <button
+            type="button"
             onClick={handleManualRefresh}
             title="Click to re-verify live backend health"
+            className="flex items-center space-x-1.5 bg-slate-900 border border-slate-800/80 hover:border-slate-700 px-2.5 py-1 rounded text-xs transition-colors cursor-pointer"
           >
             {healthStatus === 'checking' && (
               <>
-                <RefreshCw className="h-3.5 w-3.5 text-slate-400 animate-spin" />
-                <span className="text-xs font-mono text-slate-400">Connecting...</span>
+                <RefreshCw className="h-3 w-3 text-slate-400 animate-spin" />
+                <span className="text-slate-400">Connecting...</span>
               </>
             )}
             {healthStatus === 'healthy' && (
               <>
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
-                <span className="text-xs font-mono text-emerald-400 font-medium">API Live</span>
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                <span className="text-emerald-400 font-medium">API Healthy</span>
               </>
             )}
             {healthStatus === 'unreachable' && (
               <>
-                <AlertTriangle className="h-3.5 w-3.5 text-rose-400" />
-                <span className="text-xs font-mono text-rose-400 font-medium">Offline</span>
+                <span className="h-1.5 w-1.5 rounded-full bg-rose-400" />
+                <span className="text-rose-400 font-medium">API Unavailable</span>
               </>
             )}
-          </div>
+          </button>
 
-          <Badge variant="outline" className="hidden lg:inline-flex text-[11px] text-slate-400">
-            Phase 4 Foundation
-          </Badge>
+          {/* Docs / Help link */}
+          <a
+            href="#rules"
+            title="Compatibility rules: EVT001 - EVT008"
+            className="h-7 w-7 flex items-center justify-center rounded bg-slate-900 border border-slate-800/80 hover:border-slate-700 text-slate-400 hover:text-slate-200 transition-colors"
+          >
+            <HelpCircle className="h-3.5 w-3.5" />
+          </a>
         </div>
       </div>
     </header>

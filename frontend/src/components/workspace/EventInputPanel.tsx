@@ -1,6 +1,6 @@
-import { Layers, Activity, RotateCcw, AlignLeft, AlertCircle } from 'lucide-react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
-import { Badge } from '@/components/ui/Badge'
+import * as React from 'react'
+import { AlignLeft, RotateCcw, AlertCircle, Play } from 'lucide-react'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 
 interface EventInputPanelProps {
@@ -30,80 +30,114 @@ export function EventInputPanel({
   onResetPayload,
   onAnalyze,
 }: EventInputPanelProps) {
+  const lineCount = React.useMemo(() => {
+    return Math.max(payloadText.split('\n').length, 10)
+  }, [payloadText])
+
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null)
+
+  // Support Tab key for 2 spaces indentation
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Tab') {
+      e.preventDefault()
+      const target = e.currentTarget
+      const start = target.selectionStart
+      const end = target.selectionEnd
+      const newValue = payloadText.substring(0, start) + '  ' + payloadText.substring(end)
+      onPayloadTextChange(newValue)
+      requestAnimationFrame(() => {
+        if (textareaRef.current) {
+          textareaRef.current.selectionStart = textareaRef.current.selectionEnd = start + 2
+        }
+      })
+    }
+  }
+
   return (
     <Card className="h-full flex flex-col justify-between">
       <div>
-        <CardHeader>
+        <CardHeader className="py-3 px-4">
           <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center space-x-2">
-              <Layers className="h-4 w-4 text-blue-400" />
-              <span>Contract & Payload</span>
+            <CardTitle className="text-xs font-mono uppercase tracking-wider text-slate-300">
+              Contract change
             </CardTitle>
-            <Badge variant="neutral">Input</Badge>
+            <span className="text-[10px] font-mono text-slate-500">
+              schema v{currentVersion} → v{proposedVersion}
+            </span>
           </div>
-          <CardDescription>
-            Configure the proposed schema evolution and test event payload
-          </CardDescription>
         </CardHeader>
 
-        <CardContent className="space-y-4">
-          {/* Event Type */}
-          <div>
-            <label htmlFor="event-type" className="block text-xs font-mono uppercase text-slate-400 mb-1">
-              Event Type
-            </label>
-            <input
-              id="event-type"
-              type="text"
-              value={eventType}
-              readOnly
-              className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-1.5 text-xs font-mono text-slate-300 focus:outline-none"
-            />
-          </div>
-
-          {/* Versions Selector */}
-          <div className="grid grid-cols-2 gap-3">
+        <CardContent className="p-4 space-y-3">
+          {/* Form Controls: Event & Versions */}
+          <div className="space-y-2">
             <div>
-              <label htmlFor="current-version" className="block text-xs font-mono uppercase text-slate-400 mb-1">
-                Current Version
-              </label>
-              <div
-                id="current-version"
-                className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-1.5 text-xs font-mono text-slate-400"
+              <label
+                htmlFor="event-type"
+                className="block text-[11px] font-mono uppercase text-slate-400 mb-1"
               >
-                v{currentVersion} (Baseline)
+                Event
+              </label>
+              <input
+                id="event-type"
+                type="text"
+                value={eventType}
+                readOnly
+                className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs font-mono text-slate-200 focus:outline-none cursor-default select-all"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label
+                  htmlFor="current-version"
+                  className="block text-[11px] font-mono uppercase text-slate-400 mb-1"
+                >
+                  Current
+                </label>
+                <div
+                  id="current-version"
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs font-mono text-slate-400"
+                >
+                  v{currentVersion} (Baseline)
+                </div>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="proposed-version-select"
+                  className="block text-[11px] font-mono uppercase text-slate-400 mb-1"
+                >
+                  Proposed
+                </label>
+                <select
+                  id="proposed-version-select"
+                  value={proposedVersion}
+                  onChange={(e) => onProposedVersionChange(Number(e.target.value))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs font-mono text-blue-400 font-semibold focus:outline-none focus:border-blue-500 cursor-pointer"
+                >
+                  <option value={2}>v2 (Safe addition)</option>
+                  <option value={3}>v3 (Breaking change)</option>
+                  <option value={4}>v4 (Risky removal)</option>
+                </select>
               </div>
             </div>
-
-            <div>
-              <label htmlFor="proposed-version-select" className="block text-xs font-mono uppercase text-slate-400 mb-1">
-                Proposed Version
-              </label>
-              <select
-                id="proposed-version-select"
-                value={proposedVersion}
-                onChange={(e) => onProposedVersionChange(Number(e.target.value))}
-                className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-1.5 text-xs font-mono text-blue-400 font-semibold focus:outline-none focus:border-blue-500 cursor-pointer"
-              >
-                <option value={2}>v2 (Safe Addition)</option>
-                <option value={3}>v3 (Breaking Change)</option>
-                <option value={4}>v4 (Risky Removal)</option>
-              </select>
-            </div>
           </div>
 
-          {/* Payload Editor */}
-          <div>
+          {/* Event Payload Editor */}
+          <div className="pt-1">
             <div className="flex items-center justify-between mb-1.5">
-              <label htmlFor="payload-editor" className="text-xs font-mono uppercase text-slate-400">
-                Event Payload (JSON)
+              <label
+                htmlFor="payload-editor"
+                className="text-[11px] font-mono uppercase text-slate-400"
+              >
+                Event payload
               </label>
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-2 text-[11px] font-mono text-slate-400">
                 <button
                   type="button"
                   onClick={onFormatPayload}
                   title="Format JSON"
-                  className="text-[11px] font-mono text-slate-400 hover:text-slate-200 flex items-center space-x-1 cursor-pointer"
+                  className="hover:text-slate-200 flex items-center space-x-1 cursor-pointer transition-colors"
                 >
                   <AlignLeft className="h-3 w-3" />
                   <span>Format</span>
@@ -113,7 +147,7 @@ export function EventInputPanel({
                   type="button"
                   onClick={onResetPayload}
                   title="Reset to default payload"
-                  className="text-[11px] font-mono text-slate-400 hover:text-slate-200 flex items-center space-x-1 cursor-pointer"
+                  className="hover:text-slate-200 flex items-center space-x-1 cursor-pointer transition-colors"
                 >
                   <RotateCcw className="h-3 w-3" />
                   <span>Reset</span>
@@ -121,45 +155,64 @@ export function EventInputPanel({
               </div>
             </div>
 
-            <textarea
-              id="payload-editor"
-              value={payloadText}
-              onChange={(e) => onPayloadTextChange(e.target.value)}
-              rows={9}
-              spellCheck={false}
-              className={`w-full bg-slate-950 border rounded-md p-3 font-mono text-xs text-slate-200 focus:outline-none leading-relaxed resize-none transition-colors ${
+            {/* Code Surface with line gutter */}
+            <div
+              className={`rounded border flex overflow-hidden bg-[#0a0e17] transition-colors ${
                 jsonError
-                  ? 'border-rose-500/80 focus:border-rose-500'
-                  : 'border-slate-800 focus:border-blue-500'
+                  ? 'border-rose-500/70 focus-within:border-rose-500'
+                  : 'border-slate-800 focus-within:border-blue-500/60'
               }`}
-              placeholder="Enter JSON payload..."
-            />
+            >
+              {/* Line Gutter */}
+              <div
+                aria-hidden="true"
+                className="bg-[#070a10] text-slate-600 font-mono text-[11px] leading-[20px] py-2 px-1.5 select-none text-right border-r border-slate-800/80 min-w-[28px]"
+              >
+                {Array.from({ length: lineCount }).map((_, i) => (
+                  <div key={i}>{i + 1}</div>
+                ))}
+              </div>
 
-            {/* Local Syntax Validation Error */}
+              {/* Textarea */}
+              <textarea
+                ref={textareaRef}
+                id="payload-editor"
+                value={payloadText}
+                onChange={(e) => onPayloadTextChange(e.target.value)}
+                onKeyDown={handleKeyDown}
+                rows={10}
+                spellCheck={false}
+                placeholder="Enter JSON payload..."
+                className="flex-1 bg-transparent p-2 font-mono text-xs text-slate-200 focus:outline-none leading-[20px] resize-none"
+              />
+            </div>
+
+            {/* Inline Syntax Validation Error */}
             {jsonError && (
-              <div className="mt-1.5 text-xs text-rose-400 flex items-center space-x-1 font-mono">
-                <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
-                <span className="truncate">{jsonError}</span>
+              <div className="mt-1.5 p-2 rounded bg-rose-950/30 border border-rose-500/30 text-xs text-rose-400 flex items-start space-x-1.5 font-mono">
+                <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                <div className="leading-snug truncate">
+                  <span className="font-semibold block">Invalid JSON</span>
+                  <span className="text-[11px] text-rose-300">{jsonError}</span>
+                </div>
               </div>
             )}
           </div>
         </CardContent>
       </div>
 
-      <div className="p-5 pt-0">
+      <div className="p-4 pt-0">
         <Button
           onClick={onAnalyze}
           isLoading={isAnalyzing}
           disabled={Boolean(jsonError)}
-          className="w-full shadow-md"
-          size="md"
+          aria-label="Analyze Compatibility"
+          className="w-full"
+          size="sm"
         >
-          <Activity className="h-4 w-4 mr-2" />
-          <span>Analyze Compatibility</span>
+          <Play className="h-3.5 w-3.5 mr-1.5 fill-current" />
+          <span>Analyze change</span>
         </Button>
-        <p className="text-[11px] text-slate-500 text-center mt-2">
-          Advisory check — does not publish to EventBridge
-        </p>
       </div>
     </Card>
   )

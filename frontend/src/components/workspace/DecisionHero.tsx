@@ -1,5 +1,5 @@
-import { AlertCircle, Radio, Send, ShieldAlert, ShieldCheck, ShieldQuestion } from 'lucide-react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
+import { Send, AlertOctagon, CheckCircle2, AlertTriangle, Radio } from 'lucide-react'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import type { AnalysisResponse } from '@/types/api'
@@ -19,69 +19,79 @@ export function DecisionHero({
   hasJsonError = false,
   onPublish,
 }: DecisionHeroProps) {
+  // State: Loading / Analyzing
   if (isAnalyzing) {
     return (
-      <Card className="h-full border-slate-800 bg-slate-900/80 flex flex-col justify-between">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center space-x-2">
-              <Radio className="h-4 w-4 text-indigo-400 animate-pulse" />
-              <span>Deterministic Gate</span>
-            </CardTitle>
-            <Badge variant="neutral">Evaluating</Badge>
-          </div>
-          <CardDescription>
-            Evaluating compatibility rules EVT001 - EVT008...
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col items-center justify-center py-16 text-center space-y-4">
-          <div className="h-20 w-20 rounded-full border-2 border-dashed border-blue-500/40 flex items-center justify-center animate-spin">
-            <Radio className="h-8 w-8 text-blue-400" />
-          </div>
-          <div>
-            <h3 className="text-base font-semibold text-white">Analyzing Compatibility</h3>
-            <p className="text-xs text-slate-400 max-w-xs mt-1">
-              Comparing proposed schema against all active consumer contracts in DynamoDB...
-            </p>
-          </div>
-        </CardContent>
+      <Card className="h-full flex flex-col justify-between border-slate-800">
+        <div>
+          <CardHeader className="py-3 px-4">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-xs font-mono uppercase tracking-wider text-slate-300 flex items-center space-x-1.5">
+                <Radio className="h-3.5 w-3.5 text-blue-400 animate-pulse" />
+                <span>Release decision</span>
+              </CardTitle>
+              <Badge variant="neutral" size="sm">
+                Evaluating
+              </Badge>
+            </div>
+          </CardHeader>
+
+          <CardContent className="p-4 space-y-4">
+            <div className="p-4 rounded border border-slate-800 bg-slate-950/60 text-center space-y-2">
+              <div className="inline-block h-6 w-6 border-2 border-blue-500/40 border-t-blue-400 rounded-full animate-spin" />
+              <h4 className="text-xs font-semibold text-slate-200 font-mono">
+                Analyzing Compatibility
+              </h4>
+              <p className="text-[11px] text-slate-400 max-w-xs mx-auto leading-relaxed">
+                Comparing proposed schema against registered consumer contracts...
+              </p>
+            </div>
+          </CardContent>
+        </div>
+
+        <div className="p-4 pt-0">
+          <Button variant="outline" disabled className="w-full opacity-40 cursor-not-allowed" size="sm">
+            Evaluating contracts...
+          </Button>
+        </div>
       </Card>
     )
   }
 
+  // State: Invalid Payload JSON Error
   if (hasJsonError) {
     return (
-      <Card className="h-full border-slate-800 bg-slate-900/80 flex flex-col justify-between">
+      <Card className="h-full flex flex-col justify-between border-slate-800 border-l-2 border-l-amber-500">
         <div>
-          <CardHeader>
+          <CardHeader className="py-3 px-4">
             <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center space-x-2">
-                <Radio className="h-4 w-4 text-amber-400" />
-                <span>Deterministic Gate</span>
+              <CardTitle className="text-xs font-mono uppercase tracking-wider text-slate-300 flex items-center space-x-1.5">
+                <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
+                <span>Release decision</span>
               </CardTitle>
-              <Badge variant="review">Invalid JSON</Badge>
+              <Badge variant="risk" size="sm">
+                Invalid JSON
+              </Badge>
             </div>
-            <CardDescription>
-              Payload syntax error detected
-            </CardDescription>
           </CardHeader>
-          <CardContent className="flex flex-col items-center justify-center py-16 text-center space-y-4">
-            <div className="h-20 w-20 rounded-full bg-amber-500/10 border-2 border-amber-500/30 flex items-center justify-center text-amber-400">
-              <AlertCircle className="h-8 w-8" />
-            </div>
-            <div>
-              <h3 className="text-base font-semibold text-slate-200">Invalid Payload</h3>
-              <p className="text-xs text-slate-400 max-w-xs mt-1">
+
+          <CardContent className="p-4 space-y-3">
+            <div className="p-3.5 rounded border border-amber-500/30 bg-amber-950/20 space-y-1">
+              <span className="text-xs font-mono uppercase text-amber-400 font-bold block">
+                Invalid Payload
+              </span>
+              <p className="text-xs text-slate-300">
                 Fix JSON syntax to analyze.
               </p>
             </div>
           </CardContent>
         </div>
-        <div className="p-5 pt-0">
-          <Button variant="outline" disabled className="w-full opacity-40 cursor-not-allowed" size="md">
+
+        <div className="p-4 pt-0">
+          <Button variant="outline" disabled className="w-full opacity-40 cursor-not-allowed" size="sm">
             Fix invalid JSON before publishing
           </Button>
-          <p className="text-[11px] text-slate-500 text-center mt-2">
+          <p className="text-[10px] text-slate-500 text-center mt-1.5 font-mono">
             Payload syntax must be valid before publishing
           </p>
         </div>
@@ -89,32 +99,39 @@ export function DecisionHero({
     )
   }
 
+  // State: Idle / Standby
   if (!analysis) {
     return (
-      <Card className="h-full border-slate-800 bg-slate-900/80 flex flex-col justify-between">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center space-x-2">
-              <Radio className="h-4 w-4 text-indigo-400" />
-              <span>Deterministic Gate</span>
-            </CardTitle>
-            <Badge variant="neutral">Standby</Badge>
-          </div>
-          <CardDescription>
-            Awaiting schema analysis request
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col items-center justify-center py-16 text-center space-y-4">
-          <div className="h-20 w-20 rounded-full bg-slate-800/60 border border-slate-700 flex items-center justify-center text-slate-500">
-            <Radio className="h-8 w-8" />
-          </div>
-          <div>
-            <h3 className="text-base font-semibold text-slate-300">Ready to Analyze</h3>
-            <p className="text-xs text-slate-400 max-w-xs mt-1">
-              Click &quot;Analyze Compatibility&quot; to test your proposed schema changes against downstream consumers.
-            </p>
-          </div>
-        </CardContent>
+      <Card className="h-full flex flex-col justify-between border-slate-800">
+        <div>
+          <CardHeader className="py-3 px-4">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-xs font-mono uppercase tracking-wider text-slate-300">
+                Release decision
+              </CardTitle>
+              <Badge variant="neutral" size="sm">
+                Standby
+              </Badge>
+            </div>
+          </CardHeader>
+
+          <CardContent className="p-4 space-y-3">
+            <div className="p-3.5 rounded border border-slate-800 bg-slate-950/50 space-y-1">
+              <h4 className="text-xs font-semibold text-slate-300 font-mono">
+                Ready to Analyze
+              </h4>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Click &quot;Analyze change&quot; to test your proposed schema evolution against downstream consumers.
+              </p>
+            </div>
+          </CardContent>
+        </div>
+
+        <div className="p-4 pt-0">
+          <Button variant="outline" disabled className="w-full opacity-40 cursor-not-allowed" size="sm">
+            Awaiting analysis
+          </Button>
+        </div>
       </Card>
     )
   }
@@ -122,98 +139,114 @@ export function DecisionHero({
   const { decision, severity, summary } = analysis
 
   return (
-    <Card className="h-full border-slate-800 bg-slate-900/80 flex flex-col justify-between">
+    <Card
+      className={`h-full flex flex-col justify-between border-slate-800 ${
+        decision === 'ALLOW'
+          ? 'border-l-2 border-l-emerald-500'
+          : decision === 'BLOCK'
+          ? 'border-l-2 border-l-rose-500'
+          : 'border-l-2 border-l-amber-500'
+      }`}
+    >
       <div>
-        <CardHeader>
+        <CardHeader className="py-3 px-4">
           <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center space-x-2">
-              <Radio className="h-4 w-4 text-indigo-400" />
-              <span>Deterministic Gate</span>
+            <CardTitle className="text-xs font-mono uppercase tracking-wider text-slate-300">
+              Release decision
             </CardTitle>
-            <Badge variant={decision.toLowerCase() as 'allow' | 'block' | 'review'}>
+            <Badge variant={decision.toLowerCase() as 'allow' | 'block' | 'review'} size="sm">
               {decision}
             </Badge>
           </div>
-          <CardDescription>
-            Authoritative decision based on consumer contract consensus
-          </CardDescription>
         </CardHeader>
 
-        <CardContent className="flex flex-col items-center justify-center py-8 text-center space-y-4">
+        <CardContent className="p-4 space-y-3 font-mono">
+          {/* Main Decision Status Banner */}
           {decision === 'ALLOW' && (
-            <>
-              <div className="h-20 w-20 rounded-full bg-emerald-500/10 border-2 border-emerald-500/40 flex items-center justify-center shadow-lg shadow-emerald-500/10">
-                <ShieldCheck className="h-10 w-10 text-emerald-400" />
+            <div className="p-3.5 rounded border border-emerald-500/30 bg-emerald-950/20 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-400 flex-shrink-0" />
+                  <span className="text-lg font-bold text-emerald-400 tracking-wide font-mono">
+                    ALLOW
+                  </span>
+                </div>
+                <Badge variant="safe" size="sm">
+                  SEVERITY: {severity}
+                </Badge>
               </div>
+
               <div>
-                <span className="text-3xl font-extrabold font-mono text-emerald-400 tracking-wider">
-                  ALLOW
-                </span>
-                <h3 className="text-base font-semibold text-white mt-1">Safe to Publish</h3>
-                <p className="text-xs text-slate-300 max-w-xs mt-1.5 leading-relaxed">
+                <h4 className="text-xs font-semibold text-slate-100 font-sans">
+                  Safe to Publish
+                </h4>
+                <p className="text-[11px] text-slate-300 mt-1 leading-relaxed font-sans">
                   {summary}
                 </p>
               </div>
-              <Badge variant="safe" size="md">
-                SEVERITY: {severity}
-              </Badge>
-            </>
+            </div>
           )}
 
           {decision === 'BLOCK' && (
-            <>
-              <div className="h-20 w-20 rounded-full bg-rose-500/10 border-2 border-rose-500/40 flex items-center justify-center shadow-lg shadow-rose-500/10">
-                <ShieldAlert className="h-10 w-10 text-rose-400" />
+            <div className="p-3.5 rounded border border-rose-500/30 bg-rose-950/20 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <AlertOctagon className="h-4 w-4 text-rose-400 flex-shrink-0" />
+                  <span className="text-lg font-bold text-rose-400 tracking-wide font-mono">
+                    BLOCK
+                  </span>
+                </div>
+                <Badge variant="block" size="sm">
+                  SEVERITY: {severity}
+                </Badge>
               </div>
+
               <div>
-                <span className="text-3xl font-extrabold font-mono text-rose-400 tracking-wider">
-                  BLOCK
-                </span>
-                <h3 className="text-base font-semibold text-white mt-1">
+                <h4 className="text-xs font-semibold text-slate-100 font-sans">
                   Breaking Change Intercepted
-                </h3>
-                <p className="text-xs text-slate-300 max-w-xs mt-1.5 leading-relaxed">
+                </h4>
+                <p className="text-[11px] text-slate-300 mt-1 leading-relaxed font-sans">
                   {summary}
                 </p>
+                <p className="text-[10px] text-rose-400 mt-1">
+                  EventBridge publication is prevented.
+                </p>
               </div>
-              <Badge variant="block" size="md">
-                SEVERITY: {severity}
-              </Badge>
-              <p className="text-xs text-rose-400/90 font-medium">
-                EventBridge publication is prevented.
-              </p>
-            </>
+            </div>
           )}
 
           {decision === 'REVIEW' && (
-            <>
-              <div className="h-20 w-20 rounded-full bg-amber-500/10 border-2 border-amber-500/40 flex items-center justify-center shadow-lg shadow-amber-500/10">
-                <ShieldQuestion className="h-10 w-10 text-amber-400" />
+            <div className="p-3.5 rounded border border-amber-500/30 bg-amber-950/20 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-400 flex-shrink-0" />
+                  <span className="text-lg font-bold text-amber-400 tracking-wide font-mono">
+                    REVIEW
+                  </span>
+                </div>
+                <Badge variant="review" size="sm">
+                  SEVERITY: {severity}
+                </Badge>
               </div>
+
               <div>
-                <span className="text-3xl font-extrabold font-mono text-amber-400 tracking-wider">
-                  REVIEW
-                </span>
-                <h3 className="text-base font-semibold text-white mt-1">
+                <h4 className="text-xs font-semibold text-slate-100 font-sans">
                   Review Required
-                </h3>
-                <p className="text-xs text-slate-300 max-w-xs mt-1.5 leading-relaxed">
+                </h4>
+                <p className="text-[11px] text-slate-300 mt-1 leading-relaxed font-sans">
                   {summary}
                 </p>
+                <p className="text-[10px] text-amber-400 mt-1">
+                  Publication prevented pending future review.
+                </p>
               </div>
-              <Badge variant="review" size="md">
-                SEVERITY: {severity}
-              </Badge>
-              <p className="text-xs text-amber-400/90 font-medium">
-                Publication prevented pending future review.
-              </p>
-            </>
+            </div>
           )}
         </CardContent>
       </div>
 
-      {/* Gated Publish Action Area */}
-      <div className="p-5 pt-0">
+      {/* Action / Publish Area */}
+      <div className="p-4 pt-0">
         {decision === 'ALLOW' ? (
           <div>
             <Button
@@ -221,22 +254,27 @@ export function DecisionHero({
               onClick={onPublish}
               disabled={hasJsonError || isPublishing}
               isLoading={isPublishing}
-              className="w-full shadow-lg shadow-emerald-950/40 cursor-pointer"
-              size="md"
+              className="w-full"
+              size="sm"
             >
-              <Send className="h-4 w-4 mr-2" />
+              <Send className="h-3.5 w-3.5 mr-1.5" />
               <span>Publish Event to EventBridge</span>
             </Button>
-            <p className="text-[11px] text-slate-500 text-center mt-2">
+            <p className="text-[10px] text-slate-500 text-center mt-1.5 font-mono">
               Enforces gate and triggers EventBridge fan-out
             </p>
           </div>
         ) : (
           <div>
-            <Button variant="outline" disabled className="w-full opacity-40 cursor-not-allowed" size="md">
+            <Button
+              variant="outline"
+              disabled
+              className="w-full opacity-40 cursor-not-allowed text-xs font-mono"
+              size="sm"
+            >
               Publication Prevented by Gate
             </Button>
-            <p className="text-[11px] text-slate-500 text-center mt-2">
+            <p className="text-[10px] text-slate-500 text-center mt-1.5 font-mono">
               Only verified ALLOW events can be published to EventBridge
             </p>
           </div>
