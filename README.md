@@ -2,211 +2,232 @@
 
 # 🚪 PrimeX EventGate
 
-### Consumer-Aware Safety Gate & Cloud Enforcement for Event-Driven Systems
+### Consumer-Aware Event Compatibility Analysis & Publication Enforcement
 
-**BREAK IT BEFORE IT BREAKS.**
+**You changed one thing. We tell you what breaks before it breaks.**
 
-*Stop breaking changes before they ever reach the event bus.*
+*EventGate analyzes proposed event changes against downstream consumer contracts and blocks incompatible changes before they propagate.*
 
+[![Frontend](https://img.shields.io/badge/Frontend-AWS%20Amplify-FF9900?style=flat-square&logo=awsamplify&logoColor=white)](https://main.d1etyexqf0w3wz.amplifyapp.com)
+[![Backend](https://img.shields.io/badge/Backend-API%20Gateway%20%2B%20Lambda-FF9900?style=flat-square&logo=amazonaws&logoColor=white)](https://ux8bwi3i8l.execute-api.ap-south-1.amazonaws.com/health)
+[![Tests Backend](https://img.shields.io/badge/Backend%20Tests-190%20Passed-brightgreen?style=flat-square)]()
+[![Tests Frontend](https://img.shields.io/badge/Frontend%20Tests-54%20Passed-brightgreen?style=flat-square)]()
+[![Coverage](https://img.shields.io/badge/Coverage-94.08%25-brightgreen?style=flat-square)]()
 [![Python](https://img.shields.io/badge/Python-3.14-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-ASGI-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![AWS SAM](https://img.shields.io/badge/AWS-SAM%20%2F%20Lambda-FF9900?style=flat-square&logo=amazonaws&logoColor=white)](https://aws.amazon.com/serverless/sam/)
-[![EventBridge](https://img.shields.io/badge/EventBridge-Custom%20Bus-FF4F8B?style=flat-square&logo=amazoneventbridge&logoColor=white)](https://aws.amazon.com/eventbridge/)
-[![DynamoDB](https://img.shields.io/badge/DynamoDB-PAY__PER__REQUEST-4053D6?style=flat-square&logo=amazondynamodb&logoColor=white)](https://aws.amazon.com/dynamodb/)
-[![Tests](https://img.shields.io/badge/Tests-190%20Passed-brightgreen?style=flat-square)]()
-[![Coverage](https://img.shields.io/badge/Coverage-94.08%25-brightgreen?style=flat-square)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-lightgrey?style=flat-square)](LICENSE)
-[![Status](https://img.shields.io/badge/Phase-3%20Complete-success?style=flat-square)]()
+
+---
+
+### 🌐 Live Hackathon Demonstration
+
+| Component | URL | Provider | Role |
+| :--- | :--- | :--- | :--- |
+| **Control Console** | [`https://main.d1etyexqf0w3wz.amplifyapp.com`](https://main.d1etyexqf0w3wz.amplifyapp.com) | **AWS Amplify** | Interactive developer control plane |
+| **Enforcement API** | [`https://ux8bwi3i8l.execute-api.ap-south-1.amazonaws.com`](https://ux8bwi3i8l.execute-api.ap-south-1.amazonaws.com) | **Amazon API Gateway** | Live schema gating & EventBridge ingress |
 
 </div>
 
 ---
 
-## ⚡ What is EventGate?
+## 1. The Problem
 
-In event-driven microservices, producer schema changes frequently break downstream consumers without warning. Traditional schema registries only validate syntax on the producer side, blind to what downstream services actually depend upon.
+In event-driven architectures, producers evolve schemas independently. Traditional schema registries validate schemas in isolation against a producer-side schema history, **blind to what downstream consumers actually depend upon**.
 
-**EventGate solves this.** It analyzes proposed event changes against **registered downstream consumer contracts** and enforces compatibility directly at the cloud publication boundary:
-
-1. **Identifies Affected Consumers:** Evaluates field additions, removals, type changes, and requiredness against each consumer's exact consumption contract.
-2. **Derives Deterministic Policy:**
-   - ✅ **`ALLOW`**: All consumers are compatible $\to$ Event published to Amazon EventBridge $\to$ Fans out to consumer microservices.
-   - 🚫 **`BLOCK`**: At least one consumer would break $\to$ Gateway returns HTTP 409 $\to$ **EventBridge publication is prevented** (zero downstream delivery).
-   - ⚠️ **`REVIEW`**: An uncertain or risky change is detected $\to$ Gateway returns HTTP 409 $\to$ **EventBridge publication is prevented pending review** (zero downstream delivery).
+When a producer modifies a field type or removes an optional field:
+* The event is accepted by the producer registry.
+* The event is published to the message broker.
+* Downstream consumer services fail silently in production during JSON deserialization or data processing.
 
 ---
 
-## 🏗️ AWS Architecture
+## 2. The EventGate Solution
+
+EventGate evaluates proposed event schema changes against **actual registered downstream consumer contracts** stored in DynamoDB and enforces the compatibility decision **before** the event ever reaches Amazon EventBridge:
+
+* **Consumer-Aware Analysis:** Evaluates exact field dependencies, type expectations, and requiredness per registered consumer.
+* **Deterministic Publication Enforcement:**
+  * ✅ **`ALLOW`**: All consumers are compatible $\to$ Event published to Amazon EventBridge $\to$ Fans out to subscribers.
+  * 🚫 **`BLOCK`**: One or more consumers would break $\to$ Publication prevented $\to$ Zero downstream delivery.
+  * ⚠️ **`REVIEW`**: An uncertain or risky change is detected $\to$ Publication prevented pending review $\to$ Zero downstream delivery.
+
+---
+
+## 3. 30-Second Example
+
+Consider `OrderPlaced` event evolution from baseline `v1`:
+
+| Transition | Change | Gate Decision | Impact Breakdown | EventBridge Delivery |
+| :--- | :--- | :---: | :--- | :---: |
+| **v1 $\to$ v2** | Add optional `metadata` object | **`ALLOW`** | All 3 consumers (`billing`, `inventory`, `analytics`) unaffected. | ✅ **Published & Fanned Out** |
+| **v1 $\to$ v3** | `shippingMethod` changed from `string` $\to$ `object` | **`BLOCK`** | `inventory-service` expects `string`. Deserialization would fail. | 🚫 **Publication Prevented** (HTTP 409) |
+| **v1 $\to$ v4** | Optional `couponCode` removed from contract | **`REVIEW`** | `analytics-service` uses `couponCode` for telemetry. Review required. | ⚠️ **Publication Prevented** (HTTP 409) |
+
+---
+
+## 4. End-to-End Architecture
 
 ```text
-                                  +-------------------+
-                                  |   HTTP Producer   |
-                                  +-------------------+
-                                            │
-                                            │ POST /api/v1/events/publish
-                                            ▼
-+---------------------------------------------------------------------------------------+
-|                    Amazon API Gateway HTTP API (EventGateHttpApi)                     |
-+---------------------------------------------------------------------------------------+
-                                            │
-                                            ▼
-+---------------------------------------------------------------------------------------+
-|                       EventGate Lambda (EventGateFunction)                            |
-|                                                                                       |
-|   1. Validate payload against proposed schema (HTTP 422 if invalid)                   |
-|   2. Query contracts from Amazon DynamoDB (EventContractsTable & ConsumerContracts)   |
-|   3. Deterministically evaluate compatibility:                                        |
-|      - BLOCK / REVIEW  ──► HTTP 409 (EventBridge publication is prevented)            |
-|      - ALLOW           ──► events:PutEvents to custom event bus                       |
-+---------------------------------------------------------------------------------------+
-                                            │
-                               events:PutEvents (ALLOW only)
-                                            ▼
-+---------------------------------------------------------------------------------------+
-|                 Amazon EventBridge Custom Bus (primex-eventgate-dev-bus)              |
-+---------------------------------------------------------------------------------------+
-                                            │
-                      Rule: primex-eventgate-dev-order-placed-rule
-                                            │
-                   ┌────────────────────────┼────────────────────────┐
-                   ▼                        ▼                        ▼
-        +--------------------+   +--------------------+   +--------------------+
-        |  Billing Consumer  |   | Inventory Consumer |   | Analytics Consumer |
-        |   Lambda (128MB)   |   |   Lambda (128MB)   |   |   Lambda (128MB)   |
-        +--------------------+   +--------------------+   +--------------------+
-                   │                        │                        │
-                   └────────────────────────┼────────────────────────┘
-                                            ▼
-                              Amazon CloudWatch Logs
+Browser User
+    │
+    ▼
+AWS Amplify Hosting
+  (React + TypeScript + Tailwind Control Plane)
+    │
+    │ HTTPS REST (CORS)
+    ▼
+Amazon API Gateway HTTP API (ap-south-1)
+  POST /api/v1/analyze  │  POST /api/v1/events/publish
+    │
+    ▼
+AWS Lambda: EventGateFunction (Python 3.14 + FastAPI)
+    │
+    ├──► 1. Query Amazon DynamoDB (EventContracts & ConsumerContracts)
+    │
+    ├──► 2. Validate payload syntax & schema (HTTP 422 if invalid)
+    │
+    └──► 3. Deterministic Decision Engine
+              │
+              ├── [BLOCK]  ──► Return HTTP 409 (EventBridge publication PREVENTED)
+              │
+              ├── [REVIEW] ──► Return HTTP 409 (EventBridge publication PREVENTED)
+              │
+              └── [ALLOW]  ──► events:PutEvents (Publication APPROVED)
+                                      │
+                                      ▼
+                       Amazon EventBridge Custom Bus (primex-eventgate-dev-bus)
+                                      │
+                                      ▼ Rule: primex-eventgate-dev-order-placed-rule
+                         ┌────────────┼────────────┐
+                         ▼            ▼            ▼
+                     Billing      Inventory    Analytics
+                     Consumer     Consumer     Consumer
+                      Lambda       Lambda       Lambda
+                         │            │            │
+                         └────────────┼────────────┘
+                                      ▼
+                             Amazon CloudWatch Logs
 ```
 
 ---
 
-## ☁️ Live Deployment (AWS `ap-south-1`)
+## 5. How Enforcement Works
 
-The hackathon demonstration stack is deployed and operational in **`ap-south-1`**:
-
-- **Frontend Console (AWS Amplify):** [`https://main.d1etyexqf0w3wz.amplifyapp.com`](https://main.d1etyexqf0w3wz.amplifyapp.com)
-- **Backend API Gateway:** [`https://ux8bwi3i8l.execute-api.ap-south-1.amazonaws.com`](https://ux8bwi3i8l.execute-api.ap-south-1.amazonaws.com) *(public demonstration endpoint)*
-- **Hosting Architecture:**
-  - **Frontend:** Single-page application hosted separately on **AWS Amplify Hosting**, connected directly to the repository's `main` branch with continuous build/deployment.
-  - **Backend:** Serverless control plane deployed via **AWS SAM**, running on **AWS Lambda** behind **Amazon API Gateway HTTP API**.
-  - **Security & Separation:** Frontend communicates solely over standard REST endpoints (`/health`, `/api/v1/analyze`, `/api/v1/events/publish`). Zero AWS credentials or IAM secrets are exposed in the client bundle.
-- **CloudFormation Stack:** `primex-eventgate-dev`
-- **Core Lambda:** `primex-eventgate-dev-api`
-- **EventBridge Custom Bus:** `primex-eventgate-dev-bus`
-- **Consumer Demonstration Lambdas:**
-  - `primex-eventgate-dev-consumer-billing`
-  - `primex-eventgate-dev-consumer-inventory`
-  - `primex-eventgate-dev-consumer-analytics`
-- **DynamoDB Tables:**
-  - `primex-eventgate-dev-event-contracts`
-  - `primex-eventgate-dev-consumer-contracts`
+1. **Advisory Analysis (`POST /api/v1/analyze`):**
+   * Compares `currentVersion` against `proposedVersion` for the given `eventType`.
+   * Evaluates compatibility rules `EVT001` through `EVT008` against all registered consumer contracts in DynamoDB.
+   * Returns deterministic decision (`ALLOW`, `BLOCK`, or `REVIEW`), severity, summary, change set diff, and consumer-by-consumer findings. Zero side effects.
+2. **Gated Publication (`POST /api/v1/events/publish`):**
+   * Validates event payload against proposed schema (returns HTTP 422 with trace request ID if invalid).
+   * Re-evaluates consumer contract compatibility in real-time.
+   * If `ALLOW`: Publishes event to EventBridge bus via `events:PutEvents`, returning `eventId` and `eventBridgeEventId`.
+   * If `BLOCK` or `REVIEW`: Halts execution and returns HTTP 409 with full violation diagnosis. **Zero events enter EventBridge.**
 
 ---
 
-## 🧪 Verified on AWS
+## 6. AWS Services Used
 
-Every scenario below was verified against the live AWS deployment using `scripts/aws_enforcement_smoke_test.py`:
-
-| Test Stage | Scenario | Verified Event ID | Gate Result | EventBridge Action | Consumer Receipt |
-| :--- | :--- | :--- | :---: | :--- | :---: |
-| **1. Health Check** | `GET /health` | — | `200 OK` | None | None |
-| **2. Scenario A** | v1 $\to$ v2 (added `metadata`) | `4d22c323-2506-42ec-af22-8ac6ed99e18b` | `ALLOW` / `200 OK` | `PutEvents` succeeded (`a983ef0d-1ffa-fe94-a3be-012aba52c883`) | **3 / 3 Received** (Billing, Inventory, Analytics) |
-| **3. Scenario B** | v1 $\to$ v3 (`shippingMethod` $\to$ `object`) | `8a4cafba-f9a6-48b1-af5b-57cb397e3d43` | `BLOCK` / `409 Conflict` | **Publication prevented** | **0 / 3 Received** (Absence confirmed in logs) |
-| **4. Scenario C** | v1 $\to$ v4 (`couponCode` removed) | `f8705a9f-63cd-4194-be22-0869fe01d5b6` | `REVIEW` / `409 Conflict` | **Publication prevented** | **0 / 3 Received** (Absence confirmed in logs) |
-| **5. Invalid Payload** | Missing required `orderId` | — | `422 Unproc` | **Publication bypassed** | **0 / 3 Received** |
+* **AWS Amplify Hosting:** Serves the responsive developer console with global CDN distribution and continuous deployment from `main`.
+* **Amazon API Gateway:** HTTP API v2 providing low-latency entrypoint with payload compression and CORS configuration.
+* **AWS Lambda:** Serverless Python 3.14 execution environment running the FastAPI decision engine and demonstration consumers.
+* **Amazon DynamoDB:** Fully managed NoSQL key-value store with `PAY_PER_REQUEST` billing storing versioned event schemas and consumer dependency contracts.
+* **Amazon EventBridge:** Custom event bus (`primex-eventgate-dev-bus`) routing verified events to target consumer microservices.
+* **Amazon CloudWatch:** Structured JSON log aggregation and request tracing correlation via `X-Request-ID`.
+* **AWS SAM:** Infrastructure-as-Code declarative template managing stack creation and deployment.
 
 ---
 
-## 🛠️ Technology Stack
+## 7. Verification Evidence
 
-- **Runtime & Language:** Python 3.14, FastAPI, Mangum ASGI adapter
-- **Compute:** AWS Lambda (x86_64, 128–256 MB)
-- **API Transport:** Amazon API Gateway HTTP API v2
-- **Event Messaging:** Amazon EventBridge (Custom Bus + Rule fan-out)
-- **Persistence:** Amazon DynamoDB (`PAY_PER_REQUEST`, zero-scan query patterns)
-- **Observability:** Amazon CloudWatch (Structured JSON logging + `X-Request-ID` correlation)
-- **Infrastructure as Code:** AWS SAM (Serverless Application Model)
-- **Testing & Quality:** Pytest (190 tests, 94.08% coverage), Ruff (linter and formatter)
+The system has passed comprehensive local quality gates and live AWS end-to-end verification:
 
----
-
-## 🔒 Scope & Limitations
-
-> [!NOTE]
-> **Controlled Demonstration Scope:**
-> Phase 3 does not implement authentication or authorization. The public HTTP endpoint is intentionally configured for controlled hackathon demonstration. A production implementation would require Amazon Cognito or IAM SigV4 authentication, API Gateway throttling, and AWS WAF.
+* **Backend Test Suite:** **190 passed**, **94.08% code coverage** (exceeds 85% requirement).
+* **Frontend Test Suite:** **54 passed** across 12 test files with zero failures.
+* **Static Analysis:** `ruff check .` clean, `oxlint` clean (0 warnings, 0 errors).
+* **Live AWS Smoke Test (`scripts/aws_enforcement_smoke_test.py`):**
+  * `GET /health` $\to$ **`200 OK`**
+  * v1 $\to$ v2 $\to$ **`ALLOW` / `200 OK`** $\to$ EventBridge ID generated $\to$ **3 / 3 consumers invoked** (verified in CloudWatch).
+  * v1 $\to$ v3 $\to$ **`BLOCK` / `409 Conflict`** $\to$ **0 / 3 consumers invoked** (traffic halted at gate).
+  * v1 $\to$ v4 $\to$ **`REVIEW` / `409 Conflict`** $\to$ **0 / 3 consumers invoked** (traffic halted at gate).
+  * Malformed payload $\to$ **`422 Unprocessable Entity`** $\to$ **0 / 3 consumers invoked**.
 
 ---
 
-## 🚀 Getting Started (Local Development)
+## 8. Local Development
 
-### Backend (Python + FastAPI + AWS SAM)
+### Prerequisites
+* Python 3.14+
+* Node.js 20+
+* AWS SAM CLI (for deployment)
 
+### Backend Setup
 ```powershell
-# 1. Activate virtual environment
+# Activate virtual environment
 .\.venv\Scripts\Activate.ps1
 
-# 2. Run test suite & coverage (190 tests, 94.08% coverage)
+# Run tests and coverage
 pytest --cov=eventgate --cov-report=term-missing
 
-# 3. Lint and format checks
+# Lint check
 ruff check .
-ruff format --check .
-
-# 4. SAM template validation and build
-sam validate --lint
-sam build
 ```
 
-### Frontend (React + Vite + Tailwind CSS)
-
+### Frontend Setup
 ```powershell
-# 1. Navigate to frontend directory
 cd frontend
 
-# 2. Install dependencies
+# Install dependencies
 npm install
 
-# 3. Configure API target (optional, defaults to live AWS endpoint)
-$env:VITE_EVENTGATE_API_URL = "https://ux8bwi3i8l.execute-api.ap-south-1.amazonaws.com"
-
-# 4. Run local development server
-npm run dev
-
-# 5. Run test suite (44 tests)
+# Run tests
 npm test
 
-# 6. Run linter
+# Run linter
 npm run lint
 
-# 7. Build production bundle
+# Build production bundle
 npm run build
 ```
 
-> [!NOTE]
-> **Frontend Hosting Status:**
-> The EventGate frontend is deployed to **AWS Amplify Hosting** at [`https://main.d1etyexqf0w3wz.amplifyapp.com`](https://main.d1etyexqf0w3wz.amplifyapp.com). It runs in complete architectural isolation from the backend, communicating exclusively over HTTPS with the live API Gateway endpoint. Actual downstream event fan-out and consumer isolation are verified through the AWS EventBridge rule metrics and CloudWatch logs.
+---
+
+## 9. Repository Structure
+
+```text
+primex-eventgate/
+├── backend/                  # Core EventGate decision engine (Python + FastAPI)
+│   ├── src/eventgate/
+│   │   ├── api/              # HTTP routes (/health, /analyze, /publish)
+│   │   ├── application/      # Analysis and gated publication services
+│   │   ├── domain/           # Compatibility rules EVT001-EVT008 & models
+│   │   └── infrastructure/   # DynamoDB repositories & EventBridge publisher
+│   └── tests/                # 190 pytest unit & integration tests (94.08% cov)
+├── consumers/                # Target consumer demonstration Lambdas
+│   ├── billing/              # Billing service consumer handler
+│   ├── inventory/            # Inventory service consumer handler
+│   └── analytics/            # Analytics service consumer handler
+├── frontend/                 # Production developer control console (React + Vite)
+│   ├── src/
+│   │   ├── components/       # 3-column workspace, code editor, event path
+│   │   ├── services/         # REST API client
+│   │   └── test/             # 54 Vitest test cases
+├── docs/                     # Comprehensive architecture and API documentation
+├── scripts/                  # AWS enforcement smoke test & verification scripts
+└── template.yaml             # Declarative AWS SAM infrastructure specification
+```
 
 ---
 
-## 🔮 Future Extensions
+## 10. Scope & Limitations
 
-- Automated consumer pull-request notifications for `REVIEW` decisions
-- Dead-letter queues (DLQs) and automated replay policies
-- Bedrock-powered natural language schema evolution insights
+* **Demonstration Authentication Scope:** In accordance with hackathon constraints, endpoints do not require IAM SigV4 or Cognito authentication. A production deployment would introduce Cognito user pools or API Gateway authorizers.
+* **Demonstration Consumers:** Downstream consumer Lambdas log received events to CloudWatch to demonstrate fan-out and isolation rather than executing business-layer transactions.
+* **Supported Schema Format:** Implements contract compatibility evaluation for structured JSON schemas (field presence, type transitions, requiredness). Full JSON Schema Draft 7/2020-12 keyword evaluation is planned for future iterations.
 
 ---
-
-## 📄 License
-
-This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
 
 <div align="center">
 
----
-
-*Built for the AWS "First Commit" hackathon — Bharat Builds Tour by WeMakeDevs* 🇮🇳
+*Built for the AWS "First Commit" Hackathon — Bharat Builds Tour by WeMakeDevs* 🇮🇳
 
 </div>
