@@ -102,5 +102,6 @@ export class EventGateApiError extends Error {
     this.code = errorDetail.code
     this.requestId = errorDetail.requestId
     this.details = errorDetail.details
+    Object.setPrototypeOf(this, EventGateApiError.prototype)
   }
 }

@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { AlignLeft, RotateCcw, AlertCircle, Play } from 'lucide-react'
+import { AlignLeft, RotateCcw, AlertCircle, Play, Copy, Check } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 
@@ -30,11 +30,23 @@ export function EventInputPanel({
   onResetPayload,
   onAnalyze,
 }: EventInputPanelProps) {
+  const [copied, setCopied] = React.useState(false)
+
   const lineCount = React.useMemo(() => {
     return Math.max(payloadText.split('\n').length, 10)
   }, [payloadText])
 
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
+
+  const handleCopyPayload = React.useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(payloadText)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // fallback
+    }
+  }, [payloadText])
 
   // Support Tab key for 2 spaces indentation
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -133,6 +145,20 @@ export function EventInputPanel({
                 Event payload
               </label>
               <div className="flex items-center space-x-2 text-[11px] font-mono text-slate-400">
+                <button
+                  type="button"
+                  onClick={handleCopyPayload}
+                  title="Copy payload to clipboard"
+                  className="hover:text-slate-200 flex items-center space-x-1 cursor-pointer transition-colors"
+                >
+                  {copied ? (
+                    <Check className="h-3 w-3 text-emerald-400" />
+                  ) : (
+                    <Copy className="h-3 w-3" />
+                  )}
+                  <span>{copied ? 'Copied' : 'Copy'}</span>
+                </button>
+                <span className="text-slate-700">|</span>
                 <button
                   type="button"
                   onClick={onFormatPayload}

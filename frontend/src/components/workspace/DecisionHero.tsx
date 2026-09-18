@@ -121,7 +121,7 @@ export function DecisionHero({
                 Ready to Analyze
               </h4>
               <p className="text-[11px] text-slate-400 leading-relaxed">
-                Click &quot;Analyze change&quot; to test your proposed schema evolution against downstream consumers.
+                No analysis yet. Choose an event version and click &quot;Analyze change&quot; to test proposed schema evolution against downstream consumers.
               </p>
             </div>
           </CardContent>
@@ -137,6 +137,8 @@ export function DecisionHero({
   }
 
   const { decision, severity, summary } = analysis
+  const primaryBreak = analysis.findings.find((f) => f.status === 'BREAK')
+  const primaryRisk = analysis.findings.find((f) => f.status === 'RISK')
 
   return (
     <Card
@@ -183,6 +185,9 @@ export function DecisionHero({
                 <p className="text-[11px] text-slate-300 mt-1 leading-relaxed font-sans">
                   {summary}
                 </p>
+                <div className="mt-2 text-[10px] text-emerald-400 font-mono">
+                  All registered consumers are compatible.
+                </div>
               </div>
             </div>
           )}
@@ -205,10 +210,26 @@ export function DecisionHero({
                 <h4 className="text-xs font-semibold text-slate-100 font-sans">
                   Breaking Change Intercepted
                 </h4>
+                <div className="text-[10px] text-rose-400 font-mono mt-0.5">
+                  Publication prevented
+                </div>
                 <p className="text-[11px] text-slate-300 mt-1 leading-relaxed font-sans">
                   {summary}
                 </p>
-                <p className="text-[10px] text-rose-400 mt-1">
+                {primaryBreak && (
+                  <div className="mt-2 p-2 rounded bg-rose-950/40 border border-rose-500/20 text-xs font-mono space-y-0.5">
+                    <div className="text-slate-200 font-semibold">{primaryBreak.consumerId}</div>
+                    <div className="text-rose-300 text-[11px]">
+                      {primaryBreak.field}
+                      {primaryBreak.expectedType && primaryBreak.proposedType && (
+                        <span className="text-slate-400 ml-1.5 font-normal">
+                          ({primaryBreak.expectedType} → {primaryBreak.proposedType})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+                <p className="text-[10px] text-rose-400 mt-1.5">
                   EventBridge publication is prevented.
                 </p>
               </div>
@@ -233,10 +254,24 @@ export function DecisionHero({
                 <h4 className="text-xs font-semibold text-slate-100 font-sans">
                   Review Required
                 </h4>
+                <div className="text-[10px] text-amber-400 font-mono mt-0.5">
+                  Publication prevented pending review
+                </div>
                 <p className="text-[11px] text-slate-300 mt-1 leading-relaxed font-sans">
                   {summary}
                 </p>
-                <p className="text-[10px] text-amber-400 mt-1">
+                {primaryRisk && (
+                  <div className="mt-2 p-2 rounded bg-amber-950/40 border border-amber-500/20 text-xs font-mono space-y-0.5">
+                    <div className="text-slate-200 font-semibold">{primaryRisk.consumerId}</div>
+                    <div className="text-amber-300 text-[11px]">
+                      {primaryRisk.field}
+                      <span className="text-slate-400 ml-1.5 font-normal">
+                        (field dependency detected)
+                      </span>
+                    </div>
+                  </div>
+                )}
+                <p className="text-[10px] text-amber-400 mt-1.5">
                   Publication prevented pending future review.
                 </p>
               </div>

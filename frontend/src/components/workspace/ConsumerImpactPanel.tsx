@@ -34,9 +34,10 @@ export function ConsumerImpactPanel({ analysis }: ConsumerImpactPanelProps) {
 
         <CardContent className="p-4 space-y-2 font-mono">
           {/* Column Header Strip */}
-          <div className="flex items-center justify-between text-[10px] text-slate-500 uppercase px-2 py-1 tracking-wider border-b border-slate-800/60 pb-1">
-            <span>Consumer</span>
-            <span>Status</span>
+          <div className="grid grid-cols-12 text-[10px] text-slate-500 uppercase px-2 py-1 tracking-wider border-b border-slate-800/60 pb-1">
+            <span className="col-span-5">Consumer</span>
+            <span className="col-span-3 text-center">Status</span>
+            <span className="col-span-4 text-right">Impact</span>
           </div>
 
           {/* Consumer Rows */}
@@ -48,67 +49,78 @@ export function ConsumerImpactPanel({ analysis }: ConsumerImpactPanelProps) {
               return (
                 <div
                   key={consumer.id}
-                  className={`p-3 rounded border transition-colors ${
+                  className={`p-2.5 rounded border transition-colors ${
                     status === 'BREAK'
-                      ? 'bg-rose-950/20 border-rose-500/40 border-l-2 border-l-rose-500'
+                      ? 'bg-rose-950/20 border-rose-500/50 border-l-2 border-l-rose-500'
                       : status === 'RISK'
-                      ? 'bg-amber-950/20 border-amber-500/40 border-l-2 border-l-amber-500'
-                      : 'bg-slate-950/40 border-slate-800/80 hover:border-slate-700'
+                      ? 'bg-amber-950/20 border-amber-500/50 border-l-2 border-l-amber-500'
+                      : 'bg-slate-950/40 border-slate-800/80 hover:border-slate-700/80'
                   }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-xs font-semibold text-slate-200 block">
+                  <div className="grid grid-cols-12 items-center gap-1">
+                    {/* Column 1: Consumer */}
+                    <div className="col-span-5 truncate">
+                      <span className="text-xs font-semibold text-slate-200 block truncate">
                         {consumer.id}
                       </span>
-                      <span className="text-[10px] text-slate-500 font-sans block">
+                      <span className="text-[10px] text-slate-500 font-sans block truncate">
                         {consumer.role}
                       </span>
                     </div>
 
-                    <Badge
-                      variant={
-                        status === 'BREAK'
-                          ? 'break'
-                          : status === 'RISK'
-                          ? 'risk'
-                          : 'safe'
-                      }
-                      size="sm"
-                    >
-                      {status}
-                    </Badge>
+                    {/* Column 2: Status */}
+                    <div className="col-span-3 flex justify-center">
+                      <Badge
+                        variant={
+                          status === 'BREAK'
+                            ? 'break'
+                            : status === 'RISK'
+                            ? 'risk'
+                            : 'safe'
+                        }
+                        size="sm"
+                      >
+                        {status}
+                      </Badge>
+                    </div>
+
+                    {/* Column 3: Impact Summary */}
+                    <div className="col-span-4 text-right truncate">
+                      {status === 'BREAK' && finding ? (
+                        <div className="text-[11px] text-rose-300 font-medium truncate">
+                          {finding.field}: {finding.expectedType} → {finding.proposedType}
+                        </div>
+                      ) : status === 'RISK' && finding ? (
+                        <div className="text-[11px] text-amber-300 font-medium truncate">
+                          {finding.field} removed
+                        </div>
+                      ) : (
+                        <span className="text-[11px] text-slate-500 font-sans">
+                          No relevant impact
+                        </span>
+                      )}
+                    </div>
                   </div>
 
-                  {/* Impact Finding or Clean Status */}
-                  <div className="mt-2 text-xs">
-                    {finding ? (
-                      <div className="p-2 rounded bg-slate-950/80 border border-slate-800 space-y-1">
+                  {/* Detailed Impact Diagnostic for Flagged Consumers */}
+                  {finding && (
+                    <div className="mt-2 pt-2 border-t border-slate-800/60 text-xs">
+                      <div className="p-2 rounded bg-slate-950/90 border border-slate-800 space-y-1">
                         <div className="flex items-center justify-between text-[10px] text-slate-400">
-                          <span className="text-blue-400">Rule: {finding.ruleId}</span>
-                          {finding.field !== '*' && (
-                            <span className="text-slate-300">Field: {finding.field}</span>
-                          )}
+                          <span className="text-blue-400 font-semibold">{finding.ruleId}</span>
+                          <span className="text-slate-400">Severity: {finding.severity}</span>
                         </div>
-                        {finding.expectedType && finding.proposedType ? (
-                          <div className="text-[11px] text-rose-300 font-medium">
-                            {finding.field} • {finding.expectedType} → {finding.proposedType}
-                          </div>
-                        ) : (
-                          <div className="text-[11px] text-amber-300 font-medium">
-                            {finding.reason}
+                        {finding.field !== '*' && (
+                          <div className="text-[10px] text-slate-300">
+                            Field: {finding.field}
                           </div>
                         )}
-                        <p className="text-[10px] text-slate-400 font-sans">
+                        <p className="text-[11px] text-slate-300 font-sans leading-tight">
                           {finding.reason}
                         </p>
                       </div>
-                    ) : (
-                      <div className="text-[11px] text-slate-500 font-sans">
-                        No relevant impact
-                      </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               )
             })}
@@ -117,7 +129,7 @@ export function ConsumerImpactPanel({ analysis }: ConsumerImpactPanelProps) {
       </div>
 
       <div className="p-4 pt-0 text-[10px] font-mono text-slate-500 border-t border-slate-800/40 mt-2">
-        <span>Evaluated against consumer schema contracts in DynamoDB</span>
+        <span>Evaluates downstream consumer dependency contracts in DynamoDB</span>
       </div>
     </Card>
   )

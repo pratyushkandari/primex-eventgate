@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { WorkspaceShell } from '@/components/workspace/WorkspaceShell'
 import { eventGateApi } from '@/services/api'
 import type { AnalysisResponse, PublishResponse } from '@/types/api'
+import { EventGateApiError } from '@/types/api'
 
 vi.mock('@/services/api', () => ({
   eventGateApi: {
@@ -355,6 +356,75 @@ describe('WorkspaceShell integrated workflow', () => {
     await waitFor(() => {
       expect(screen.getByText(/Compatibility Analysis Failed/i)).toBeInTheDocument()
       expect(screen.getByText(/Network timeout/i)).toBeInTheDocument()
+    })
+  })
+
+  it('renders Change Review summary and registers session history item after analysis', async () => {
+    vi.mocked(eventGateApi.analyzeCompatibility).mockResolvedValue(mockAllowAnalysis)
+
+    render(<WorkspaceShell />)
+    await waitFor(() => expect(screen.getByText('API Healthy')).toBeInTheDocument())
+
+    const analyzeBtn = screen.getByRole('button', { name: /Analyze/i })
+    fireEvent.click(analyzeBtn)
+
+    await waitFor(() => {
+      // Change Review strip
+      expect(screen.getByText('Change Review')).toBeInTheDocument()
+      expect(screen.getByText('0 consumers affected')).toBeInTheDocument()
+      // Session history card
+      expect(screen.getByText('Recent Reviews')).toBeInTheDocument()
+    })
+  })
+
+  it('displays 422 Payload Rejected when publish returns HTTP 422', async () => {
+    vi.mocked(eventGateApi.analyzeCompatibility).mockResolvedValue(mockAllowAnalysis)
+    vi.mocked(eventGateApi.publishEvent).mockRejectedValue(
+      new EventGateApiError(422, {
+        code: 'INVALID_EVENT_PAYLOAD',
+        message: 'Missing required field: orderId',
+      })
+    )
+
+    render(<WorkspaceShell />)
+    await waitFor(() => expect(screen.getByText('API Healthy')).toBeInTheDocument())
+
+    const analyzeBtn = screen.getByRole('button', { name: /Analyze/i })
+    fireEvent.click(analyzeBtn)
+    await waitFor(() => expect(screen.getByText('Safe to Publish')).toBeInTheDocument())
+
+    const publishBtn = screen.getByRole('button', { name: /Publish Event to EventBridge/i })
+    fireEvent.click(publishBtn)
+
+    await waitFor(() => {
+      expect(screen.getByText(/EventGate Publication Error/i)).toBeInTheDocument()
+      expect(screen.getByText('HTTP 422')).toBeInTheDocument()
+      expect(screen.getByText(/Missing required field: orderId/i)).toBeInTheDocument()
+    })
+  })
+
+  it('displays 503 Publication Failed when publish returns HTTP 503', async () => {
+    vi.mocked(eventGateApi.analyzeCompatibility).mockResolvedValue(mockAllowAnalysis)
+    vi.mocked(eventGateApi.publishEvent).mockRejectedValue(
+      new EventGateApiError(503, {
+        code: 'EVENTBRIDGE_UNAVAILABLE',
+        message: 'EventBridge publication did not complete successfully',
+      })
+    )
+
+    render(<WorkspaceShell />)
+    await waitFor(() => expect(screen.getByText('API Healthy')).toBeInTheDocument())
+
+    const analyzeBtn = screen.getByRole('button', { name: /Analyze/i })
+    fireEvent.click(analyzeBtn)
+    await waitFor(() => expect(screen.getByText('Safe to Publish')).toBeInTheDocument())
+
+    const publishBtn = screen.getByRole('button', { name: /Publish Event to EventBridge/i })
+    fireEvent.click(publishBtn)
+
+    await waitFor(() => {
+      expect(screen.getByText(/EventGate Publication Error/i)).toBeInTheDocument()
+      expect(screen.getByText('HTTP 503')).toBeInTheDocument()
     })
   })
 })

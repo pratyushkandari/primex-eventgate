@@ -9,8 +9,18 @@ import { PublishResultPanel } from '@/components/workspace/PublishResultPanel'
 import { EventPath } from '@/components/workspace/EventPath'
 import { DEMO_SCENARIOS, type DemoScenario } from '@/data/scenarios'
 import { eventGateApi } from '@/services/api'
-import type { AnalysisResponse, PublishResponse } from '@/types/api'
+import { type AnalysisResponse, type PublishResponse, type Decision, EventGateApiError } from '@/types/api'
 import { AlertCircle } from 'lucide-react'
+import { Badge } from '@/components/ui/Badge'
+
+interface SessionReviewItem {
+  id: string
+  eventType: string
+  currentVersion: number
+  proposedVersion: number
+  decision: Decision
+  timestamp: string
+}
 
 export function WorkspaceShell() {
   const [selectedScenarioId, setSelectedScenarioId] = React.useState<DemoScenario['id']>('safe')
@@ -30,6 +40,9 @@ export function WorkspaceShell() {
   const [isPublishing, setIsPublishing] = React.useState<boolean>(false)
   const [publishResult, setPublishResult] = React.useState<PublishResponse | null>(null)
   const [publishError, setPublishError] = React.useState<string | null>(null)
+
+  // Session History (P2 - browser tab session only)
+  const [sessionHistory, setSessionHistory] = React.useState<SessionReviewItem[]>([])
 
   // Scenario selection handler
   const handleSelectScenario = React.useCallback((scenario: DemoScenario) => {
@@ -105,6 +118,19 @@ export function WorkspaceShell() {
         proposedVersion,
       })
       setAnalysis(res)
+
+      // Record in local session history (P2)
+      setSessionHistory((prev) => [
+        {
+          id: `${eventType}-${currentVersion}-${proposedVersion}-${Date.now()}`,
+          eventType,
+          currentVersion,
+          proposedVersion,
+          decision: res.decision,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        },
+        ...prev.slice(0, 4),
+      ])
     } catch (err) {
       setAnalysisError(err instanceof Error ? err.message : 'Analysis request failed')
       setAnalysis(null)
@@ -122,7 +148,7 @@ export function WorkspaceShell() {
     try {
       parsedPayload = JSON.parse(payloadText)
     } catch {
-      setPublishError('Cannot publish: payload is not valid JSON')
+      setPublishError('Payload rejected (422): Cannot publish malformed JSON payload')
       return
     }
 
@@ -139,7 +165,22 @@ export function WorkspaceShell() {
       })
       setPublishResult(res)
     } catch (err) {
-      setPublishError(err instanceof Error ? err.message : 'Event publication request failed')
+      const statusCode =
+        err instanceof EventGateApiError
+          ? err.statusCode
+          : typeof err === 'object' && err !== null && 'statusCode' in err
+          ? Number((err as { statusCode: unknown }).statusCode)
+          : undefined
+
+      if (statusCode === 422) {
+        setPublishError(`Payload rejected (422): ${(err as Error).message}`)
+      } else if (statusCode === 409) {
+        setPublishError(`Publication prevented (409): ${(err as Error).message}`)
+      } else if (statusCode === 503) {
+        setPublishError('Publication failed (503): EventBridge publication did not complete successfully.')
+      } else {
+        setPublishError(err instanceof Error ? err.message : 'Event publication request failed')
+      }
     } finally {
       setIsPublishing(false)
     }
@@ -164,6 +205,44 @@ export function WorkspaceShell() {
             <div>
               <span className="font-bold block mb-0.5">Compatibility Analysis Failed</span>
               <p>{analysisError}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Change Review Overview Strip (Section 19) */}
+        {analysis && (
+          <div className="bg-slate-900/70 border border-slate-800/90 rounded-lg p-3 px-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs font-mono shadow-sm">
+            <div className="flex items-center space-x-3">
+              <span className="text-[10px] uppercase tracking-wider text-slate-300 font-bold bg-slate-800 px-2 py-0.5 rounded border border-slate-700/60">
+                Change Review
+              </span>
+              <div className="text-slate-200">
+                <span className="font-semibold text-blue-400">{analysis.eventType}</span>{' '}
+                <span className="text-slate-400">v{analysis.currentVersion} → v{analysis.proposedVersion}</span>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center space-x-1.5 text-slate-300">
+                <span className="text-slate-500">Impact:</span>
+                <span className="font-semibold text-slate-200">
+                  {analysis.findings.filter((f) => f.status !== 'SAFE').length}{' '}
+                  {analysis.findings.filter((f) => f.status !== 'SAFE').length === 1 ? 'consumer affected' : 'consumers affected'}
+                </span>
+              </div>
+
+              <div className="flex items-center space-x-1.5">
+                <span className="text-slate-500">Decision:</span>
+                <Badge variant={analysis.decision.toLowerCase() as 'allow' | 'block' | 'review'} size="sm">
+                  {analysis.decision}
+                </Badge>
+              </div>
+
+              {analysis.findings.find((f) => f.status !== 'SAFE') && (
+                <div className="text-slate-400 text-[11px] truncate max-w-sm font-sans hidden sm:block">
+                  Reason: {analysis.findings.find((f) => f.status !== 'SAFE')?.reason}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -218,6 +297,35 @@ export function WorkspaceShell() {
           decision={analysis?.decision ?? null}
           isPublished={Boolean(publishResult?.published)}
         />
+
+        {/* Optional Session History (Section 20 - browser tab session only) */}
+        {sessionHistory.length > 0 && (
+          <div className="bg-slate-950/40 border border-slate-800/60 rounded-lg p-2.5 px-3.5 text-xs font-mono">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">
+                Recent Reviews
+              </span>
+              <span className="text-[10px] text-slate-500">
+                Browser session history • local tab only
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {sessionHistory.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center space-x-2 bg-slate-900/80 border border-slate-800 rounded px-2 py-1 text-[11px]"
+                >
+                  <span className="text-slate-200 font-medium">{item.eventType}</span>
+                  <span className="text-slate-500">v{item.currentVersion} → v{item.proposedVersion}</span>
+                  <Badge variant={item.decision.toLowerCase() as 'allow' | 'block' | 'review'} size="sm">
+                    {item.decision}
+                  </Badge>
+                  <span className="text-slate-500 text-[10px]">{item.timestamp}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </main>
 
       <footer className="border-t border-slate-800/80 bg-[#070a10] py-3 text-center text-[11px] font-mono text-slate-500">

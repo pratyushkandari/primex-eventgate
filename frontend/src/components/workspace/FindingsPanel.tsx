@@ -18,6 +18,10 @@ export function FindingsPanel({ analysis }: FindingsPanelProps) {
     changeSet.typeChanges.length > 0 ||
     changeSet.requirednessChanges.length > 0
 
+  const addedCount = changeSet.addedFields.length
+  const removedCount = changeSet.removedFields.length
+  const typeChangeCount = changeSet.typeChanges.length
+
   return (
     <Card className="border-slate-800">
       <CardHeader className="py-3 px-4">
@@ -26,59 +30,75 @@ export function FindingsPanel({ analysis }: FindingsPanelProps) {
             <GitPullRequest className="h-3.5 w-3.5 text-blue-400" />
             <span>Compatibility findings & Schema diff</span>
           </CardTitle>
-          <span className="text-xs font-mono text-slate-400">
-            {findings.length} {findings.length === 1 ? 'finding' : 'findings'}
-          </span>
+          <div className="flex items-center space-x-2">
+            <span className="text-xs font-mono text-slate-400">
+              {findings.length} {findings.length === 1 ? 'finding' : 'findings'}
+            </span>
+          </div>
         </div>
       </CardHeader>
 
       <CardContent className="p-4 space-y-4">
         {/* Schema Diff Section (Code Review Diff style) */}
         <div>
-          <div className="flex items-center space-x-1.5 text-[11px] font-mono uppercase text-slate-400 mb-1.5">
-            <Code2 className="h-3 w-3 text-slate-500" />
-            <span>Schema change</span>
+          <div className="flex items-center justify-between text-[11px] font-mono uppercase text-slate-400 mb-1.5">
+            <div className="flex items-center space-x-1.5">
+              <Code2 className="h-3 w-3 text-slate-500" />
+              <span>Schema change</span>
+            </div>
+            {/* Diff Summary Count (Section 11 requirement) */}
+            <span className="text-[10px] text-slate-400 font-mono bg-slate-900 border border-slate-800 px-2 py-0.5 rounded">
+              {addedCount} added, {removedCount} removed, {typeChangeCount} {typeChangeCount === 1 ? 'type change' : 'type changes'}
+            </span>
           </div>
 
-          <div className="bg-[#0a0e17] rounded border border-slate-800 p-3 font-mono text-xs space-y-1 select-text">
+          <div className="bg-[#0a0e17] rounded border border-slate-800 p-3 font-mono text-xs space-y-1.5 select-text">
             {hasSchemaChanges ? (
               <>
                 {changeSet.addedFields.map((field) => (
-                  <div key={field} className="flex items-center space-x-3 text-emerald-400">
-                    <span className="text-emerald-500/80 select-none font-bold">+</span>
-                    <span className="font-semibold">{field}</span>
-                    <span className="text-slate-500 text-[11px]">field added (optional)</span>
+                  <div key={field} className="flex items-center justify-between text-emerald-400 bg-emerald-950/20 px-2 py-1 rounded border border-emerald-500/20">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-emerald-400 select-none font-bold">+</span>
+                      <span className="font-semibold">{field}</span>
+                    </div>
+                    <span className="text-slate-400 text-[11px] font-sans">field added (optional)</span>
                   </div>
                 ))}
 
                 {changeSet.typeChanges.map((tc) => (
-                  <div key={tc.field} className="flex items-center space-x-3 text-amber-400">
-                    <span className="text-amber-500/80 select-none font-bold">~</span>
-                    <span className="font-semibold">{tc.field}</span>
-                    <span className="text-slate-400 text-[11px]">
+                  <div key={tc.field} className="flex items-center justify-between text-amber-400 bg-amber-950/20 px-2 py-1 rounded border border-amber-500/20">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-amber-400 select-none font-bold">~</span>
+                      <span className="font-semibold">{tc.field}</span>
+                    </div>
+                    <span className="text-slate-300 text-[11px] font-mono">
                       {tc.fromType} → {tc.toType}
                     </span>
                   </div>
                 ))}
 
                 {changeSet.removedFields.map((field) => (
-                  <div key={field} className="flex items-center space-x-3 text-rose-400">
-                    <span className="text-rose-500/80 select-none font-bold">-</span>
-                    <span className="font-semibold">{field}</span>
-                    <span className="text-slate-500 text-[11px]">optional field removed</span>
+                  <div key={field} className="flex items-center justify-between text-rose-400 bg-rose-950/20 px-2 py-1 rounded border border-rose-500/20">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-rose-400 select-none font-bold">-</span>
+                      <span className="font-semibold">{field}</span>
+                    </div>
+                    <span className="text-slate-400 text-[11px] font-sans">optional field removed</span>
                   </div>
                 ))}
 
                 {changeSet.requirednessChanges.map((rc) => (
-                  <div key={rc.field} className="flex items-center space-x-3 text-blue-400">
-                    <span className="text-blue-500/80 select-none font-bold">~</span>
-                    <span className="font-semibold">{rc.field}</span>
-                    <span className="text-slate-500 text-[11px]">requiredness modified</span>
+                  <div key={rc.field} className="flex items-center justify-between text-blue-400 bg-blue-950/20 px-2 py-1 rounded border border-blue-500/20">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-blue-400 select-none font-bold">~</span>
+                      <span className="font-semibold">{rc.field}</span>
+                    </div>
+                    <span className="text-slate-400 text-[11px] font-sans">requiredness modified</span>
                   </div>
                 ))}
               </>
             ) : (
-              <div className="text-slate-500 italic">No schema modifications detected</div>
+              <div className="text-slate-500 italic py-1">No schema modifications detected</div>
             )}
           </div>
         </div>

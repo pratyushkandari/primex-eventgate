@@ -6,6 +6,7 @@ import { eventGateApi } from '@/services/api'
 export function Header() {
   const [healthStatus, setHealthStatus] = React.useState<'checking' | 'healthy' | 'unreachable'>('checking')
   const [apiVersion, setApiVersion] = React.useState<string | null>(null)
+  const [lastChecked, setLastChecked] = React.useState<string | null>(null)
 
   const performHealthCheck = React.useCallback(async () => {
     try {
@@ -13,6 +14,7 @@ export function Header() {
       if (res.status === 'ok') {
         setHealthStatus('healthy')
         setApiVersion(res.version)
+        setLastChecked(new Date().toLocaleTimeString())
       } else {
         setHealthStatus('unreachable')
       }
@@ -35,6 +37,7 @@ export function Header() {
         if (res.status === 'ok') {
           setHealthStatus('healthy')
           setApiVersion(res.version)
+          setLastChecked(new Date().toLocaleTimeString())
         } else {
           setHealthStatus('unreachable')
         }
@@ -90,7 +93,12 @@ export function Header() {
           <button
             type="button"
             onClick={handleManualRefresh}
-            title="Click to re-verify live backend health"
+            title={`Click to re-verify live backend health${lastChecked ? ` (last checked: ${lastChecked})` : ''}`}
+            aria-label={
+              healthStatus === 'unreachable'
+                ? 'API Unavailable - Click to retry connection'
+                : 'API Health Status'
+            }
             className="flex items-center space-x-1.5 bg-slate-900 border border-slate-800/80 hover:border-slate-700 px-2.5 py-1 rounded text-xs transition-colors cursor-pointer"
           >
             {healthStatus === 'checking' && (
@@ -109,6 +117,7 @@ export function Header() {
               <>
                 <span className="h-1.5 w-1.5 rounded-full bg-rose-400" />
                 <span className="text-rose-400 font-medium">API Unavailable</span>
+                <span className="text-[10px] text-rose-300/80 underline ml-1">Retry</span>
               </>
             )}
           </button>

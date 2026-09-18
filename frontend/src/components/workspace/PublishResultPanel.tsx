@@ -31,17 +31,42 @@ export function PublishResultPanel({
 
   // Publication Error state
   if (publishError) {
+    const is422 = publishError.includes('422') || publishError.toLowerCase().includes('payload')
+    const is409 = publishError.includes('409') || publishError.toLowerCase().includes('prevented')
+    const is503 = publishError.includes('503') || publishError.toLowerCase().includes('did not complete')
+
+    const title = is422
+      ? 'Payload Rejected'
+      : is409
+      ? 'Publication Prevented'
+      : is503
+      ? 'Publication Failed'
+      : 'Publication Error'
+
+    const badgeLabel = is422
+      ? 'HTTP 422'
+      : is409
+      ? 'HTTP 409'
+      : is503
+      ? 'HTTP 503'
+      : 'FAILED'
+
     return (
       <Card className="border-rose-500/40 bg-rose-950/20">
         <CardHeader className="py-3 px-4">
           <div className="flex items-center justify-between">
             <CardTitle className="text-xs font-mono uppercase tracking-wider text-rose-400 flex items-center space-x-2">
               <AlertCircle className="h-3.5 w-3.5 text-rose-400" />
-              <span>EventGate Publication Error</span>
+              <span>EventGate Publication Error — {title}</span>
             </CardTitle>
-            <Badge variant="block" size="sm">
-              FAILED
-            </Badge>
+            <div className="flex items-center space-x-1.5">
+              <Badge variant="block" size="sm">
+                FAILED
+              </Badge>
+              <Badge variant="neutral" size="sm">
+                {badgeLabel}
+              </Badge>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="p-4 space-y-2">
@@ -49,7 +74,13 @@ export function PublishResultPanel({
             {publishError}
           </p>
           <p className="text-[11px] text-slate-400 font-mono">
-            EventBridge publication was prevented. Zero downstream consumers were invoked.
+            {is422
+              ? 'Payload failed schema validation. Fix payload structure before re-publishing.'
+              : is409
+              ? 'Publication prevented before EventBridge PutEvents. Zero downstream consumers were invoked.'
+              : is503
+              ? 'EventBridge publication did not complete successfully. Retry the operation.'
+              : 'EventBridge publication was not executed.'}
           </p>
         </CardContent>
       </Card>
