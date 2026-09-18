@@ -86,7 +86,12 @@ In event-driven microservices, producer schema changes frequently break downstre
 
 The hackathon demonstration stack is deployed and operational in **`ap-south-1`**:
 
-- **Live Base URL:** [`https://ux8bwi3i8l.execute-api.ap-south-1.amazonaws.com`](https://ux8bwi3i8l.execute-api.ap-south-1.amazonaws.com) *(public demonstration endpoint)*
+- **Frontend Console (AWS Amplify):** [`https://main.d1etyexqf0w3wz.amplifyapp.com`](https://main.d1etyexqf0w3wz.amplifyapp.com)
+- **Backend API Gateway:** [`https://ux8bwi3i8l.execute-api.ap-south-1.amazonaws.com`](https://ux8bwi3i8l.execute-api.ap-south-1.amazonaws.com) *(public demonstration endpoint)*
+- **Hosting Architecture:**
+  - **Frontend:** Single-page application hosted separately on **AWS Amplify Hosting**, connected directly to the repository's `main` branch with continuous build/deployment.
+  - **Backend:** Serverless control plane deployed via **AWS SAM**, running on **AWS Lambda** behind **Amazon API Gateway HTTP API**.
+  - **Security & Separation:** Frontend communicates solely over standard REST endpoints (`/health`, `/api/v1/analyze`, `/api/v1/events/publish`). Zero AWS credentials or IAM secrets are exposed in the client bundle.
 - **CloudFormation Stack:** `primex-eventgate-dev`
 - **Core Lambda:** `primex-eventgate-dev-api`
 - **EventBridge Custom Bus:** `primex-eventgate-dev-bus`
@@ -182,7 +187,7 @@ npm run build
 
 > [!NOTE]
 > **Frontend Hosting Status:**
-> The EventGate frontend is verified locally and bundled for production (`frontend/dist/`). Cloud hosting deployment preparation is underway (Phase 4.3); it is not yet publicly deployed.
+> The EventGate frontend is deployed to **AWS Amplify Hosting** at [`https://main.d1etyexqf0w3wz.amplifyapp.com`](https://main.d1etyexqf0w3wz.amplifyapp.com). It runs in complete architectural isolation from the backend, communicating exclusively over HTTPS with the live API Gateway endpoint. Actual downstream event fan-out and consumer isolation are verified through the AWS EventBridge rule metrics and CloudWatch logs.
 
 ---
 
