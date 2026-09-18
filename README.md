@@ -11,7 +11,7 @@
 [![Frontend](https://img.shields.io/badge/Frontend-AWS%20Amplify-FF9900?style=flat-square&logo=awsamplify&logoColor=white)](https://main.d1etyexqf0w3wz.amplifyapp.com)
 [![Backend](https://img.shields.io/badge/Backend-API%20Gateway%20%2B%20Lambda-FF9900?style=flat-square&logo=amazonaws&logoColor=white)](https://ux8bwi3i8l.execute-api.ap-south-1.amazonaws.com/health)
 [![Tests Backend](https://img.shields.io/badge/Backend%20Tests-190%20Passed-brightgreen?style=flat-square)]()
-[![Tests Frontend](https://img.shields.io/badge/Frontend%20Tests-54%20Passed-brightgreen?style=flat-square)]()
+[![Tests Frontend](https://img.shields.io/badge/Frontend%20Tests-57%20Passed-brightgreen?style=flat-square)]()
 [![Coverage](https://img.shields.io/badge/Coverage-94.08%25-brightgreen?style=flat-square)]()
 [![Python](https://img.shields.io/badge/Python-3.14-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-ASGI-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
@@ -144,7 +144,7 @@ AWS Lambda: EventGateFunction (Python 3.14 + FastAPI)
 The system has passed comprehensive local quality gates and live AWS end-to-end verification:
 
 * **Backend Test Suite:** **190 passed**, **94.08% code coverage** (exceeds 85% requirement).
-* **Frontend Test Suite:** **54 passed** across 12 test files with zero failures.
+* **Frontend Test Suite:** **57 passed** across 12 test files with zero failures.
 * **Static Analysis:** `ruff check .` clean, `oxlint` clean (0 warnings, 0 errors).
 * **Live AWS Smoke Test (`scripts/aws_enforcement_smoke_test.py`):**
   * `GET /health` $\to$ **`200 OK`**
@@ -212,7 +212,7 @@ primex-eventgate/
 │   ├── src/
 │   │   ├── components/       # 3-column workspace, code editor, event path
 │   │   ├── services/         # REST API client
-│   │   └── test/             # 54 Vitest test cases
+│   │   └── test/             # 57 Vitest test cases
 ├── docs/                     # Comprehensive architecture and API documentation
 ├── scripts/                  # AWS enforcement smoke test & verification scripts
 └── template.yaml             # Declarative AWS SAM infrastructure specification
@@ -225,6 +225,14 @@ primex-eventgate/
 * **Demonstration Authentication Scope:** In accordance with hackathon constraints, endpoints do not require IAM SigV4 or Cognito authentication to permit frictionless judge evaluation. A production deployment would introduce Cognito user pools or API Gateway authorizers.
 * **Demonstration Consumers:** Downstream consumer Lambdas log received events to CloudWatch to demonstrate fan-out and isolation rather than executing business-layer transactions.
 * **Supported Schema Format:** Implements contract compatibility evaluation for structured JSON schemas (field presence, type transitions, requiredness). Full JSON Schema Draft 7/2020-12 keyword evaluation is planned for future iterations.
+
+---
+
+## 11. AI Tool Disclosure & Attribution
+
+In accordance with hackathon guidelines, the team used the following AI tools during development:
+* **Google Antigravity IDE & Gemini Models:** Used as an interactive pair-programming assistant for boilerplate generation, test case scaffolding, documentation drafting, and UI design token refinement.
+* **Deterministic Core Integrity:** All core compatibility decision algorithms (rules `EVT001` through `EVT008`), AWS SAM CloudFormation declarations, and security gating policies were human-architected, verified, and backed by automated regression tests.
 
 ---
 

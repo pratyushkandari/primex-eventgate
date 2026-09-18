@@ -42,8 +42,8 @@ The **Ship It** track evaluates genuine deployment, architectural rigor, serverl
 | **CloudFormation Stack** | `primex-eventgate-dev` | `ap-south-1` | Declarative AWS SAM deployment stack |
 | **EventBridge Bus** | `primex-eventgate-dev-bus` | `ap-south-1` | Custom broker routing approved event contracts |
 | **EventBridge Rule** | `primex-eventgate-dev-order-placed-rule` | `ap-south-1` | Pattern matching `source: primex.orders` & `detail-type: OrderPlaced` |
-| **DynamoDB Table 1** | `primex-eventgate-dev-event-contracts` | `ap-south-1` | Versioned producer event contracts (`PK: EVENT#<type>`, `SK: V#<version>`) |
-| **DynamoDB Table 2** | `primex-eventgate-dev-consumer-contracts` | `ap-south-1` | Registered consumer contracts (`PK: EVENT#<type>`, `SK: CONSUMER#<id>`) |
+| **DynamoDB Table 1** | `primex-eventgate-dev-event-contracts` | `ap-south-1` | Versioned producer event contracts (`HASH: eventType`, `RANGE: version`) |
+| **DynamoDB Table 2** | `primex-eventgate-dev-consumer-contracts` | `ap-south-1` | Registered consumer contracts (`HASH: consumerId`, GSI `EventTypeIndex`) |
 | **Core Lambda** | `primex-eventgate-dev-EventGateFunction` | `ap-south-1` | Python 3.14 runtime with FastAPI + Mangum |
 | **Billing Consumer** | `primex-eventgate-dev-BillingConsumerFunction` | `ap-south-1` | Downstream billing demonstration consumer |
 | **Inventory Consumer**| `primex-eventgate-dev-InventoryConsumerFunction` | `ap-south-1` | Downstream inventory demonstration consumer |
@@ -63,12 +63,16 @@ The **Ship It** track evaluates genuine deployment, architectural rigor, serverl
 * **Fast Execution:** Python 3.14 provides optimized opcode dispatch and faster dictionary operations.
 * **FastAPI + Mangum:** Clean ASGI architecture enabling identical code to run locally in development and in Lambda in production.
 
-### Why Amazon DynamoDB (On-Demand)?
-* **Single-Digit Millisecond Retrieval:** Fast key-value lookups (`PK` = `EVENT#OrderPlaced`, `SK` = `V#1`) provide immediate contract access during pre-publication gating.
+### Why Amazon DynamoDB (On-Demand, Two Tables)?
+* **Single-Digit Millisecond Retrieval:** Fast key-value lookups provide immediate contract access during pre-publication gating.
 * **`PAY_PER_REQUEST` Billing:** Zero minimum cost, no provisioned capacity management, automatic elastic scaling.
-* **Access Patterns:**
-  * Get Event Contract: `GetItem(PK="EVENT#OrderPlaced", SK="V#1")`
-  * Get All Consumer Contracts: `Query(PK="EVENT#OrderPlaced", begins_with(SK, "CONSUMER#"))`
+* **Dual Table Architecture & Access Patterns:**
+  * **EventContractsTable:** Partition key `eventType` (String), Sort key `version` (Number).
+    * `GetItem(Key={"eventType": "OrderPlaced", "version": 1})`
+    * `Query(KeyConditionExpression=Key("eventType").eq("OrderPlaced"))`
+  * **ConsumerContractsTable:** Partition key `consumerId` (String), GSI `EventTypeIndex` (`eventType` HASH, `consumerId` RANGE).
+    * `GetItem(Key={"consumerId": "inventory-service"})`
+    * `Query(IndexName="EventTypeIndex", KeyConditionExpression=Key("eventType").eq("OrderPlaced"))`
 
 ### Why Amazon EventBridge Custom Bus?
 * **Decoupled Asynchronous Fan-Out:** Producers emit once; EventBridge delivers to multiple independent downstream consumer queues or Lambdas.
