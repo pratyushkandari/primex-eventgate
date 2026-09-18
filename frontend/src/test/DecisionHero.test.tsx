@@ -91,4 +91,23 @@ describe('DecisionHero component', () => {
     const publishBtn = screen.getByRole('button', { name: /Publication Prevented by Gate/i })
     expect(publishBtn).toBeDisabled()
   })
+
+  it('renders Invalid Payload state when hasJsonError is true with disabled publish button', () => {
+    render(
+      <DecisionHero
+        analysis={null}
+        isAnalyzing={false}
+        isPublishing={false}
+        hasJsonError={true}
+        onPublish={vi.fn()}
+      />
+    )
+
+    expect(screen.getByText('Invalid Payload')).toBeInTheDocument()
+    expect(screen.getByText('Fix JSON syntax to analyze.')).toBeInTheDocument()
+    expect(screen.getByText('Invalid JSON')).toBeInTheDocument()
+
+    const publishBtn = screen.getByRole('button', { name: /Fix invalid JSON before publishing/i })
+    expect(publishBtn).toBeDisabled()
+  })
 })

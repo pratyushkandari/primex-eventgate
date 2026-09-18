@@ -59,6 +59,10 @@ export function WorkspaceShell() {
       setJsonError(null)
     } catch (err) {
       setJsonError(err instanceof Error ? err.message : 'Invalid JSON syntax')
+      setAnalysis(null)
+      setAnalysisError(null)
+      setPublishResult(null)
+      setPublishError(null)
     }
   }, [])
 
@@ -70,6 +74,10 @@ export function WorkspaceShell() {
       setJsonError(null)
     } catch (err) {
       setJsonError(err instanceof Error ? err.message : 'Invalid JSON syntax')
+      setAnalysis(null)
+      setAnalysisError(null)
+      setPublishResult(null)
+      setPublishError(null)
     }
   }, [payloadText])
 
@@ -106,6 +114,7 @@ export function WorkspaceShell() {
 
   // Gated publish trigger
   const handlePublish = React.useCallback(async () => {
+    if (jsonError) return
     if (!analysis || analysis.decision !== 'ALLOW') return
 
     let parsedPayload: Record<string, unknown>
@@ -133,7 +142,7 @@ export function WorkspaceShell() {
     } finally {
       setIsPublishing(false)
     }
-  }, [analysis, eventType, currentVersion, proposedVersion, payloadText])
+  }, [analysis, eventType, currentVersion, proposedVersion, payloadText, jsonError])
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
@@ -183,6 +192,7 @@ export function WorkspaceShell() {
               analysis={analysis}
               isAnalyzing={isAnalyzing}
               isPublishing={isPublishing}
+              hasJsonError={Boolean(jsonError)}
               onPublish={handlePublish}
             />
           </div>

@@ -1,4 +1,4 @@
-import { Radio, Send, ShieldAlert, ShieldCheck, ShieldQuestion } from 'lucide-react'
+import { AlertCircle, Radio, Send, ShieldAlert, ShieldCheck, ShieldQuestion } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -8,6 +8,7 @@ interface DecisionHeroProps {
   analysis: AnalysisResponse | null
   isAnalyzing: boolean
   isPublishing: boolean
+  hasJsonError?: boolean
   onPublish: () => void
 }
 
@@ -15,6 +16,7 @@ export function DecisionHero({
   analysis,
   isAnalyzing,
   isPublishing,
+  hasJsonError = false,
   onPublish,
 }: DecisionHeroProps) {
   if (isAnalyzing) {
@@ -43,6 +45,46 @@ export function DecisionHero({
             </p>
           </div>
         </CardContent>
+      </Card>
+    )
+  }
+
+  if (hasJsonError) {
+    return (
+      <Card className="h-full border-slate-800 bg-slate-900/80 flex flex-col justify-between">
+        <div>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center space-x-2">
+                <Radio className="h-4 w-4 text-amber-400" />
+                <span>Deterministic Gate</span>
+              </CardTitle>
+              <Badge variant="review">Invalid JSON</Badge>
+            </div>
+            <CardDescription>
+              Payload syntax error detected
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col items-center justify-center py-16 text-center space-y-4">
+            <div className="h-20 w-20 rounded-full bg-amber-500/10 border-2 border-amber-500/30 flex items-center justify-center text-amber-400">
+              <AlertCircle className="h-8 w-8" />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-slate-200">Invalid Payload</h3>
+              <p className="text-xs text-slate-400 max-w-xs mt-1">
+                Fix JSON syntax to analyze.
+              </p>
+            </div>
+          </CardContent>
+        </div>
+        <div className="p-5 pt-0">
+          <Button variant="outline" disabled className="w-full opacity-40 cursor-not-allowed" size="md">
+            Fix invalid JSON before publishing
+          </Button>
+          <p className="text-[11px] text-slate-500 text-center mt-2">
+            Payload syntax must be valid before publishing
+          </p>
+        </div>
       </Card>
     )
   }
@@ -177,6 +219,7 @@ export function DecisionHero({
             <Button
               variant="success"
               onClick={onPublish}
+              disabled={hasJsonError || isPublishing}
               isLoading={isPublishing}
               className="w-full shadow-lg shadow-emerald-950/40 cursor-pointer"
               size="md"

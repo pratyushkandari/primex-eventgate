@@ -254,6 +254,74 @@ describe('WorkspaceShell integrated workflow', () => {
     expect(eventGateApi.analyzeCompatibility).not.toHaveBeenCalled()
   })
 
+  it('clears stale ALLOW result and disables Publish when JSON payload becomes malformed', async () => {
+    vi.mocked(eventGateApi.analyzeCompatibility).mockResolvedValue(mockAllowAnalysis)
+
+    render(<WorkspaceShell />)
+    await waitFor(() => expect(screen.getByText('API Live')).toBeInTheDocument())
+
+    // Initial valid analysis produces ALLOW
+    const analyzeBtn = screen.getByRole('button', { name: /Analyze Compatibility/i })
+    fireEvent.click(analyzeBtn)
+
+    await waitFor(() => {
+      expect(screen.getByText('Safe to Publish')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Publish Event to EventBridge/i })).toBeEnabled()
+    })
+
+    // Now corrupt the JSON payload
+    const textarea = screen.getByPlaceholderText('Enter JSON payload...')
+    fireEvent.change(textarea, { target: { value: '{"orderId": MALFORMED_JSON' } })
+
+    // Verify stale ALLOW result is cleared and neutral Invalid Payload state is displayed
+    await waitFor(() => {
+      expect(screen.queryByText('Safe to Publish')).not.toBeInTheDocument()
+      expect(screen.getByText('Invalid Payload')).toBeInTheDocument()
+      expect(screen.getByText('Fix JSON syntax to analyze.')).toBeInTheDocument()
+    })
+
+    // Verify Analyze is disabled
+    expect(analyzeBtn).toBeDisabled()
+
+    // Verify Publish is disabled with explicit message
+    const disabledPublishBtn = screen.getByRole('button', { name: /Fix invalid JSON before publishing/i })
+    expect(disabledPublishBtn).toBeDisabled()
+
+    // Verify clicking disabled publish does not call publish API
+    fireEvent.click(disabledPublishBtn)
+    expect(eventGateApi.publishEvent).not.toHaveBeenCalled()
+  })
+
+  it('restores normal analysis workflow when valid JSON is entered after syntax error', async () => {
+    vi.mocked(eventGateApi.analyzeCompatibility).mockResolvedValue(mockAllowAnalysis)
+
+    render(<WorkspaceShell />)
+    await waitFor(() => expect(screen.getByText('API Live')).toBeInTheDocument())
+
+    const textarea = screen.getByPlaceholderText('Enter JSON payload...')
+    const analyzeBtn = screen.getByRole('button', { name: /Analyze Compatibility/i })
+
+    // Step 1: Corrupt JSON
+    fireEvent.change(textarea, { target: { value: '{"broken": ' } })
+    expect(screen.getByText('Invalid Payload')).toBeInTheDocument()
+    expect(analyzeBtn).toBeDisabled()
+
+    // Step 2: Fix JSON with valid syntax
+    fireEvent.change(textarea, { target: { value: '{\n  "orderId": "O1001",\n  "amount": 500\n}' } })
+
+    // Verify Ready to Analyze state is restored
+    expect(screen.getByText('Ready to Analyze')).toBeInTheDocument()
+    expect(analyzeBtn).toBeEnabled()
+
+    // Step 3: Run analysis
+    fireEvent.click(analyzeBtn)
+
+    await waitFor(() => {
+      expect(screen.getByText('Safe to Publish')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Publish Event to EventBridge/i })).toBeEnabled()
+    })
+  })
+
   it('displays error banner when analysis API call fails', async () => {
     vi.mocked(eventGateApi.analyzeCompatibility).mockRejectedValue(new Error('Network timeout'))
 
