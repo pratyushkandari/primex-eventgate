@@ -14,6 +14,7 @@ Exit codes for 'check':
 
 from __future__ import annotations
 
+import os
 import sys
 
 import click
@@ -23,10 +24,14 @@ from eventgate.api.dependencies import (
     get_catalog_service,
     get_history_service,
 )
+from eventgate.application.services.release_history_service import ReleaseHistoryService
 from eventgate.domain.enums import CompatibilityStatus, Decision
 from eventgate.domain.errors import EventGateError
 from eventgate.domain.history import ReleaseRecord
 from eventgate.domain.reports import generate_json_report, generate_markdown_report
+from eventgate.infrastructure.repositories.release_review_repository import (
+    InMemoryReleaseReviewRepository,
+)
 
 
 @click.group()
@@ -81,6 +86,12 @@ def main():
     default=False,
     help="Treat REVIEW decision as failure (exit code 1).",
 )
+@click.option(
+    "--persist",
+    is_flag=True,
+    default=False,
+    help="Persist evaluation record to release history.",
+)
 def check_command(
     event_type: str,
     current_version: int,
@@ -88,6 +99,7 @@ def check_command(
     environment: str,
     output_format: str,
     fail_on_review: bool,
+    persist: bool,
 ):
     """Analyze contract compatibility against downstream consumers and evaluate policy."""
     try:
@@ -107,7 +119,15 @@ def check_command(
 
     # Persist in history
     try:
-        history_service = get_history_service()
+        should_persist = persist or os.environ.get("EVENTGATE_PERSIST_HISTORY", "").lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        if should_persist:
+            history_service = get_history_service()
+        else:
+            history_service = ReleaseHistoryService(review_repo=InMemoryReleaseReviewRepository())
         findings_summary = [
             {
                 "consumerId": f.consumer_id,

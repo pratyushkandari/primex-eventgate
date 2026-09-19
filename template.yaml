@@ -101,6 +101,46 @@ Resources:
           Value: !Ref Environment
 
   # ---------------------------------------------------------------------------
+  # DynamoDB: Release History Table
+  # Partition key: recordId (String)
+  # GSI: EventTypeIndex (eventType HASH, timestamp RANGE)
+  # Access patterns: PutItem(recordId), GetItem(recordId), Query(EventTypeIndex, eventType)
+  # ---------------------------------------------------------------------------
+  ReleaseHistoryTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${ProjectName}-${Environment}-release-history"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: recordId
+          AttributeType: S
+        - AttributeName: eventType
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+      KeySchema:
+        - AttributeName: recordId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: EventTypeIndex
+          KeySchema:
+            - AttributeName: eventType
+              KeyType: HASH
+            - AttributeName: timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: Project
+          Value: EventGate
+        - Key: Team
+          Value: PrimeX
+        - Key: Phase
+          Value: Phase5
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ---------------------------------------------------------------------------
   # API Gateway HTTP API
   # ---------------------------------------------------------------------------
   EventGateHttpApi:
@@ -142,6 +182,7 @@ Resources:
           EVENTGATE_STORAGE_BACKEND: dynamodb
           EVENT_CONTRACTS_TABLE_NAME: !Ref EventContractsTable
           CONSUMER_CONTRACTS_TABLE_NAME: !Ref ConsumerContractsTable
+          RELEASE_HISTORY_TABLE_NAME: !Ref ReleaseHistoryTable
           EVENTGATE_EVENT_PUBLISHER: eventbridge
           EVENTBRIDGE_BUS_NAME: !Ref EventGateEventBus
       Policies:
@@ -163,6 +204,17 @@ Resources:
               Resource:
                 - !GetAtt ConsumerContractsTable.Arn
                 - !Sub "${ConsumerContractsTable.Arn}/index/*"
+        # Least privilege: Read and write access to ReleaseHistoryTable and GSI
+        - Statement:
+            - Sid: AccessReleaseHistoryTable
+              Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:Query
+              Resource:
+                - !GetAtt ReleaseHistoryTable.Arn
+                - !Sub "${ReleaseHistoryTable.Arn}/index/*"
         # Least privilege: PutEvents on EventGate custom event bus only
         - Statement:
             - Sid: PublishToEventGateBus
@@ -338,6 +390,10 @@ Outputs:
   ConsumerContractsTableName:
     Description: DynamoDB Consumer Contracts Table Name
     Value: !Ref ConsumerContractsTable
+
+  ReleaseHistoryTableName:
+    Description: DynamoDB Release History Table Name
+    Value: !Ref ReleaseHistoryTable
 
   LambdaFunctionName:
     Description: EventGate Lambda Function Name

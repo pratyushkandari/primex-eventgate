@@ -27,6 +27,7 @@ from eventgate.config.settings import (
     get_event_contracts_table_name,
     get_event_publisher_backend,
     get_eventbridge_bus_name,
+    get_history_file,
     get_release_history_table_name,
     get_storage_backend,
 )
@@ -78,13 +79,18 @@ def _build_consumer_repo(
 
 @lru_cache(maxsize=4)
 def _build_history_repo(
-    backend: str, contracts_dir_str: str, history_table: str, region: str
+    backend: str,
+    contracts_dir_str: str,
+    history_table: str,
+    region: str,
+    history_file_str: str | None = None,
 ) -> IReleaseReviewRepository:
     if backend == STORAGE_BACKEND_DYNAMODB:
         return DynamoReleaseReviewRepository(table_name=history_table, region_name=region)
     from pathlib import Path
 
-    return JsonReleaseReviewRepository(Path(contracts_dir_str))
+    history_file = Path(history_file_str) if history_file_str else None
+    return JsonReleaseReviewRepository(Path(contracts_dir_str), history_file=history_file)
 
 
 @lru_cache(maxsize=4)
@@ -134,11 +140,13 @@ def get_analysis_service() -> EventAnalysisService:
 
 def get_history_repo() -> IReleaseReviewRepository:
     """Return the configured release history repository."""
+    history_file = get_history_file()
     return _build_history_repo(
         backend=get_storage_backend(),
         contracts_dir_str=str(get_contracts_dir()),
         history_table=get_release_history_table_name(),
         region=get_aws_region(),
+        history_file_str=str(history_file) if history_file else None,
     )
 
 

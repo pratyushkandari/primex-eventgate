@@ -41,6 +41,7 @@ def detect_changed_files(base_ref: str = "origin/main", head_ref: str = "HEAD") 
             capture_output=True,
             text=True,
             check=False,
+            stdin=subprocess.DEVNULL,
         )
         if res.returncode == 0 and res.stdout.strip():
             files = [
@@ -64,6 +65,7 @@ def detect_changed_files(base_ref: str = "origin/main", head_ref: str = "HEAD") 
             capture_output=True,
             text=True,
             check=False,
+            stdin=subprocess.DEVNULL,
         )
         if res.returncode == 0 and res.stdout.strip():
             files = [
@@ -163,6 +165,7 @@ def run_contract_check(
         text=True,
         check=False,
         env=env,
+        stdin=subprocess.DEVNULL,
     )
     output = res.stdout + (("\n" + res.stderr) if res.stderr else "")
     return res.returncode, output

@@ -34,6 +34,16 @@ def get_contracts_dir() -> Path:
     return CONTRACTS_DIR
 
 
+def get_history_file() -> Path | None:
+    """Return an explicit file path for release history reviews.json, if set."""
+    import os
+
+    override = os.environ.get("EVENTGATE_HISTORY_FILE")
+    if override:
+        return Path(override)
+    return None
+
+
 def get_storage_backend() -> str:
     """Return the storage backend ('local' or 'dynamodb'), defaulting to 'local'."""
     import os

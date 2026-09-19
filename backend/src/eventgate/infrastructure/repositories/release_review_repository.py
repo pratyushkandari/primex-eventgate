@@ -15,9 +15,13 @@ logger = logging.getLogger(__name__)
 class JsonReleaseReviewRepository:
     """Local JSON-backed persistent store for release reviews."""
 
-    def __init__(self, contracts_dir: Path):
-        self._history_dir = contracts_dir / "history"
-        self._file_path = self._history_dir / "reviews.json"
+    def __init__(self, contracts_dir: Path, history_file: Path | None = None):
+        if history_file is not None:
+            self._file_path = Path(history_file)
+            self._history_dir = self._file_path.parent
+        else:
+            self._history_dir = contracts_dir / "history"
+            self._file_path = self._history_dir / "reviews.json"
         self._ensure_storage()
 
     def _ensure_storage(self) -> None:
@@ -105,5 +109,49 @@ class JsonReleaseReviewRepository:
             except Exception as exc:
                 logger.warning("Skipping invalid history record: %s", exc)
 
+        results.sort(key=lambda x: x.timestamp, reverse=True)
+        return results[:limit]
+
+
+class InMemoryReleaseReviewRepository:
+    """In-memory release review repository for isolated CLI evaluations or transient runs."""
+
+    def __init__(self, initial_records: list[ReleaseRecord] | None = None) -> None:
+        self._records: list[ReleaseRecord] = []
+        if initial_records:
+            self._records = list(initial_records)
+
+    def save_review(self, record: ReleaseRecord) -> ReleaseRecord:
+        """Persist or update a release review record in memory."""
+        updated = False
+        for idx, existing in enumerate(self._records):
+            if (
+                existing.record_id == record.record_id
+                or existing.analysis_id == record.analysis_id
+            ):
+                self._records[idx] = record
+                updated = True
+                break
+
+        if not updated:
+            self._records.insert(0, record)
+
+        return record
+
+    def get_review(self, record_id: str) -> ReleaseRecord:
+        """Retrieve a specific release review by record_id or analysis_id."""
+        for r in self._records:
+            if r.record_id == record_id or r.analysis_id == record_id:
+                return r
+        raise ReleaseRecordNotFoundError(record_id)
+
+    def list_reviews(
+        self, event_type: str | None = None, limit: int = 50
+    ) -> list[ReleaseRecord]:
+        """Return recent release reviews, optionally filtered by event type."""
+        results = [
+            r for r in self._records
+            if not event_type or r.event_type == event_type
+        ]
         results.sort(key=lambda x: x.timestamp, reverse=True)
         return results[:limit]
