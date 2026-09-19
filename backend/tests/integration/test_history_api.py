@@ -181,3 +181,11 @@ def test_publish_blocked_records_attempted_publish_in_history():
     assert rec["published"] is False
     assert rec["attemptedPublish"] is True
     assert rec["error"] is not None
+
+
+def test_get_history_record_not_found_returns_404():
+    """Requesting non-existent record returns HTTP 404 with RELEASE_RECORD_NOT_FOUND."""
+    resp = client.get("/api/v1/history/non-existent-record-id-9999")
+    assert resp.status_code == 404
+    data = resp.json()
+    assert data["error"]["code"] == "RELEASE_RECORD_NOT_FOUND"

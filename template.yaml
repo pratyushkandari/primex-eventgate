@@ -229,18 +229,12 @@ Resources:
             ApiId: !Ref EventGateHttpApi
             Path: /health
             Method: GET
-        Analyze:
+        CatchAllProxy:
           Type: HttpApi
           Properties:
             ApiId: !Ref EventGateHttpApi
-            Path: /api/v1/analyze
-            Method: POST
-        PublishEvent:
-          Type: HttpApi
-          Properties:
-            ApiId: !Ref EventGateHttpApi
-            Path: /api/v1/events/publish
-            Method: POST
+            Path: /{proxy+}
+            Method: ANY
 
   # ---------------------------------------------------------------------------
   # EventBridge: Custom Event Bus

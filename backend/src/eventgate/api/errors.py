@@ -25,6 +25,7 @@ from eventgate.domain.errors import (
     InvalidAnalysisRequestError,
     InvalidContractError,
     InvalidEventPayloadError,
+    ReleaseRecordNotFoundError,
     UnsupportedEventTypeError,
     UnsupportedEventVersionError,
 )
@@ -34,6 +35,7 @@ logger = logging.getLogger(__name__)
 # Domain error → HTTP status code mapping.
 _ERROR_STATUS_MAP: dict[type, int] = {
     ContractNotFoundError: 404,
+    ReleaseRecordNotFoundError: 404,
     UnsupportedEventTypeError: 404,
     UnsupportedEventVersionError: 404,
     InvalidContractError: 400,

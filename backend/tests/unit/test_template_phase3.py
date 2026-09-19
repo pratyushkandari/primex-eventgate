@@ -64,9 +64,11 @@ def test_sam_template_phase3_resources():
     # 4. EventGateFunction routes and policies
     api_fn = resources["EventGateFunction"]["Properties"]
     events = api_fn["Events"]
-    assert "PublishEvent" in events
-    assert events["PublishEvent"]["Properties"]["Path"] == "/api/v1/events/publish"
-    assert events["PublishEvent"]["Properties"]["Method"] == "POST"
+    assert "HealthCheck" in events
+    assert events["HealthCheck"]["Properties"]["Path"] == "/health"
+    assert "CatchAllProxy" in events
+    assert events["CatchAllProxy"]["Properties"]["Path"] == "/{proxy+}"
+    assert events["CatchAllProxy"]["Properties"]["Method"] == "ANY"
 
     # 5. Outputs
     outputs = template.get("Outputs", {})
