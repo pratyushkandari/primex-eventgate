@@ -100,8 +100,16 @@ Policies:
       TableName: !Ref EventContractsTable
   - DynamoDBReadPolicy:
       TableName: !Ref ConsumerContractsTable
-  - DynamoDBCrudPolicy:
-      TableName: !Ref ReleaseHistoryTable
+  - Statement:
+      - Sid: AccessReleaseHistoryTable
+        Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:PutItem
+          - dynamodb:Query
+        Resource:
+          - !GetAtt ReleaseHistoryTable.Arn
+          - !Sub "${ReleaseHistoryTable.Arn}/index/*"
   - Statement:
       - Effect: Allow
         Action:

@@ -150,3 +150,21 @@ def event_repo() -> JsonEventContractRepository:
 @pytest.fixture
 def consumer_repo() -> JsonConsumerContractRepository:
     return JsonConsumerContractRepository(CONTRACTS_DIR)
+
+
+# ---------------------------------------------------------------------------
+# History Isolation Fixture
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def isolate_history_for_tests(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Ensure all tests run with an isolated temporary history repository."""
+    from eventgate.api.dependencies import get_history_repo
+
+    test_history_file = tmp_path / "reviews.json"
+    test_history_file.write_text("[]", encoding="utf-8")
+    monkeypatch.setenv("EVENTGATE_HISTORY_FILE", str(test_history_file))
+    get_history_repo.cache_clear()
+    yield test_history_file
+    get_history_repo.cache_clear()

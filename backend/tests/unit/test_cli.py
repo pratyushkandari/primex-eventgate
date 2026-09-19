@@ -204,10 +204,10 @@ def test_cli_test_command_fail():
 
 def test_cli_history_command():
     runner = CliRunner()
-    # Trigger an analysis first to ensure at least 1 record
+    # Trigger an analysis first with --persist to ensure at least 1 record
     runner.invoke(
         main,
-        ["check", "-e", "OrderPlaced", "-c", "1", "-p", "2", "--env", "production"],
+        ["check", "-e", "OrderPlaced", "-c", "1", "-p", "2", "--env", "production", "--persist"],
     )
     result = runner.invoke(main, ["history", "-n", "5"])
     assert result.exit_code == 0

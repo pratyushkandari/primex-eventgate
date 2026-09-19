@@ -136,7 +136,7 @@ A single release workflow produces a single correlated audit record.
 - Repository interfaces and implementations:
   - `IEventContractRepository`: Local JSON & DynamoDB implementations (`list_event_types`, `get_event_versions`, `get_contract`).
   - `IConsumerContractRepository`: Local JSON & DynamoDB implementations (`list_all_consumers`, `get_consumers_for_event`, `get_consumer`).
-  - `IReleaseReviewRepository`: Local JSON (`contracts/history/reviews.json`) & DynamoDB (`primex-eventgate-dev-release-history`).
+  - `IReleaseReviewRepository`: In-memory implementation (`InMemoryReleaseReviewRepository` for isolated, zero-side-effect test and local CLI verification), local JSON (`JsonReleaseReviewRepository`, targeting `contracts/history/reviews.json` or custom path via `EVENTGATE_HISTORY_FILE`), and DynamoDB (`DynamoReleaseReviewRepository` targeting `primex-eventgate-${Environment}-release-history`).
 - Cloud & Local Publishers:
   - `EventBridgePublisher`: AWS SDK `boto3` calls to `events:PutEvents`.
   - `LocalEventPublisher`: In-memory thread-safe event sink for zero-credential local execution.
@@ -164,10 +164,10 @@ To guarantee predictable latency and cost efficiency, EventGate executes **zero 
 | **Get Consumers for Event**| `Query` (on `EventTypeIndex`) | `GSI PK = eventType` |
 | **List All Consumers** | `GetItem` | `PK = METADATA#CATALOG`, `SK = CONSUMERS` |
 
-### Release History Table (`primex-eventgate-dev-release-history`)
+### Release History Table (`primex-eventgate-${Environment}-release-history`)
 | Access Pattern | Operation | Key Condition |
 | :--- | :--- | :--- |
-| **Save / Update Review** | `PutItem` / `UpdateItem` | `PK = recordId` |
+| **Save / Update Review** | `PutItem` | `PK = recordId` |
 | **Get Review by ID** | `GetItem` | `PK = recordId` |
 | **List Reviews by Event** | `Query` (on `EventTypeIndex`) | `GSI PK = eventType`, `SK <= timestamp` |
 

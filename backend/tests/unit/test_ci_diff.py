@@ -1,8 +1,10 @@
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from scripts.ci_contract_diff import (
+    main,
     parse_contract_info,
     resolve_current_version,
     run_contract_check,
@@ -67,3 +69,33 @@ def test_run_contract_check_breaking():
     )
     assert exit_code == 1
     assert "Final Decision: BLOCK" in output
+
+
+def test_ci_diff_main_safe():
+    with patch(
+        "sys.argv",
+        [
+            "ci_contract_diff.py",
+            "-f",
+            "contracts/events/order-placed/v2-safe.json",
+            "--env",
+            "production",
+        ],
+    ):
+        code = main()
+        assert code == 0
+
+
+def test_ci_diff_main_breaking():
+    with patch(
+        "sys.argv",
+        [
+            "ci_contract_diff.py",
+            "-f",
+            "contracts/events/order-placed/v3-breaking.json",
+            "--env",
+            "production",
+        ],
+    ):
+        code = main()
+        assert code == 1

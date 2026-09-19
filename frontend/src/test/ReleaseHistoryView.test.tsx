@@ -105,7 +105,7 @@ describe('ReleaseHistoryView component', () => {
     renderWithClient(<ReleaseHistoryView />)
 
     await waitFor(() => {
-      expect(screen.getByText('ALLOW')).toBeInTheDocument()
+      expect(screen.getByText(/rec-001/i)).toBeInTheDocument()
     })
 
     // Check stats
@@ -114,8 +114,8 @@ describe('ReleaseHistoryView component', () => {
 
     // Check table content (2 table rows + 1 filter dropdown option)
     expect(screen.getAllByText('OrderPlaced')).toHaveLength(3)
-    expect(screen.getByText('ALLOW')).toBeInTheDocument()
-    expect(screen.getByText('BLOCK')).toBeInTheDocument()
+    expect(screen.getByText(/rec-001/i)).toBeInTheDocument()
+    expect(screen.getByText(/rec-002/i)).toBeInTheDocument()
     expect(screen.getByText('SAFE')).toBeInTheDocument()
     expect(screen.getByText('BREAK')).toBeInTheDocument()
   })
@@ -126,14 +126,14 @@ describe('ReleaseHistoryView component', () => {
     renderWithClient(<ReleaseHistoryView />)
 
     await waitFor(() => {
-      expect(screen.getByText('ALLOW')).toBeInTheDocument()
+      expect(screen.getByText(/rec-001/i)).toBeInTheDocument()
     })
 
     const searchInput = screen.getByPlaceholderText(/Search audit records/i)
     fireEvent.change(searchInput, { target: { value: 'rec-002' } })
 
-    expect(screen.queryByText('ALLOW')).not.toBeInTheDocument()
-    expect(screen.getByText('BLOCK')).toBeInTheDocument()
+    expect(screen.queryByText(/rec-001/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/rec-002/i)).toBeInTheDocument()
   })
 
   it('opens and closes inspector drawer when Inspect button is clicked', async () => {
@@ -180,5 +180,223 @@ describe('ReleaseHistoryView component', () => {
     await waitFor(() => {
       expect(eventGateApi.getReport).toHaveBeenCalledWith('rec-001-safe', 'markdown')
     })
+  })
+
+  describe('Dedicated History Filters (Environment, Decision, Event, Combined)', () => {
+    const multiRecords: ReleaseRecord[] = [
+      mockRecords[0], // OrderPlaced, production, ALLOW (rec-001-safe)
+      mockRecords[1], // OrderPlaced, production, BLOCK (rec-002-break)
+      {
+        recordId: 'rec-003-review',
+        analysisId: 'rec-003-review',
+        eventType: 'PaymentCompleted',
+        currentVersion: 1,
+        proposedVersion: 2,
+        environment: 'staging',
+        compatibilityResult: 'RISK',
+        severity: 'MEDIUM',
+        policyName: 'StandardReleasePolicy',
+        policyReason: 'Manual review required',
+        decision: 'REVIEW',
+        affectedConsumers: ['billing-service'],
+        findingsSummary: [],
+        published: false,
+        attemptedPublish: false,
+        timestamp: '2026-09-19T12:00:00Z',
+      },
+      {
+        recordId: 'rec-004-dev',
+        analysisId: 'rec-004-dev',
+        eventType: 'UserCreated',
+        currentVersion: 1,
+        proposedVersion: 2,
+        environment: 'development',
+        compatibilityResult: 'SAFE',
+        severity: 'LOW',
+        policyName: 'DevReleasePolicy',
+        policyReason: 'Dev permits changes',
+        decision: 'ALLOW',
+        affectedConsumers: [],
+        findingsSummary: [],
+        published: false,
+        attemptedPublish: false,
+        timestamp: '2026-09-19T13:00:00Z',
+      },
+    ]
+
+    it('filters records by Environment dropdown', async () => {
+      vi.mocked(eventGateApi.listHistory).mockResolvedValue(multiRecords)
+
+      renderWithClient(<ReleaseHistoryView />)
+
+      await waitFor(() => {
+        expect(screen.getByText(/rec-001/i)).toBeInTheDocument()
+        expect(screen.getByText(/rec-003/i)).toBeInTheDocument()
+        expect(screen.getByText(/rec-004/i)).toBeInTheDocument()
+      })
+
+      const envSelect = screen.getByLabelText('Filter by Environment')
+
+      // Filter by staging
+      fireEvent.change(envSelect, { target: { value: 'staging' } })
+      expect(screen.getByText(/rec-003/i)).toBeInTheDocument()
+      expect(screen.queryByText(/rec-001/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/rec-004/i)).not.toBeInTheDocument()
+
+      // Filter by development
+      fireEvent.change(envSelect, { target: { value: 'development' } })
+      expect(screen.getByText(/rec-004/i)).toBeInTheDocument()
+      expect(screen.queryByText(/rec-003/i)).not.toBeInTheDocument()
+
+      // Filter by production
+      fireEvent.change(envSelect, { target: { value: 'production' } })
+      expect(screen.getByText(/rec-001/i)).toBeInTheDocument()
+      expect(screen.getByText(/rec-002/i)).toBeInTheDocument()
+      expect(screen.queryByText(/rec-003/i)).not.toBeInTheDocument()
+    })
+
+    it('filters records by Decision dropdown', async () => {
+      vi.mocked(eventGateApi.listHistory).mockResolvedValue(multiRecords)
+
+      renderWithClient(<ReleaseHistoryView />)
+
+      await waitFor(() => {
+        expect(screen.getByText(/rec-001/i)).toBeInTheDocument()
+      })
+
+      const decisionSelect = screen.getByLabelText('Filter by Decision')
+
+      // Filter by REVIEW
+      fireEvent.change(decisionSelect, { target: { value: 'REVIEW' } })
+      expect(screen.getByText(/rec-003/i)).toBeInTheDocument()
+      expect(screen.queryByText(/rec-001/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/rec-002/i)).not.toBeInTheDocument()
+
+      // Filter by BLOCK
+      fireEvent.change(decisionSelect, { target: { value: 'BLOCK' } })
+      expect(screen.getByText(/rec-002/i)).toBeInTheDocument()
+      expect(screen.queryByText(/rec-001/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/rec-003/i)).not.toBeInTheDocument()
+
+      // Filter by ALLOW
+      fireEvent.change(decisionSelect, { target: { value: 'ALLOW' } })
+      expect(screen.getByText(/rec-001/i)).toBeInTheDocument()
+      expect(screen.getByText(/rec-004/i)).toBeInTheDocument()
+      expect(screen.queryByText(/rec-002/i)).not.toBeInTheDocument()
+    })
+
+    it('filters records by Event Type dropdown', async () => {
+      vi.mocked(eventGateApi.listHistory).mockResolvedValue(multiRecords)
+
+      renderWithClient(<ReleaseHistoryView />)
+
+      await waitFor(() => {
+        expect(screen.getByText(/rec-001/i)).toBeInTheDocument()
+      })
+
+      const eventSelect = screen.getByLabelText('Filter by Event Type')
+      fireEvent.change(eventSelect, { target: { value: 'PaymentCompleted' } })
+
+      await waitFor(() => {
+        expect(screen.getByText(/rec-003/i)).toBeInTheDocument()
+      })
+      expect(screen.queryByText(/rec-001/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/rec-004/i)).not.toBeInTheDocument()
+    })
+
+    it('combines Event Type, Environment, Decision, and Search filters', async () => {
+      vi.mocked(eventGateApi.listHistory).mockResolvedValue(multiRecords)
+
+      renderWithClient(<ReleaseHistoryView />)
+
+      await waitFor(() => {
+        expect(screen.getByText(/rec-001/i)).toBeInTheDocument()
+      })
+
+      const envSelect = screen.getByLabelText('Filter by Environment')
+      const decisionSelect = screen.getByLabelText('Filter by Decision')
+      const searchInput = screen.getByPlaceholderText(/Search audit records/i)
+
+      // Apply Environment = production, Decision = BLOCK
+      fireEvent.change(envSelect, { target: { value: 'production' } })
+      fireEvent.change(decisionSelect, { target: { value: 'BLOCK' } })
+
+      expect(screen.getByText(/rec-002/i)).toBeInTheDocument()
+      expect(screen.queryByText(/rec-001/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/rec-003/i)).not.toBeInTheDocument()
+
+      // Add Search query matching rec-002
+      fireEvent.change(searchInput, { target: { value: 'rec-002' } })
+      expect(screen.getByText(/rec-002/i)).toBeInTheDocument()
+
+      // Search query not matching
+      fireEvent.change(searchInput, { target: { value: 'nonexistent-query' } })
+      expect(screen.queryByText(/rec-002/i)).not.toBeInTheDocument()
+      expect(screen.getByText(/No matching release evaluations/i)).toBeInTheDocument()
+    })
+
+    it('clears active filters and restores all records', async () => {
+      vi.mocked(eventGateApi.listHistory).mockResolvedValue(multiRecords)
+
+      renderWithClient(<ReleaseHistoryView />)
+
+      await waitFor(() => {
+        expect(screen.getByText(/rec-001/i)).toBeInTheDocument()
+      })
+
+      const envSelect = screen.getByLabelText('Filter by Environment')
+      fireEvent.change(envSelect, { target: { value: 'staging' } })
+
+      expect(screen.queryByText(/rec-001/i)).not.toBeInTheDocument()
+      expect(screen.getByText(/rec-003/i)).toBeInTheDocument()
+
+      // Clear filters button should be visible
+      const clearBtn = screen.getByLabelText('Clear filters')
+      expect(clearBtn).toBeInTheDocument()
+      fireEvent.click(clearBtn)
+
+      // All records restored
+      await waitFor(() => {
+        expect(screen.getByText(/rec-001/i)).toBeInTheDocument()
+        expect(screen.getByText(/rec-002/i)).toBeInTheDocument()
+        expect(screen.getByText(/rec-003/i)).toBeInTheDocument()
+        expect(screen.getByText(/rec-004/i)).toBeInTheDocument()
+      })
+    })
+
+    it('shows empty filtered state with clear action when no records match', async () => {
+      vi.mocked(eventGateApi.listHistory).mockResolvedValue(multiRecords)
+
+      renderWithClient(<ReleaseHistoryView />)
+
+      await waitFor(() => {
+        expect(screen.getByText(/rec-001/i)).toBeInTheDocument()
+      })
+
+      // Select development + BLOCK (no records in multiRecords match this)
+      const envSelect = screen.getByLabelText('Filter by Environment')
+      const decisionSelect = screen.getByLabelText('Filter by Decision')
+
+      fireEvent.change(envSelect, { target: { value: 'development' } })
+      fireEvent.change(decisionSelect, { target: { value: 'BLOCK' } })
+
+      expect(screen.getByText('No matching release evaluations')).toBeInTheDocument()
+      expect(
+        screen.getByText(/No historical records matched your active filter criteria/i)
+      ).toBeInTheDocument()
+
+      // Click clear filters from the empty state
+      const clearButtons = screen.getAllByRole('button', { name: /Clear filters/i })
+      expect(clearButtons.length).toBeGreaterThan(0)
+      fireEvent.click(clearButtons[0])
+
+      // All records restored
+      await waitFor(() => {
+        expect(screen.getByText(/rec-001/i)).toBeInTheDocument()
+      })
+    })
+
+
+
   })
 })

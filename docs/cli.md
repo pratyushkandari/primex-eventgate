@@ -55,6 +55,7 @@ eventgate check \
 | `--env` | | `production` | Target deployment environment (`production`, `staging`, `development`) |
 | `--format` | | `table` | Output format: `table`, `json`, or `markdown` |
 | `--fail-on-review` | | `False` | Treat `REVIEW` decisions as failures (exit code `1`) |
+| `--persist` | | `False` | Persist release record to local history file (default: in-memory non-mutating check) |
 
 #### Deterministic Exit Codes:
 

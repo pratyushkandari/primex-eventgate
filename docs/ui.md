@@ -52,6 +52,7 @@ The UI is structured as an integrated release-control platform with six primary 
 3. **History (`ReleaseHistoryView`):**
    * Authoritative audit trail of evaluated and published changes.
    * Correlated 1-to-1: an analysis request produces a release record; publishing updates that exact record.
+   * Multi-dimensional filtering: dedicated Event Type, Environment (`development`, `staging`, `production`), and Decision (`ALLOW`, `REVIEW`, `BLOCK`) dropdown filters, generic text search, and single-click "Clear filters" action.
    * Report Export: Copy Markdown summary or download complete Markdown / JSON audit reports for compliance.
 
 4. **Developer Tools (`DeveloperToolsView`):**
