@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { eventGateApi } from '@/services/api'
 import type { AnalysisResponse, Decision, Environment } from '@/types/api'
+import { REGISTERED_CONSUMERS } from '@/data/consumers'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 
@@ -30,6 +31,21 @@ export function DeveloperToolsView({ onOpenReviewScenario }: DeveloperToolsViewP
   const [isRunning, setIsRunning] = React.useState(false)
   const [testResult, setTestResult] = React.useState<AnalysisResponse | null>(null)
   const [testError, setTestError] = React.useState<string | null>(null)
+
+  const consumerResults = React.useMemo(() => {
+    if (!testResult) return []
+    return REGISTERED_CONSUMERS.map((c) => {
+      const finding = testResult.findings.find((f) => f.consumerId === c.id)
+      return {
+        consumerId: c.id,
+        name: c.name,
+        status: finding ? finding.status : ('SAFE' as const),
+        ruleId: finding?.ruleId,
+        field: finding?.field,
+        reason: finding ? finding.reason : 'All consumed fields compatible',
+      }
+    })
+  }, [testResult])
   const [copiedIndex, setCopiedIndex] = React.useState<number | null>(null)
 
   const handleRunAssertion = async () => {
@@ -258,7 +274,7 @@ export function DeveloperToolsView({ onOpenReviewScenario }: DeveloperToolsViewP
                 <div>
                   <span className="text-[10px] text-slate-500 block">Compatibility</span>
                   <span className="font-bold text-slate-200">
-                    {testResult.compatibilityResult}
+                    {testResult.compatibilityResult || (testResult.decision === 'BLOCK' ? 'BREAK' : testResult.decision === 'REVIEW' ? 'RISK' : 'SAFE')}
                   </span>
                 </div>
                 <div>
@@ -268,15 +284,15 @@ export function DeveloperToolsView({ onOpenReviewScenario }: DeveloperToolsViewP
                   </span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-500 block">Policy Engine</span>
+                  <span className="text-[10px] text-slate-500 block">Release Policy</span>
                   <span className="font-bold text-slate-200">
                     {testResult.policyName || 'StandardReleasePolicy'}
                   </span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-500 block">Applied Policy</span>
+                  <span className="text-[10px] text-slate-500 block">Final Decision</span>
                   <span className="font-bold text-slate-200">
-                    {testResult.policyReason ? 'CUSTOM' : 'DEFAULT'}
+                    {testResult.decision}
                   </span>
                 </div>
               </div>
@@ -284,35 +300,35 @@ export function DeveloperToolsView({ onOpenReviewScenario }: DeveloperToolsViewP
               {/* Per-Consumer Breakdown */}
               <div className="pt-2">
                 <span className="text-[11px] font-bold text-slate-300 block mb-1.5">
-                  Consumer Dependency Findings ({testResult.findings.length} findings):
+                  Per-Consumer Results ({consumerResults.length} consumers evaluated):
                 </span>
                 <div className="bg-slate-950/60 border border-slate-800 rounded divide-y divide-slate-800/60 text-xs">
-                  {testResult.findings.map((f, fIdx) => (
+                  {consumerResults.map((c) => (
                     <div
-                      key={`${f.consumerId}-${f.field || fIdx}`}
+                      key={c.consumerId}
                       className="p-2.5 flex items-center justify-between"
                     >
                       <div>
-                        <span className="font-bold text-slate-200">{f.consumerId}</span>
-                        <span className="text-slate-500 text-[11px] ml-2">
-                          ({f.ruleId || 'ALL_FIELDS_COMPATIBLE'})
-                        </span>
-                        {f.field && (
-                          <span className="text-slate-400 text-[11px] ml-1.5">
-                            field: <code className="text-slate-300">{f.field}</code>
+                        <span className="font-bold text-slate-200">{c.consumerId}</span>
+                        {c.ruleId && (
+                          <span className="text-slate-500 text-[11px] ml-2">
+                            ({c.ruleId})
                           </span>
                         )}
-                        {f.reason && (
-                          <p className="text-[11px] text-slate-400 mt-0.5">{f.reason}</p>
+                        {c.field && (
+                          <span className="text-slate-400 text-[11px] ml-1.5">
+                            field: <code className="text-slate-300">{c.field}</code>
+                          </span>
                         )}
+                        <p className="text-[11px] text-slate-400 mt-0.5">{c.reason}</p>
                       </div>
                       <Badge
                         variant={
-                          f.status.toLowerCase() as 'safe' | 'risk' | 'break'
+                          c.status.toLowerCase() as 'safe' | 'risk' | 'break'
                         }
                         size="sm"
                       >
-                        {f.status}
+                        {c.status}
                       </Badge>
                     </div>
                   ))}

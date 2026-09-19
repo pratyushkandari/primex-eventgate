@@ -194,6 +194,7 @@ describe('WorkspaceShell integrated workflow', () => {
       eventType: 'OrderPlaced',
       currentVersion: 1,
       proposedVersion: 2,
+      environment: 'production',
     })
   })
 
@@ -260,6 +261,38 @@ describe('WorkspaceShell integrated workflow', () => {
     })
 
     expect(eventGateApi.publishEvent).toHaveBeenCalledTimes(1)
+    expect(eventGateApi.publishEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: 'OrderPlaced',
+        currentVersion: 1,
+        proposedVersion: 2,
+        environment: 'production',
+      })
+    )
+  })
+
+  it('clears stale analysis result and resets decision when environment is switched', async () => {
+    vi.mocked(eventGateApi.analyzeCompatibility).mockResolvedValue(mockAllowAnalysis)
+
+    render(<WorkspaceShell />)
+    await waitFor(() => expect(screen.getByText('API Healthy')).toBeInTheDocument())
+
+    // Analyze in default production environment
+    const analyzeBtn = screen.getByRole('button', { name: /Analyze/i })
+    fireEvent.click(analyzeBtn)
+    await waitFor(() => expect(screen.getByText('Safe to Publish')).toBeInTheDocument())
+
+    // Click environment selector to open dropdown menu
+    const envBtn = screen.getByLabelText(/Target Environment: production/i)
+    fireEvent.click(envBtn)
+
+    // Select development environment from dropdown
+    const devOption = screen.getByRole('menuitem', { name: /development/i })
+    fireEvent.click(devOption)
+
+    // Verify stale decision is cleared and reset to Ready to Analyze
+    expect(screen.getByText('Ready to Analyze')).toBeInTheDocument()
+    expect(screen.queryByText('Safe to Publish')).not.toBeInTheDocument()
   })
 
   it('prevents analysis submission when JSON payload has syntax errors', async () => {

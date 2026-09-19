@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Users, ChevronRight, Eye, ShieldAlert, CheckCircle2 } from 'lucide-react'
 import { REGISTERED_CONSUMERS } from '@/data/consumers'
-import type { AnalysisResponse, ConsumerFinding } from '@/types/api'
+import type { AnalysisResponse, ConsumerFinding, Environment } from '@/types/api'
 
 interface ConsumerImpactPanelProps {
   analysis: AnalysisResponse | null
@@ -12,6 +12,7 @@ interface ConsumerImpactPanelProps {
   selectedField?: string | null
   filter?: 'ALL' | 'AFFECTED' | 'SAFE'
   onFilterChange?: (filter: 'ALL' | 'AFFECTED' | 'SAFE') => void
+  environment?: Environment
 }
 
 export function ConsumerImpactPanel({
@@ -21,6 +22,7 @@ export function ConsumerImpactPanel({
   selectedField = null,
   filter: controlledFilter,
   onFilterChange,
+  environment,
 }: ConsumerImpactPanelProps) {
   const [internalFilter, setInternalFilter] = React.useState<'ALL' | 'AFFECTED' | 'SAFE'>('ALL')
   const currentFilter = controlledFilter ?? internalFilter
@@ -77,8 +79,13 @@ export function ConsumerImpactPanel({
               <span>Downstream Consumers</span>
             </CardTitle>
             <div className="flex items-center space-x-1.5">
+              {environment && (
+                <span className="text-[10px] font-mono uppercase text-slate-400 bg-slate-900 border border-slate-800 px-1.5 py-0.5 rounded">
+                  {environment}
+                </span>
+              )}
               <Badge variant="neutral" size="sm">
-                {counts.all} Registered
+                {counts.all} Checked
               </Badge>
             </div>
           </div>

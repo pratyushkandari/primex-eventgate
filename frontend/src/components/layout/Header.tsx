@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Shield, RefreshCw, Cloud, HelpCircle, Command } from 'lucide-react'
+import { Shield, RefreshCw, Cloud, HelpCircle, Command, ChevronDown } from 'lucide-react'
 import { API_CONFIG } from '@/config/env'
 import { eventGateApi } from '@/services/api'
 import type { Environment } from '@/types/api'
@@ -15,8 +15,6 @@ interface HeaderProps {
   onEnvironmentChange?: (env: Environment) => void
 }
 
-
-
 export function Header({
   activeTab = 'review',
   onSelectTab,
@@ -28,6 +26,18 @@ export function Header({
   const [healthStatus, setHealthStatus] = React.useState<'checking' | 'healthy' | 'unreachable'>('checking')
   const [apiVersion, setApiVersion] = React.useState<string | null>(null)
   const [lastChecked, setLastChecked] = React.useState<string | null>(null)
+  const [isEnvMenuOpen, setIsEnvMenuOpen] = React.useState(false)
+  const envMenuRef = React.useRef<HTMLDivElement>(null)
+
+  React.useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (envMenuRef.current && !envMenuRef.current.contains(event.target as Node)) {
+        setIsEnvMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   const performHealthCheck = React.useCallback(async () => {
     try {
@@ -149,27 +159,70 @@ export function Header({
             <span>{API_CONFIG.region}</span>
           </div>
 
-          {/* Environment Selector */}
-          <div className="hidden sm:flex items-center">
+          {/* Environment Selector Dropdown */}
+          <div ref={envMenuRef} className="relative hidden sm:flex items-center">
             {onEnvironmentChange ? (
-              <button
-                type="button"
-                id="env-selector"
-                onClick={() => {
-                  const envs: Environment[] = ['development', 'staging', 'production']
-                  const nextIndex = (envs.indexOf(environment) + 1) % envs.length
-                  onEnvironmentChange(envs[nextIndex])
-                }}
-                title={`Active Environment: ${environment}. Click to toggle.`}
-                aria-label={`Target Environment: ${environment}`}
-                className="flex items-center space-x-1.5 bg-slate-900 border border-slate-800/80 hover:border-slate-700 px-2.5 py-1 rounded text-slate-300 transition-colors cursor-pointer text-xs font-mono"
-              >
-                <span className="h-1.5 w-1.5 rounded-full bg-blue-400" />
-                <span>{environment === 'development' ? 'dev' : environment}</span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  id="env-selector"
+                  onClick={() => setIsEnvMenuOpen((prev) => !prev)}
+                  title={`Active Environment: ${environment}. Click to change.`}
+                  aria-label={`Target Environment: ${environment}`}
+                  aria-haspopup="menu"
+                  aria-expanded={isEnvMenuOpen}
+                  className="flex items-center space-x-1.5 bg-slate-900 border border-slate-800/80 hover:border-slate-700 px-2.5 py-1 rounded text-slate-300 transition-colors cursor-pointer text-xs font-mono"
+                >
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      environment === 'production'
+                        ? 'bg-emerald-400'
+                        : environment === 'staging'
+                        ? 'bg-amber-400'
+                        : 'bg-blue-400'
+                    }`}
+                  />
+                  <span>{environment}</span>
+                  <ChevronDown className="h-3 w-3 text-slate-500" />
+                </button>
+
+                {isEnvMenuOpen && (
+                  <div
+                    role="menu"
+                    aria-label="Target Environment"
+                    className="absolute right-0 top-full mt-1 w-36 bg-[#0c1220] border border-slate-800 rounded-md shadow-xl py-1 z-50 font-mono text-xs"
+                  >
+                    {(['production', 'staging', 'development'] as Environment[]).map((env) => (
+                      <button
+                        key={env}
+                        role="menuitem"
+                        type="button"
+                        onClick={() => {
+                          onEnvironmentChange(env)
+                          setIsEnvMenuOpen(false)
+                        }}
+                        className={`w-full text-left px-3 py-1.5 flex items-center space-x-2 hover:bg-slate-800/70 transition-colors ${
+                          environment === env ? 'text-blue-400 font-semibold bg-slate-800/40' : 'text-slate-300'
+                        }`}
+                      >
+                        <span
+                          className={`h-1.5 w-1.5 rounded-full ${
+                            env === 'production'
+                              ? 'bg-emerald-400'
+                              : env === 'staging'
+                              ? 'bg-amber-400'
+                              : 'bg-blue-400'
+                          }`}
+                        />
+                        <span>{env}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
             ) : (
               <div className="bg-slate-900 border border-slate-800/80 px-2.5 py-1 rounded text-slate-400 text-xs font-mono">
-                <span>{environment === 'development' ? 'dev' : environment}</span>
+                <span>{environment}</span>
               </div>
             )}
           </div>

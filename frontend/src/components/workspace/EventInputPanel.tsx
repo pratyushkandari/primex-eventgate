@@ -4,6 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 
+import type { Environment } from '@/types/api'
+
 interface EventInputPanelProps {
   eventType: string
   currentVersion: number
@@ -11,6 +13,7 @@ interface EventInputPanelProps {
   payloadText: string
   jsonError: string | null
   isAnalyzing: boolean
+  environment?: Environment
   onProposedVersionChange: (version: number) => void
   onPayloadTextChange: (text: string) => void
   onFormatPayload: () => void
@@ -25,6 +28,7 @@ export function EventInputPanel({
   payloadText,
   jsonError,
   isAnalyzing,
+  environment,
   onProposedVersionChange,
   onPayloadTextChange,
   onFormatPayload,
@@ -84,6 +88,11 @@ export function EventInputPanel({
                 <Badge variant="safe" size="sm">
                   Valid JSON
                 </Badge>
+              )}
+              {environment && (
+                <span className="text-[10px] font-mono uppercase text-slate-400 bg-slate-900 border border-slate-800 px-1.5 py-0.5 rounded">
+                  {environment}
+                </span>
               )}
               <span className="text-[10px] font-mono text-slate-400 bg-slate-900 border border-slate-800 px-1.5 py-0.5 rounded">
                 v{currentVersion} → v{proposedVersion}

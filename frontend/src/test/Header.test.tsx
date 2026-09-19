@@ -69,4 +69,31 @@ describe('Header component', () => {
       expect(eventGateApi.checkHealth).toHaveBeenCalledTimes(2)
     })
   })
+
+  it('renders environment selector with default production and allows changing environment', async () => {
+    vi.mocked(eventGateApi.checkHealth).mockResolvedValue({
+      status: 'ok',
+      service: 'eventgate',
+      version: '0.1.0',
+    })
+
+    const onEnvChange = vi.fn()
+    render(<Header environment="production" onEnvironmentChange={onEnvChange} />)
+
+    await waitFor(() => {
+      expect(screen.getByText('API Healthy')).toBeInTheDocument()
+    })
+
+    const envBtn = screen.getByLabelText(/Target Environment: production/i)
+    expect(envBtn).toBeInTheDocument()
+
+    // Open dropdown menu
+    fireEvent.click(envBtn)
+
+    // Select staging environment
+    const stagingOption = screen.getByRole('menuitem', { name: /staging/i })
+    fireEvent.click(stagingOption)
+
+    expect(onEnvChange).toHaveBeenCalledWith('staging')
+  })
 })

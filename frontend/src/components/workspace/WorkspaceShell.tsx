@@ -66,7 +66,7 @@ export function WorkspaceShell() {
   const [eventType] = React.useState<string>('OrderPlaced')
   const [currentVersion] = React.useState<number>(1)
   const [proposedVersion, setProposedVersion] = React.useState<number>(2)
-  const [environment, setEnvironment] = React.useState<Environment>('development')
+  const [environment, setEnvironment] = React.useState<Environment>('production')
   const [payloadText, setPayloadText] = React.useState<string>(() =>
     JSON.stringify(DEMO_SCENARIOS.safe.samplePayload, null, 2)
   )
@@ -198,9 +198,7 @@ export function WorkspaceShell() {
         eventType,
         currentVersion,
         proposedVersion,
-      }
-      if (environment && environment !== 'development') {
-        req.environment = environment
+        environment,
       }
       const res = await eventGateApi.analyzeCompatibility(req)
       setAnalysis(res)
@@ -261,10 +259,8 @@ export function WorkspaceShell() {
         eventType,
         currentVersion,
         proposedVersion,
+        environment,
         payload: parsedPayload,
-      }
-      if (environment && environment !== 'development') {
-        req.environment = environment
       }
       if (analysis.analysisId) {
         req.analysisId = analysis.analysisId
@@ -702,6 +698,7 @@ export function WorkspaceShell() {
               payloadText={payloadText}
               jsonError={jsonError}
               isAnalyzing={isAnalyzing}
+              environment={environment}
               onProposedVersionChange={handleProposedVersionChange}
               onPayloadTextChange={handlePayloadTextChange}
               onFormatPayload={handleFormatPayload}
@@ -731,6 +728,7 @@ export function WorkspaceShell() {
               selectedField={selectedField}
               filter={consumerFilter}
               onFilterChange={setConsumerFilter}
+              environment={environment}
             />
           </div>
         </div>
