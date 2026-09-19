@@ -6,6 +6,7 @@ import uuid
 from functools import lru_cache
 
 from fastapi import Depends, Request
+from fastapi.params import Depends as DependsType
 
 from eventgate.application.ports.publisher import IEventPublisher
 from eventgate.application.ports.repositories import (
@@ -141,13 +142,6 @@ def get_history_repo() -> IReleaseReviewRepository:
     )
 
 
-def get_history_service(
-    history_repo: IReleaseReviewRepository = Depends(get_history_repo),
-) -> ReleaseHistoryService:
-    """Create and return the release history application service."""
-    return ReleaseHistoryService(review_repo=history_repo)
-
-
 def get_event_publisher() -> IEventPublisher:
     """Return the configured event publisher."""
     return _build_publisher(
@@ -167,26 +161,45 @@ def get_consumer_repo() -> IConsumerContractRepository:
     )
 
 
+def _is_injected(arg: object) -> bool:
+    """Return True if argument was explicitly passed or injected by FastAPI."""
+    return arg is not None and not isinstance(arg, DependsType)
+
+
+def get_history_service(
+    history_repo: IReleaseReviewRepository | None = Depends(get_history_repo),
+) -> ReleaseHistoryService:
+    """Create and return the release history application service."""
+    repo = history_repo if _is_injected(history_repo) else get_history_repo()
+    return ReleaseHistoryService(review_repo=repo)
+
+
 def get_catalog_service(
-    event_repo: IEventContractRepository = Depends(get_event_repo),
-    consumer_repo: IConsumerContractRepository = Depends(get_consumer_repo),
+    event_repo: IEventContractRepository | None = Depends(get_event_repo),
+    consumer_repo: IConsumerContractRepository | None = Depends(get_consumer_repo),
 ) -> ContractCatalogService:
     """Create and return the contract catalog service."""
-    return ContractCatalogService(event_repo=event_repo, consumer_repo=consumer_repo)
+    e_repo = event_repo if _is_injected(event_repo) else get_event_repo()
+    c_repo = consumer_repo if _is_injected(consumer_repo) else get_consumer_repo()
+    return ContractCatalogService(event_repo=e_repo, consumer_repo=c_repo)
 
 
 def get_publish_service(
-    event_repo: IEventContractRepository = Depends(get_event_repo),
-    analysis_service: EventAnalysisService = Depends(get_analysis_service),
-    publisher: IEventPublisher = Depends(get_event_publisher),
-    history_service: ReleaseHistoryService = Depends(get_history_service),
+    event_repo: IEventContractRepository | None = Depends(get_event_repo),
+    analysis_service: EventAnalysisService | None = Depends(get_analysis_service),
+    publisher: IEventPublisher | None = Depends(get_event_publisher),
+    history_service: ReleaseHistoryService | None = Depends(get_history_service),
 ) -> EventPublishService:
     """Create and return the event publish service with its configured dependencies."""
+    e_repo = event_repo if _is_injected(event_repo) else get_event_repo()
+    a_svc = analysis_service if _is_injected(analysis_service) else get_analysis_service()
+    pub = publisher if _is_injected(publisher) else get_event_publisher()
+    h_svc = history_service if _is_injected(history_service) else get_history_service()
     return EventPublishService(
-        event_repo=event_repo,
-        analysis_service=analysis_service,
-        publisher=publisher,
-        history_service=history_service,
+        event_repo=e_repo,
+        analysis_service=a_svc,
+        publisher=pub,
+        history_service=h_svc,
     )
 
 
