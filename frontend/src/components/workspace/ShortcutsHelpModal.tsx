@@ -127,7 +127,7 @@ export function ShortcutsHelpModal({ isOpen, onClose }: ShortcutsHelpModalProps)
           </div>
 
           <p className="text-xs text-slate-400 font-sans leading-relaxed bg-[#080c14] border border-slate-800 rounded-lg p-3">
-            EventGate evaluates incoming release requests in Lambda before invoking EventBridge. The proposed schema is compared against consumer contracts in DynamoDB. When compatibility rules evaluate to BLOCK, EventGate returns HTTP 409 before calling EventBridge PutEvents.
+            EventGate evaluates release requests before invoking EventBridge. The proposed schema is verified against registered consumer contracts. When a release evaluates to BLOCK, EventGate returns HTTP 409 and does not invoke EventBridge. When evaluated to REVIEW, publication is held pending review.
           </p>
         </div>
 

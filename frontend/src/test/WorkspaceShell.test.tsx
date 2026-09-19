@@ -460,4 +460,36 @@ describe('WorkspaceShell integrated workflow', () => {
       expect(screen.getByText('HTTP 503')).toBeInTheDocument()
     })
   })
+
+  it('clears active scenario chip and stale analysis when scenario preset is followed by manual payload editing', async () => {
+    vi.mocked(eventGateApi.analyzeCompatibility).mockResolvedValue(mockAllowAnalysis)
+
+    render(<WorkspaceShell />)
+    await waitFor(() => expect(screen.getByText('API ONLINE')).toBeInTheDocument())
+
+    // 1. Run analysis on initial preset
+    const analyzeBtn = screen.getByRole('button', { name: /Analyze/i })
+    fireEvent.click(analyzeBtn)
+    await waitFor(() => expect(screen.getByText('Publication permitted.')).toBeInTheDocument())
+
+    // 2. Select Breaking Scenario preset
+    const breakingBtn = screen.getByRole('button', { name: /BREAK/i })
+    fireEvent.click(breakingBtn)
+
+    // Verify breaking button has active class / styling
+    expect(breakingBtn.className).toContain('bg-slate-800')
+
+    // 3. Manually edit payload textarea
+    const payloadTextarea = screen.getByPlaceholderText('Enter JSON payload...')
+    fireEvent.change(payloadTextarea, {
+      target: { value: JSON.stringify({ orderId: 'ord-custom-99', customField: 123 }, null, 2) },
+    })
+
+    // 4. Verify breaking preset chip is now unselected (does not have active bg-slate-800)
+    expect(breakingBtn.className).not.toContain('bg-slate-800')
+
+    // 5. Verify stale decision is cleared
+    expect(screen.queryByText('Publication permitted.')).not.toBeInTheDocument()
+    expect(screen.queryByText('Publication prevented.')).not.toBeInTheDocument()
+  })
 })

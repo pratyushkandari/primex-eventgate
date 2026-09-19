@@ -27,7 +27,7 @@ The UI is structured as an integrated release-control platform with six primary 
 ```text
  ┌────────────────────────────────────────────────────────────────────────────────────────┐
  │ HEADER: EventGate • [Review] [Contracts] [History] [DevTools] [Policies] [Settings]   │
- │         v0.1.0 • ap-south-1 • dev • API Healthy • ⌘K Search                           │
+ │         ap-south-1 • production • API ONLINE • ⌘K Search                              │
  └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -36,10 +36,10 @@ The UI is structured as an integrated release-control platform with six primary 
 1. **Review (`ReviewWorkspaceShell`):**
    * The primary product experience for reviewing proposed contract changes and gated publishing.
    * Features a 3-column workstation:
-     * **Column 1 (Contract Change):** Event and version selectors, environment selector (`production`, `staging`, `development`), and line-numbered JSON payload code editor with syntax diagnostics.
+     * **Column 1 (Contract Change):** Event and version selectors, environment selector (`production`, `staging`, `development`), and line-numbered JSON payload code editor with syntax diagnostics. Manual payload modifications automatically unselect preset chips and clear stale analysis.
      * **Column 2 (Release Decision):** Authoritative policy decision hero (`ALLOW`, `REVIEW`, `BLOCK`), impact breakdown, severity badge, and single-click gated publish button.
      * **Column 3 (Downstream Consumers):** Consumer impact matrix with status badges (`SAFE`, `BREAK`, `RISK`), segmented filter tabs, and click-to-open drawer deep dive.
-   * **Interactive Dependency Topology:** Node graph connecting Producer $\to$ EventGate $\to$ Consumers.
+   * **Interactive Dependency Topology:** Node graph connecting Producer $\to$ EventGate $\to$ Consumers with visual muting for unaffected consumers on breaking changes.
    * **Schema Diff & Compatibility Findings:** PR-style diff highlighting added, removed, and type changes with bidirectional cross-linking to affected consumers.
    * **Correlated Publication Evidence:** Real event IDs, EventBridge IDs, and CloudWatch request correlation.
 
@@ -52,21 +52,37 @@ The UI is structured as an integrated release-control platform with six primary 
 3. **History (`ReleaseHistoryView`):**
    * Authoritative audit trail of evaluated and published changes.
    * Correlated 1-to-1: an analysis request produces a release record; publishing updates that exact record.
+   * Explicit Metric Semantics:
+     * **Evaluations:** All recorded decisions.
+     * **Published:** Successful transport.
+     * **Blocked:** Publication prevented.
+     * **Review:** Publication held.
    * Multi-dimensional filtering: dedicated Event Type, Environment (`development`, `staging`, `production`), and Decision (`ALLOW`, `REVIEW`, `BLOCK`) dropdown filters, generic text search, and single-click "Clear filters" action.
+   * Transport Status Distinction in Audit Drawer: explicitly distinguishes `Published to EventBridge` from `Evaluation only — not published` or `Prevented before EventBridge`.
    * Report Export: Copy Markdown summary or download complete Markdown / JSON audit reports for compliance.
 
 4. **Developer Tools (`DeveloperToolsView`):**
-   * **Contract Test Runner:** Interactive assertion testing tool executing real backend analysis to verify expected decisions (`PASS` / `FAIL`).
+   * **Authoritative State Synchronization:** Selecting a scenario preset (`v1 → v2 SAFE`, `v1 → v3 BREAK`, `v1 → v4 RISK`) atomically synchronizes event type, versions, and suggested decision while immediately clearing any stale execution results.
+   * **Execution Snapshot Trace:** Outcome banner displays a compact execution trace (`Executed: OrderPlaced · v1 → v3 · production`) derived directly from the exact request snapshot sent at execution time.
+   * **Manual Expectation Controls:** Supports manual expected decision override and single-click reset to suggested scenario expectation.
    * **CLI Command Generator:** Generates exact `eventgate check` commands with copy-to-clipboard affordance.
    * **CI Integration Guide:** Ready-to-copy GitHub Actions release gate configuration.
 
 5. **Policies (`PoliciesView`):**
    * Interactive 3x3 Environment Release Policy Matrix table across `production`, `staging`, and `development`.
+   * Decision Pipeline Architecture: Stage 1 Compatibility $\to$ Stage 2 Severity $\to$ Stage 3 Release Policy $\to$ Final Decision.
    * Live Cedar policy language code viewer displaying active Cedar policy statements with syntax-highlighted monospace styling.
 
 6. **Settings (`SettingsView`):**
    * Explicitly labeled **RUNTIME CONFIGURATION** (zero fake telemetry).
-   * Displays authoritative active runtime state: Environment, Storage Backend, Event Publisher, AWS Region, Event Bus, Active Policy Engine, and Contracts Path.
+   * Grouped into logical sections:
+     * **RELEASE CONTEXT:** Target Environment (`production` / `staging` / `development`).
+     * **RUNTIME:** Runtime Infrastructure Stack (`primex-eventgate-dev`) and AWS Region (`ap-south-1`).
+     * **STORAGE:** Storage Backend (`Amazon DynamoDB`) and backend type (`dynamodb`).
+     * **TRANSPORT:** Event Publisher (`Amazon EventBridge`) and Bus Name (`primex-eventgate-dev-bus`).
+     * **POLICY:** Release Policy Engine (`Standard Deterministic Engine`).
+     * **DEVELOPER:** Resolved Contracts Repository Directory.
+   * Preserves the deliberate distinction between Target Environment and Runtime Infrastructure Stack.
 
 ---
 
@@ -98,9 +114,9 @@ The UI is structured as an integrated release-control platform with six primary 
 ## 4. Key Component Deep Dives
 
 ### 1. Header with Command Palette & Status (`Header`)
-* **Product Identity:** Displays version `v0.1.0` and purpose *"Event compatibility and release gating"*.
+* **Product Identity:** Displays custom geometric EventGate SVG brand mark and authoritative purpose *"Event compatibility and release gating"* (no redundant version badges).
 * **Command Bar Affordance:** Center trigger button with `⌘K` badge for keyboard users.
-* **Technical Badges:** Real AWS runtime context: region (`ap-south-1`), environment (`dev`).
+* **Technical Badges:** Real AWS runtime context: region (`ap-south-1`), interactive environment selector (`production` / `staging` / `development`).
 * **Live Health Pulse:** Live backend health indicator with pulse, last verified timestamp, and retry button on connection failure.
 * **Reference & Shortcuts Trigger:** Help modal toggle with full rule matrix and shortcut cheatsheet.
 

@@ -3,7 +3,7 @@ import { Badge } from '@/components/ui/Badge'
 import { GitCompare } from 'lucide-react'
 
 interface ScenarioSelectorProps {
-  selectedScenario: DemoScenario['id']
+  selectedScenario: DemoScenario['id'] | null
   onSelectScenario: (scenario: DemoScenario) => void
   disabled?: boolean
 }

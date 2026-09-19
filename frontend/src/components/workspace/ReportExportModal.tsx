@@ -95,15 +95,15 @@ export const ReportExportModal: React.FC<ReportExportModalProps> = ({
           <div className="flex items-center gap-2.5">
             <FileText className="h-5 w-5 text-indigo-400" />
             <div>
-              <h2 className="text-sm font-semibold text-neutral-100">Export Release Review Report</h2>
+              <h2 className="text-sm font-semibold text-neutral-100">Export Release Review</h2>
               <p className="text-xs text-neutral-400 mt-0.5">
-                Generate deterministic audit evidence artifacts for PRs, CI, or compliance records.
+                Generate audit evidence for PRs, CI, or compliance records.
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
+            className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100 cursor-pointer"
             aria-label="Close Export Modal"
           >
             <X className="h-5 w-5" />
@@ -113,15 +113,19 @@ export const ReportExportModal: React.FC<ReportExportModalProps> = ({
         {/* Overview Box */}
         <div className="my-5 rounded border border-neutral-800 bg-neutral-950/60 p-4 space-y-2 text-xs">
           <div className="flex justify-between">
-            <span className="text-neutral-500">Event Target:</span>
+            <span className="text-neutral-500">Event:</span>
             <span className="font-semibold text-neutral-200">{analysis.eventType}</span>
           </div>
           <div className="flex justify-between font-mono">
-            <span className="text-neutral-500">Version Transition:</span>
+            <span className="text-neutral-500">Transition:</span>
             <span className="text-neutral-200">v{analysis.currentVersion} → v{analysis.proposedVersion}</span>
           </div>
+          <div className="flex justify-between font-mono">
+            <span className="text-neutral-500">Environment:</span>
+            <span className="text-neutral-200 uppercase">{analysis.environment || 'production'}</span>
+          </div>
           <div className="flex justify-between items-center">
-            <span className="text-neutral-500">Gate Decision:</span>
+            <span className="text-neutral-500">Decision:</span>
             <span
               className={`inline-flex items-center gap-1 font-bold rounded px-1.5 py-0.5 text-[10px] ${
                 analysis.decision === 'ALLOW'
@@ -148,28 +152,28 @@ export const ReportExportModal: React.FC<ReportExportModalProps> = ({
           <button
             onClick={handleCopyMarkdown}
             disabled={isGenerating}
-            className="w-full flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-indigo-500 transition-colors disabled:opacity-50"
+            className="w-full flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-indigo-500 transition-colors disabled:opacity-50 cursor-pointer shadow-sm"
           >
             {copied ? <Check className="h-4 w-4 text-emerald-300" /> : <Copy className="h-4 w-4" />}
-            <span>{copied ? 'Markdown Copied!' : 'Copy Markdown Summary for PR / Issue'}</span>
+            <span>{copied ? 'Markdown Copied!' : 'Copy Markdown Summary'}</span>
           </button>
 
           <div className="grid grid-cols-2 gap-2.5">
             <button
               onClick={() => handleDownload('markdown')}
               disabled={isGenerating}
-              className="flex items-center justify-center gap-2 rounded-lg border border-neutral-700 bg-neutral-800 px-4 py-2 text-xs font-medium text-neutral-200 hover:bg-neutral-700 transition-colors disabled:opacity-50"
+              className="flex items-center justify-center gap-2 rounded-lg border border-neutral-700 bg-neutral-800 px-4 py-2 text-xs font-medium text-neutral-200 hover:bg-neutral-700 transition-colors disabled:opacity-50 cursor-pointer"
             >
               <Download className="h-3.5 w-3.5" />
-              <span>Download .md Report</span>
+              <span>Download Markdown</span>
             </button>
             <button
               onClick={() => handleDownload('json')}
               disabled={isGenerating}
-              className="flex items-center justify-center gap-2 rounded-lg border border-neutral-700 bg-neutral-800 px-4 py-2 text-xs font-medium text-neutral-200 hover:bg-neutral-700 transition-colors disabled:opacity-50"
+              className="flex items-center justify-center gap-2 rounded-lg border border-neutral-700 bg-neutral-800 px-4 py-2 text-xs font-medium text-neutral-200 hover:bg-neutral-700 transition-colors disabled:opacity-50 cursor-pointer"
             >
               <Download className="h-3.5 w-3.5" />
-              <span>Download .json Record</span>
+              <span>Download JSON</span>
             </button>
           </div>
         </div>

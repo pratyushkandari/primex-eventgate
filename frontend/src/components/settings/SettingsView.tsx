@@ -59,60 +59,6 @@ export function SettingsView() {
     ? 'staging'
     : 'prod'
 
-  const items = [
-    {
-      label: 'Target Environment',
-      value: config.environment,
-      detail: 'Release policy evaluation target (production / staging / development)',
-      icon: Server,
-      badge: 'Release Target',
-    },
-    {
-      label: 'Runtime Infrastructure Stack',
-      value: `primex-eventgate-${stackStage}`,
-      detail: `AWS CloudFormation deployment tier (${stackStage}) hosting EventGate runtime`,
-      icon: Cloud,
-      badge: `AWS Stack: ${stackStage}`,
-    },
-    {
-      label: 'Storage Backend',
-      value: config.storageBackend,
-      detail: `Backend Type: ${config.storageBackendType}`,
-      icon: Database,
-      badge: config.storageBackendType === 'dynamodb' ? 'AWS Managed' : 'Local Parity',
-    },
-    {
-      label: 'Event Publisher',
-      value: config.publisherBackend,
-      detail: `Publisher Type: ${config.publisherBackendType}`,
-      icon: Radio,
-      badge:
-        config.publisherBackendType === 'eventbridge'
-          ? 'Production Bus'
-          : 'Zero-Cloud Local',
-    },
-    {
-      label: 'AWS Region',
-      value: config.awsRegion,
-      detail: 'Cloud execution boundary for DynamoDB and EventBridge',
-      icon: Cloud,
-      badge: 'ap-south-1',
-    },
-    {
-      label: 'EventBridge Bus Name',
-      value: config.eventBridgeBus,
-      detail: 'Target custom event bus for verified schema ingest',
-      icon: Radio,
-      badge: 'Target Bus',
-    },
-    {
-      label: 'Active Release Policy Engine',
-      value: config.policyEngine,
-      detail: `Provider ID: ${config.policyEngineType}`,
-      icon: Cpu,
-      badge: config.policyEngineType === 'cedar' ? 'Cedar Engine' : 'Deterministic',
-    },
-  ]
 
   return (
     <div className="space-y-6 pb-12 font-mono">
@@ -162,50 +108,122 @@ export function SettingsView() {
         </Badge>
       </div>
 
-      {/* Runtime Configuration Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {items.map((item) => {
-          const Icon = item.icon
-          return (
-            <div
-              key={item.label}
-              className="bg-[#0b0f19] border border-slate-800 rounded-lg p-4 space-y-3"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2 text-slate-400">
-                  <Icon className="h-4 w-4 text-blue-400" />
-                  <span className="text-xs font-semibold">{item.label}</span>
-                </div>
-                <span className="text-[10px] px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-400">
-                  {item.badge}
-                </span>
-              </div>
-
+      {/* Runtime Configuration Grouped Sections */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        {/* RELEASE CONTEXT */}
+        <section className="bg-[#0b0f19] border border-slate-800/90 rounded-lg p-4 space-y-3">
+          <div className="flex items-center space-x-2 text-slate-400 border-b border-slate-800/80 pb-2">
+            <Server className="h-4 w-4 text-blue-400" />
+            <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Release Context</span>
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
               <div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-bold text-slate-100 block">
-                    {item.value}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => handleCopy(item.value, item.label)}
-                    className="text-slate-500 hover:text-slate-300 transition-colors p-1 cursor-pointer"
-                    title={`Copy ${item.label}`}
-                  >
-                    {copiedKey === item.label ? (
-                      <Check className="h-3 w-3 text-emerald-400" />
-                    ) : (
-                      <Copy className="h-3 w-3" />
-                    )}
-                  </button>
-                </div>
-                <span className="text-xs text-slate-400 mt-1 block">
-                  {item.detail}
-                </span>
+                <span className="text-[11px] text-slate-400 block">Target Environment</span>
+                <span className="text-sm font-bold text-slate-100">{config.environment}</span>
               </div>
+              <Badge variant={config.environment === 'production' ? 'safe' : config.environment === 'staging' ? 'review' : 'default'} size="sm">
+                Release Target
+              </Badge>
             </div>
-          )
-        })}
+            <p className="text-[11px] text-slate-500">Release policy evaluation target (production / staging / development)</p>
+          </div>
+        </section>
+
+        {/* RUNTIME */}
+        <section className="bg-[#0b0f19] border border-slate-800/90 rounded-lg p-4 space-y-3">
+          <div className="flex items-center space-x-2 text-slate-400 border-b border-slate-800/80 pb-2">
+            <Cloud className="h-4 w-4 text-sky-400" />
+            <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Runtime</span>
+          </div>
+          <div className="space-y-3">
+            <div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] text-slate-400 block">Runtime Infrastructure Stack</span>
+                  <span className="text-sm font-bold text-slate-100">{`primex-eventgate-${stackStage}`}</span>
+                </div>
+                <Badge variant="neutral" size="sm">AWS Stack: {stackStage}</Badge>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">CloudFormation deployment tier hosting EventGate runtime</p>
+            </div>
+            <div className="border-t border-slate-800/60 pt-2 flex items-center justify-between">
+              <div>
+                <span className="text-[11px] text-slate-400 block">AWS Region</span>
+                <span className="text-sm font-bold text-slate-100">{config.awsRegion}</span>
+              </div>
+              <span className="text-[10px] px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-400 font-mono">
+                {config.awsRegion}
+              </span>
+            </div>
+          </div>
+        </section>
+
+        {/* STORAGE */}
+        <section className="bg-[#0b0f19] border border-slate-800/90 rounded-lg p-4 space-y-3">
+          <div className="flex items-center space-x-2 text-slate-400 border-b border-slate-800/80 pb-2">
+            <Database className="h-4 w-4 text-emerald-400" />
+            <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Storage</span>
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-[11px] text-slate-400 block">Storage Backend</span>
+                <span className="text-sm font-bold text-slate-100">{config.storageBackend}</span>
+              </div>
+              <Badge variant="neutral" size="sm">
+                {config.storageBackendType === 'dynamodb' ? 'AWS Managed' : 'Local Parity'}
+              </Badge>
+            </div>
+            <p className="text-[11px] text-slate-500">Backend Type: {config.storageBackendType}</p>
+          </div>
+        </section>
+
+        {/* TRANSPORT */}
+        <section className="bg-[#0b0f19] border border-slate-800/90 rounded-lg p-4 space-y-3">
+          <div className="flex items-center space-x-2 text-slate-400 border-b border-slate-800/80 pb-2">
+            <Radio className="h-4 w-4 text-indigo-400" />
+            <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Transport</span>
+          </div>
+          <div className="space-y-3">
+            <div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] text-slate-400 block">Event Publisher</span>
+                  <span className="text-sm font-bold text-slate-100">{config.publisherBackend}</span>
+                </div>
+                <Badge variant="neutral" size="sm">
+                  {config.publisherBackendType === 'eventbridge' ? 'Production Bus' : 'Zero-Cloud Local'}
+                </Badge>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">Publisher Type: {config.publisherBackendType}</p>
+            </div>
+            <div className="border-t border-slate-800/60 pt-2">
+              <span className="text-[11px] text-slate-400 block">EventBridge Bus Name</span>
+              <span className="text-sm font-bold text-slate-100 block truncate" title={config.eventBridgeBus}>
+                {config.eventBridgeBus}
+              </span>
+            </div>
+          </div>
+        </section>
+
+        {/* POLICY */}
+        <section className="bg-[#0b0f19] border border-slate-800/90 rounded-lg p-4 space-y-3 md:col-span-2">
+          <div className="flex items-center space-x-2 text-slate-400 border-b border-slate-800/80 pb-2">
+            <Cpu className="h-4 w-4 text-purple-400" />
+            <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Policy</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-[11px] text-slate-400 block">Active Release Policy Engine</span>
+              <span className="text-sm font-bold text-slate-100">{config.policyEngine}</span>
+              <p className="text-[11px] text-slate-500 mt-0.5">Provider ID: {config.policyEngineType}</p>
+            </div>
+            <Badge variant="neutral" size="sm">
+              {config.policyEngineType === 'cedar' ? 'Cedar Engine' : 'Deterministic Engine'}
+            </Badge>
+          </div>
+        </section>
       </div>
 
       {/* Contracts Directory Detail */}

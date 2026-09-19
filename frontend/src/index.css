@@ -38,3 +38,26 @@ code, pre, kbd, samp {
 ::-webkit-scrollbar-thumb:hover {
   background: #334155;
 }
+
+/* Subtle elevation and edge lighting for production engineering console */
+.elevation-card {
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.35), 0 1px 2px -1px rgba(0, 0, 0, 0.35);
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.elevation-card:hover {
+  box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.45);
+}
+
+/* Accessibility: Respect user reduced-motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+

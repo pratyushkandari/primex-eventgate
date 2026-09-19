@@ -70,4 +70,45 @@ describe('CommandPalette component', () => {
 
     expect(handleClose).toHaveBeenCalledTimes(1)
   })
+
+  it('matches commands by keyword', () => {
+    const commandsWithKeywords: CommandItem[] = [
+      {
+        id: 'cmd-scenario-breaking',
+        title: 'Scenario: Breaking Change',
+        description: 'Type mutation',
+        category: 'Scenarios',
+        keywords: ['break', 'block'],
+        icon: Sparkles,
+        onSelect: vi.fn(),
+      },
+      {
+        id: 'cmd-filter-affected',
+        title: 'Filter: Affected Consumers',
+        description: 'Show impacted',
+        category: 'Filters',
+        keywords: ['break', 'impacted'],
+        icon: Sparkles,
+        onSelect: vi.fn(),
+      },
+      {
+        id: 'cmd-safe',
+        title: 'Scenario: Safe Addition',
+        description: 'Safe',
+        category: 'Scenarios',
+        keywords: ['safe'],
+        icon: Sparkles,
+        onSelect: vi.fn(),
+      },
+    ]
+
+    render(<CommandPalette isOpen={true} onClose={vi.fn()} commands={commandsWithKeywords} />)
+
+    const input = screen.getByPlaceholderText(/Type a command/i)
+    fireEvent.change(input, { target: { value: 'break' } })
+
+    expect(screen.getByText('Scenario: Breaking Change')).toBeInTheDocument()
+    expect(screen.getByText('Filter: Affected Consumers')).toBeInTheDocument()
+    expect(screen.queryByText('Scenario: Safe Addition')).not.toBeInTheDocument()
+  })
 })

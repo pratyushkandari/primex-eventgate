@@ -62,7 +62,7 @@ interface SessionReviewItem {
 
 export function WorkspaceShell() {
   const [activeNavTab, setActiveNavTab] = React.useState<NavTab>('review')
-  const [selectedScenarioId, setSelectedScenarioId] = React.useState<DemoScenario['id']>('safe')
+  const [selectedScenarioId, setSelectedScenarioId] = React.useState<DemoScenario['id'] | null>('safe')
   const [eventType] = React.useState<string>('OrderPlaced')
   const [currentVersion] = React.useState<number>(1)
   const [proposedVersion, setProposedVersion] = React.useState<number>(2)
@@ -128,6 +128,7 @@ export function WorkspaceShell() {
   // Proposed version selector change
   const handleProposedVersionChange = React.useCallback((newVersion: number) => {
     setProposedVersion(newVersion)
+    setSelectedScenarioId(null)
     setAnalysis(null)
     setAnalysisError(null)
     setPublishResult(null)
@@ -148,15 +149,16 @@ export function WorkspaceShell() {
   // Payload text change with local JSON validation
   const handlePayloadTextChange = React.useCallback((text: string) => {
     setPayloadText(text)
+    setSelectedScenarioId(null)
+    setAnalysis(null)
+    setAnalysisError(null)
+    setPublishResult(null)
+    setPublishError(null)
     try {
       JSON.parse(text)
       setJsonError(null)
     } catch (err) {
       setJsonError(err instanceof Error ? err.message : 'Invalid JSON syntax')
-      setAnalysis(null)
-      setAnalysisError(null)
-      setPublishResult(null)
-      setPublishError(null)
     }
   }, [])
 
@@ -175,11 +177,19 @@ export function WorkspaceShell() {
 
   // Reset payload to current scenario default
   const handleResetPayload = React.useCallback(() => {
-    const scenario = DEMO_SCENARIOS[selectedScenarioId]
+    const fallbackId: DemoScenario['id'] =
+      proposedVersion === 3 ? 'breaking' : proposedVersion === 4 ? 'risk' : 'safe'
+    const scenarioId = selectedScenarioId ?? fallbackId
+    const scenario = DEMO_SCENARIOS[scenarioId]
+    setSelectedScenarioId(scenarioId)
     setPayloadText(JSON.stringify(scenario.samplePayload, null, 2))
     setJsonError(null)
+    setAnalysis(null)
+    setAnalysisError(null)
+    setPublishResult(null)
+    setPublishError(null)
     showToast('Payload Reset', `Reset to ${scenario.name} default`, 'info')
-  }, [selectedScenarioId, showToast])
+  }, [selectedScenarioId, proposedVersion, showToast])
 
   // Compatibility analysis trigger
   const handleAnalyze = React.useCallback(async () => {
@@ -424,6 +434,7 @@ export function WorkspaceShell() {
         title: 'Scenario: Safe Addition (v2)',
         description: 'Adds optional loyaltyTier field - backward compatible (ALLOW)',
         category: 'Scenarios',
+        keywords: ['safe', 'allow', 'v2', 'addition'],
         icon: Sparkles,
         onSelect: () => handleSelectScenario(DEMO_SCENARIOS.safe),
       },
@@ -432,6 +443,7 @@ export function WorkspaceShell() {
         title: 'Scenario: Breaking Change (v3)',
         description: 'Mutates shippingMethod from string to object - breaking (BLOCK)',
         category: 'Scenarios',
+        keywords: ['break', 'breaking', 'block', 'v3', 'incompatible'],
         icon: Sparkles,
         onSelect: () => handleSelectScenario(DEMO_SCENARIOS.breaking),
       },
@@ -440,6 +452,7 @@ export function WorkspaceShell() {
         title: 'Scenario: Risky Removal (v4)',
         description: 'Removes couponCode field used downstream by analytics (REVIEW)',
         category: 'Scenarios',
+        keywords: ['risk', 'review', 'v4', 'removal', 'warn'],
         icon: Sparkles,
         onSelect: () => handleSelectScenario(DEMO_SCENARIOS.risk),
       },
@@ -448,6 +461,7 @@ export function WorkspaceShell() {
         title: 'Filter: All Consumers',
         description: 'Display all registered downstream consumers',
         category: 'Filters',
+        keywords: ['consumers', 'all', 'subscribers'],
         icon: Users,
         onSelect: () => setConsumerFilter('ALL'),
       },
@@ -456,6 +470,7 @@ export function WorkspaceShell() {
         title: 'Filter: Affected Consumers',
         description: 'Show only breaking or risky consumers',
         category: 'Filters',
+        keywords: ['break', 'affected', 'breaking', 'risk', 'impacted'],
         icon: Users,
         onSelect: () => setConsumerFilter('AFFECTED'),
       },
@@ -464,6 +479,7 @@ export function WorkspaceShell() {
         title: 'Filter: Safe Consumers',
         description: 'Show only fully compatible consumers',
         category: 'Filters',
+        keywords: ['safe', 'allow', 'compatible'],
         icon: Users,
         onSelect: () => setConsumerFilter('SAFE'),
       },

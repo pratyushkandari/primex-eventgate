@@ -34,6 +34,14 @@ function getSuggestedDecision(
   return 'ALLOW'
 }
 
+interface ExecutedRequestSnapshot {
+  eventType: string
+  currentVersion: number
+  proposedVersion: number
+  environment: Environment
+  expectedDecision: Decision
+}
+
 export function DeveloperToolsView({ onOpenReviewScenario }: DeveloperToolsViewProps) {
   // Test runner state
   const [eventType, setEventType] = React.useState('OrderPlaced')
@@ -49,12 +57,26 @@ export function DeveloperToolsView({ onOpenReviewScenario }: DeveloperToolsViewP
   const isManualOverride = manualOverrideDecision !== null
   const expectedDecision = manualOverrideDecision ?? suggestedDecision
 
+  // Execution state
+  const [isRunning, setIsRunning] = React.useState(false)
+  const [testResult, setTestResult] = React.useState<AnalysisResponse | null>(null)
+  const [testError, setTestError] = React.useState<string | null>(null)
+  const [lastExecutedRequest, setLastExecutedRequest] = React.useState<ExecutedRequestSnapshot | null>(null)
+
+  const clearStaleExecution = () => {
+    setTestResult(null)
+    setTestError(null)
+    setLastExecutedRequest(null)
+  }
+
   const handleExpectedDecisionChange = (decision: Decision) => {
     setManualOverrideDecision(decision)
+    clearStaleExecution()
   }
 
   const handleResetToSuggested = () => {
     setManualOverrideDecision(null)
+    clearStaleExecution()
   }
 
   const handleApplyPreset = (event: string, cur: number, prop: number) => {
@@ -62,12 +84,28 @@ export function DeveloperToolsView({ onOpenReviewScenario }: DeveloperToolsViewP
     setCurrentVersion(cur)
     setProposedVersion(prop)
     setManualOverrideDecision(null)
+    clearStaleExecution()
   }
 
-  // Execution state
-  const [isRunning, setIsRunning] = React.useState(false)
-  const [testResult, setTestResult] = React.useState<AnalysisResponse | null>(null)
-  const [testError, setTestError] = React.useState<string | null>(null)
+  const handleEventTypeChange = (newType: string) => {
+    setEventType(newType)
+    clearStaleExecution()
+  }
+
+  const handleEnvironmentChange = (newEnv: Environment) => {
+    setEnvironment(newEnv)
+    clearStaleExecution()
+  }
+
+  const handleCurrentVersionChange = (newVer: number) => {
+    setCurrentVersion(newVer)
+    clearStaleExecution()
+  }
+
+  const handleProposedVersionChange = (newVer: number) => {
+    setProposedVersion(newVer)
+    clearStaleExecution()
+  }
 
   const consumerResults = React.useMemo(() => {
     if (!testResult) return []
@@ -85,27 +123,57 @@ export function DeveloperToolsView({ onOpenReviewScenario }: DeveloperToolsViewP
   }, [testResult])
   const [copiedIndex, setCopiedIndex] = React.useState<number | null>(null)
 
-  const handleRunAssertion = async () => {
+  const handleRunAssertion = async (overrideParams?: {
+    eventType?: string
+    currentVersion?: number
+    proposedVersion?: number
+    environment?: Environment
+    expectedDecision?: Decision
+  }) => {
     setIsRunning(true)
     setTestError(null)
-    setTestResult(null)
+
+    const targetEvent = overrideParams?.eventType ?? eventType
+    const targetCurrent = overrideParams?.currentVersion ?? currentVersion
+    const targetProposed = overrideParams?.proposedVersion ?? proposedVersion
+    const targetEnv = overrideParams?.environment ?? environment
+    const targetExpected = overrideParams?.expectedDecision ?? (
+      isManualOverride
+        ? expectedDecision
+        : getSuggestedDecision(targetEvent, targetCurrent, targetProposed, targetEnv)
+    )
+
+    const requestSnapshot: ExecutedRequestSnapshot = {
+      eventType: targetEvent,
+      currentVersion: targetCurrent,
+      proposedVersion: targetProposed,
+      environment: targetEnv,
+      expectedDecision: targetExpected,
+    }
 
     try {
       const res = await eventGateApi.analyzeCompatibility({
-        eventType,
-        currentVersion,
-        proposedVersion,
-        environment,
+        eventType: targetEvent,
+        currentVersion: targetCurrent,
+        proposedVersion: targetProposed,
+        environment: targetEnv,
       })
+      setLastExecutedRequest(requestSnapshot)
       setTestResult(res)
     } catch (err) {
       setTestError(err instanceof Error ? err.message : 'Execution failed')
+      setTestResult(null)
+      setLastExecutedRequest(null)
     } finally {
       setIsRunning(false)
     }
   }
 
-  const isPassed = testResult && testResult.decision === expectedDecision
+  const isPassed = Boolean(
+    testResult &&
+    lastExecutedRequest &&
+    testResult.decision === lastExecutedRequest.expectedDecision
+  )
 
   const copyToClipboard = (text: string, index: number) => {
     navigator.clipboard.writeText(text)
@@ -208,7 +276,7 @@ export function DeveloperToolsView({ onOpenReviewScenario }: DeveloperToolsViewP
                 <label className="block text-slate-400 mb-1">Event Type</label>
                 <select
                   value={eventType}
-                  onChange={(e) => setEventType(e.target.value)}
+                  onChange={(e) => handleEventTypeChange(e.target.value)}
                   className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 focus:outline-hidden focus:border-blue-500"
                 >
                   <option value="OrderPlaced">OrderPlaced</option>
@@ -221,7 +289,7 @@ export function DeveloperToolsView({ onOpenReviewScenario }: DeveloperToolsViewP
                 <label className="block text-slate-400 mb-1">Environment</label>
                 <select
                   value={environment}
-                  onChange={(e) => setEnvironment(e.target.value as Environment)}
+                  onChange={(e) => handleEnvironmentChange(e.target.value as Environment)}
                   className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 focus:outline-hidden focus:border-blue-500"
                 >
                   <option value="production">production</option>
@@ -238,7 +306,7 @@ export function DeveloperToolsView({ onOpenReviewScenario }: DeveloperToolsViewP
                     min={1}
                     max={10}
                     value={currentVersion}
-                    onChange={(e) => setCurrentVersion(Number(e.target.value))}
+                    onChange={(e) => handleCurrentVersionChange(Number(e.target.value))}
                     className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 focus:outline-hidden focus:border-blue-500"
                   />
                 </div>
@@ -249,7 +317,7 @@ export function DeveloperToolsView({ onOpenReviewScenario }: DeveloperToolsViewP
                     min={1}
                     max={10}
                     value={proposedVersion}
-                    onChange={(e) => setProposedVersion(Number(e.target.value))}
+                    onChange={(e) => handleProposedVersionChange(Number(e.target.value))}
                     className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 focus:outline-hidden focus:border-blue-500"
                   />
                 </div>
@@ -286,7 +354,7 @@ export function DeveloperToolsView({ onOpenReviewScenario }: DeveloperToolsViewP
             </div>
 
             <Button
-              onClick={handleRunAssertion}
+              onClick={() => handleRunAssertion()}
               disabled={isRunning}
               variant="primary"
               className="w-full justify-center"
@@ -313,7 +381,7 @@ export function DeveloperToolsView({ onOpenReviewScenario }: DeveloperToolsViewP
           )}
 
           {/* Assertion Result Outcome Banner */}
-          {testResult && (
+          {testResult && lastExecutedRequest && (
             <div
               className={`border rounded-lg p-4 space-y-3 font-mono ${
                 isPassed
@@ -321,26 +389,34 @@ export function DeveloperToolsView({ onOpenReviewScenario }: DeveloperToolsViewP
                   : 'bg-rose-950/20 border-rose-500/40 text-rose-300'
               }`}
             >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2.5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-start space-x-2.5">
                   {isPassed ? (
-                    <CheckCircle2 className="h-5 w-5 text-emerald-400 flex-shrink-0" />
+                    <CheckCircle2 className="h-5 w-5 text-emerald-400 flex-shrink-0 mt-0.5" />
                   ) : (
-                    <XCircle className="h-5 w-5 text-rose-400 flex-shrink-0" />
+                    <XCircle className="h-5 w-5 text-rose-400 flex-shrink-0 mt-0.5" />
                   )}
                   <div>
-                    <span className="text-sm font-bold tracking-wider">
-                      {isPassed ? 'ASSERTION PASSED' : 'ASSERTION FAILED'}
-                    </span>
-                    <p className="text-xs text-slate-400 mt-0.5">
+                    <div className="flex items-center space-x-2 flex-wrap">
+                      <span className="text-sm font-bold tracking-wider">
+                        {isPassed ? 'ASSERTION PASSED' : 'ASSERTION FAILED'}
+                      </span>
+                    </div>
+                    <div className="text-[11px] font-mono text-slate-300 mt-1">
+                      <span className="text-slate-500 font-normal mr-1">Executed:</span>
+                      <span className="font-semibold text-slate-200">
+                        {lastExecutedRequest.eventType} · v{lastExecutedRequest.currentVersion} → v{lastExecutedRequest.proposedVersion} · {lastExecutedRequest.environment}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-1">
                       {isPassed
-                        ? `Expected ${expectedDecision}, got ${testResult.decision}. Gate permitted transition according to policy.`
-                        : `Expected ${expectedDecision}, but actual gate decision evaluated to ${testResult.decision}.`}
+                        ? `Expected ${lastExecutedRequest.expectedDecision}, got ${testResult.decision}. Gate permitted transition according to policy.`
+                        : `Expected ${lastExecutedRequest.expectedDecision}, but actual gate decision evaluated to ${testResult.decision}.`}
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-2 flex-shrink-0">
                   <Badge
                     variant={
                       testResult.decision.toLowerCase() as 'allow' | 'block' | 'review'
@@ -352,7 +428,11 @@ export function DeveloperToolsView({ onOpenReviewScenario }: DeveloperToolsViewP
                     <button
                       type="button"
                       onClick={() =>
-                        onOpenReviewScenario(eventType, currentVersion, proposedVersion)
+                        onOpenReviewScenario(
+                          lastExecutedRequest.eventType,
+                          lastExecutedRequest.currentVersion,
+                          lastExecutedRequest.proposedVersion
+                        )
                       }
                       className="text-xs text-blue-400 hover:text-blue-300 underline cursor-pointer"
                     >

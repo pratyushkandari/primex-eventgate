@@ -1,5 +1,6 @@
 import * as React from 'react'
-import { Shield, RefreshCw, Cloud, HelpCircle, Command, ChevronDown } from 'lucide-react'
+import { RefreshCw, Cloud, HelpCircle, Command, ChevronDown } from 'lucide-react'
+import { EventGateLogo } from '@/components/ui/EventGateLogo'
 import { API_CONFIG } from '@/config/env'
 import { eventGateApi } from '@/services/api'
 import type { Environment } from '@/types/api'
@@ -87,7 +88,7 @@ export function Header({
         {/* Left: Brand & Product Purpose */}
         <div className="flex items-center space-x-3">
           <div className="h-7 w-7 rounded bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400">
-            <Shield className="h-4 w-4" />
+            <EventGateLogo className="h-4 w-4 text-blue-400" />
           </div>
           <div>
             <div className="flex items-center space-x-2">

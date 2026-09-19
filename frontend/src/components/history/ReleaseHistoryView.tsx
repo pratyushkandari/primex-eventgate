@@ -251,28 +251,28 @@ export const ReleaseHistoryView: React.FC<ReleaseHistoryViewProps> = ({ onSelect
             <span className="text-[11px] font-medium text-neutral-400">Evaluations</span>
             <div className="mt-1 flex items-baseline gap-2">
               <span className="text-xl font-bold text-neutral-100">{stats.total}</span>
-              <span className="text-[11px] text-neutral-500">recorded</span>
+              <span className="text-[10px] text-neutral-500">all recorded decisions</span>
             </div>
           </div>
           <div className="rounded border border-emerald-900/30 bg-emerald-950/10 p-3">
             <span className="text-[11px] font-medium text-emerald-400">Published</span>
             <div className="mt-1 flex items-baseline gap-2">
               <span className="text-xl font-bold text-emerald-300">{stats.published}</span>
-              <span className="text-[11px] text-emerald-500/80">delivered</span>
+              <span className="text-[10px] text-emerald-500/80">successful transport</span>
             </div>
           </div>
           <div className="rounded border border-rose-900/30 bg-rose-950/10 p-3">
             <span className="text-[11px] font-medium text-rose-400">Blocked</span>
             <div className="mt-1 flex items-baseline gap-2">
               <span className="text-xl font-bold text-rose-300">{stats.blocked}</span>
-              <span className="text-[11px] text-rose-500/80">prevented</span>
+              <span className="text-[10px] text-rose-500/80">publication prevented</span>
             </div>
           </div>
           <div className="rounded border border-amber-900/30 bg-amber-950/10 p-3">
             <span className="text-[11px] font-medium text-amber-400">Review</span>
             <div className="mt-1 flex items-baseline gap-2">
               <span className="text-xl font-bold text-amber-300">{stats.review}</span>
-              <span className="text-[11px] text-amber-500/80">held</span>
+              <span className="text-[10px] text-amber-500/80">publication held</span>
             </div>
           </div>
         </div>
@@ -461,18 +461,20 @@ export const ReleaseHistoryView: React.FC<ReleaseHistoryViewProps> = ({ onSelect
                       </td>
 
                       {/* Actions */}
-                      <td className="whitespace-nowrap py-3 pl-3 pr-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
+                      <td className="whitespace-nowrap py-2.5 pl-3 pr-4 text-right">
+                        <div className="flex items-center justify-end gap-1">
                           <button
                             onClick={() => setInspectRecord(record)}
-                            className="rounded border border-neutral-800 bg-neutral-900 px-2 py-1 text-[11px] font-sans font-medium text-neutral-300 hover:border-neutral-700 hover:text-neutral-100"
+                            aria-label={`Inspect release audit for ${record.eventType} v${record.proposedVersion}`}
+                            className="inline-flex h-8 items-center justify-center rounded border border-neutral-800 bg-neutral-900 px-2.5 text-[11px] font-sans font-medium text-neutral-300 hover:border-neutral-700 hover:text-neutral-100 cursor-pointer"
                           >
                             Inspect
                           </button>
                           <button
                             onClick={() => handleCopyMarkdownSummary(record)}
-                            className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded border border-transparent hover:border-neutral-800 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 cursor-pointer"
                             title="Copy Markdown Summary"
+                            aria-label="Copy Markdown Summary"
                           >
                             {copiedId === `md-${record.recordId}` ? (
                               <Check className="h-3.5 w-3.5 text-emerald-400" />
@@ -483,8 +485,9 @@ export const ReleaseHistoryView: React.FC<ReleaseHistoryViewProps> = ({ onSelect
                           <button
                             onClick={() => handleDownloadMarkdown(record)}
                             disabled={isExporting}
-                            className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded border border-transparent hover:border-neutral-800 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 cursor-pointer disabled:opacity-40"
                             title="Download Markdown Report"
+                            aria-label="Download Markdown Report"
                           >
                             <Download className="h-3.5 w-3.5" />
                           </button>
@@ -577,15 +580,20 @@ export const ReleaseHistoryView: React.FC<ReleaseHistoryViewProps> = ({ onSelect
                   {inspectRecord.published ? (
                     <span className="flex items-center gap-1 text-emerald-400">
                       <Radio className="h-3.5 w-3.5 animate-pulse" />
-                      <span className="font-semibold">Ingested & Dispatched</span>
+                      <span className="font-semibold">Published to EventBridge</span>
                     </span>
-                  ) : inspectRecord.attemptedPublish ? (
+                  ) : inspectRecord.decision === 'BLOCK' ? (
                     <span className="flex items-center gap-1 text-rose-400">
                       <ShieldAlert className="h-3.5 w-3.5" />
-                      <span className="font-semibold">Publication Intercepted</span>
+                      <span className="font-semibold">Prevented before EventBridge</span>
+                    </span>
+                  ) : inspectRecord.decision === 'REVIEW' ? (
+                    <span className="flex items-center gap-1 text-amber-400">
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                      <span className="font-semibold">Held before EventBridge</span>
                     </span>
                   ) : (
-                    <span className="text-neutral-400">Evaluation Only (Not Published)</span>
+                    <span className="text-neutral-400 font-medium">Evaluation only — not published</span>
                   )}
                 </div>
 

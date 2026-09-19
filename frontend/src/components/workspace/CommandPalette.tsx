@@ -19,6 +19,7 @@ export interface CommandItem {
   icon: React.ComponentType<{ className?: string }>
   shortcut?: string
   disabled?: boolean
+  keywords?: string[]
   onSelect: () => void
 }
 
@@ -36,12 +37,13 @@ export function CommandPalette({ isOpen, onClose, commands }: CommandPaletteProp
 
   const filteredCommands = React.useMemo(() => {
     if (!query.trim()) return commands
-    const q = query.toLowerCase()
+    const q = query.toLowerCase().trim()
     return commands.filter(
       (c) =>
         c.title.toLowerCase().includes(q) ||
         (c.description && c.description.toLowerCase().includes(q)) ||
-        c.category.toLowerCase().includes(q)
+        c.category.toLowerCase().includes(q) ||
+        (c.keywords && c.keywords.some((k) => k.toLowerCase().includes(q)))
     )
   }, [commands, query])
 
