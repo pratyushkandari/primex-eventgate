@@ -4,7 +4,13 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { eventGateApi } from './api'
-import type { ConsumerDetail, ConsumerSummary, EventCatalogSummary, EventDetail } from '@/types/api'
+import type {
+  ConsumerDetail,
+  ConsumerSummary,
+  EventCatalogSummary,
+  EventDetail,
+  ReleaseRecord,
+} from '@/types/api'
 
 export const queryKeys = {
   health: ['health'] as const,
@@ -12,6 +18,8 @@ export const queryKeys = {
   eventDetail: (eventType: string) => ['contracts', 'events', eventType] as const,
   consumers: ['contracts', 'consumers'] as const,
   consumerDetail: (consumerId: string) => ['contracts', 'consumers', consumerId] as const,
+  history: (eventType?: string) => ['history', eventType || 'all'] as const,
+  reviewDetail: (recordId: string) => ['history', 'record', recordId] as const,
 }
 
 export function useEventCatalog() {
@@ -51,5 +59,25 @@ export function useConsumerDetail(consumerId: string | null) {
     },
     enabled: Boolean(consumerId),
     staleTime: 60_000,
+  })
+}
+
+export function useHistory(eventType?: string) {
+  return useQuery<ReleaseRecord[], Error>({
+    queryKey: queryKeys.history(eventType),
+    queryFn: () => eventGateApi.listHistory(eventType),
+    staleTime: 10_000,
+  })
+}
+
+export function useReviewDetail(recordId: string | null) {
+  return useQuery<ReleaseRecord, Error>({
+    queryKey: queryKeys.reviewDetail(recordId || ''),
+    queryFn: () => {
+      if (!recordId) throw new Error('No recordId provided')
+      return eventGateApi.getReview(recordId)
+    },
+    enabled: Boolean(recordId),
+    staleTime: 30_000,
   })
 }

@@ -1,13 +1,18 @@
 import { Badge } from '@/components/ui/Badge'
 import type { AnalysisResponse } from '@/types/api'
-import { GitPullRequest, ShieldCheck } from 'lucide-react'
+import { GitPullRequest, ShieldCheck, FileText } from 'lucide-react'
 
 interface ReviewContextBarProps {
   analysis: AnalysisResponse | null
   onFilterAffected?: () => void
+  onExportReport?: () => void
 }
 
-export function ReviewContextBar({ analysis, onFilterAffected }: ReviewContextBarProps) {
+export function ReviewContextBar({
+  analysis,
+  onFilterAffected,
+  onExportReport,
+}: ReviewContextBarProps) {
   if (!analysis) {
     return (
       <div className="bg-[#0c121e] border border-slate-800/90 rounded-lg p-2.5 px-4 flex items-center justify-between text-xs font-mono text-slate-400">
@@ -135,6 +140,17 @@ export function ReviewContextBar({ analysis, onFilterAffected }: ReviewContextBa
             </span>
           )}
           <span className="text-slate-500">| {totalCount} evaluated</span>
+          {onExportReport && (
+            <button
+              type="button"
+              onClick={onExportReport}
+              className="ml-2 flex items-center space-x-1 text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-700 px-2 py-0.5 rounded border border-slate-700 transition-colors cursor-pointer"
+              title="Export report in Markdown or JSON format"
+            >
+              <FileText className="h-3 w-3 text-blue-400" />
+              <span>Export Report</span>
+            </button>
+          )}
         </div>
       </div>
     </div>

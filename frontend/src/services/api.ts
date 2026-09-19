@@ -15,6 +15,8 @@ import {
   type HealthResponse,
   type PublishRequest,
   type PublishResponse,
+  type ReleaseRecord,
+  type ReportExportResponse,
 } from '@/types/api'
 
 async function request<T>(
@@ -140,6 +142,46 @@ export const eventGateApi = {
   async getConsumerDetail(consumerId: string): Promise<ConsumerDetail> {
     return request<ConsumerDetail>(`/api/v1/contracts/consumers/${encodeURIComponent(consumerId)}`, {
       method: 'GET',
+    })
+  },
+
+  /**
+   * Fetch persistent release review history.
+   */
+  async listHistory(eventType?: string, limit = 50): Promise<ReleaseRecord[]> {
+    const params = new URLSearchParams()
+    if (eventType) params.set('eventType', eventType)
+    if (limit) params.set('limit', String(limit))
+    const qs = params.toString() ? `?${params.toString()}` : ''
+    return request<ReleaseRecord[]>(`/api/v1/history${qs}`, { method: 'GET' })
+  },
+
+  /**
+   * Fetch single release review record by record ID or analysis ID.
+   */
+  async getReview(recordId: string): Promise<ReleaseRecord> {
+    return request<ReleaseRecord>(`/api/v1/history/${encodeURIComponent(recordId)}`, {
+      method: 'GET',
+    })
+  },
+
+  /**
+   * Export release report for a historical record.
+   */
+  async getReport(recordId: string, format = 'markdown'): Promise<ReportExportResponse> {
+    return request<ReportExportResponse>(
+      `/api/v1/history/${encodeURIComponent(recordId)}/report?format=${encodeURIComponent(format)}`,
+      { method: 'GET' }
+    )
+  },
+
+  /**
+   * Export report directly from an active in-memory review state.
+   */
+  async exportActiveReport(data: Record<string, unknown>): Promise<ReportExportResponse> {
+    return request<ReportExportResponse>('/api/v1/reports/export', {
+      method: 'POST',
+      body: JSON.stringify(data),
     })
   },
 }

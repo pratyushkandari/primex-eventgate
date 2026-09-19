@@ -103,13 +103,18 @@ export interface AnalysisResponse {
   eventType: string
   currentVersion: number
   proposedVersion: number
+  environment?: Environment
+  compatibilityResult?: string
+  policyName?: string
+  policyReason?: string
+  warnings?: string[]
   changeSet: ChangeSet
   findings: ConsumerFinding[]
   decision: Decision
   severity: Severity
   summary: string
   timestamp: string
-  requestId: string
+  requestId?: string
 }
 
 export interface PublishRequest {
@@ -117,6 +122,8 @@ export interface PublishRequest {
   currentVersion: number
   proposedVersion: number
   payload: Record<string, unknown>
+  environment?: Environment
+  analysisId?: string
 }
 
 export interface PublishResponse {
@@ -126,6 +133,36 @@ export interface PublishResponse {
   severity: Severity
   eventBridgeEventId: string | null
   analysis: AnalysisResponse
+}
+
+export interface ReleaseRecord {
+  recordId: string
+  analysisId: string
+  eventType: string
+  currentVersion: number
+  proposedVersion: number
+  environment: Environment
+  compatibilityResult: string
+  severity: Severity
+  policyName: string
+  policyReason: string
+  decision: Decision
+  affectedConsumers: string[]
+  findingsSummary: ConsumerFinding[]
+  published: boolean
+  attemptedPublish: boolean
+  eventId?: string | null
+  eventBridgeEventId?: string | null
+  requestId?: string | null
+  timestamp: string
+  publishedAt?: string | null
+  error?: string | null
+}
+
+export interface ReportExportResponse {
+  recordId: string
+  format: string
+  content: string
 }
 
 export interface ApiErrorDetail {

@@ -1,6 +1,8 @@
 import * as React from 'react'
 import { Header, type NavTab } from '@/components/layout/Header'
 import { ContractsHub } from '@/components/contracts/ContractsHub'
+import { ReleaseHistoryView } from '@/components/history/ReleaseHistoryView'
+import { ReportExportModal } from '@/components/workspace/ReportExportModal'
 import { ScenarioSelector } from '@/components/workspace/ScenarioSelector'
 import { ReviewContextBar } from '@/components/workspace/ReviewContextBar'
 import { EventInputPanel } from '@/components/workspace/EventInputPanel'
@@ -64,6 +66,7 @@ export function WorkspaceShell() {
   // Modals & Drawers
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = React.useState<boolean>(false)
   const [isHelpModalOpen, setIsHelpModalOpen] = React.useState<boolean>(false)
+  const [isExportModalOpen, setIsExportModalOpen] = React.useState<boolean>(false)
 
   // Toast System
   const [toasts, setToasts] = React.useState<ToastMessage[]>([])
@@ -489,6 +492,17 @@ export function WorkspaceShell() {
           />
         )}
 
+        {activeNavTab === 'history' && (
+          <ReleaseHistoryView
+            onSelectReview={(_et, _cur, prop) => {
+              if (prop === 2) handleSelectScenario(DEMO_SCENARIOS.safe)
+              else if (prop === 3) handleSelectScenario(DEMO_SCENARIOS.breaking)
+              else if (prop === 4) handleSelectScenario(DEMO_SCENARIOS.risk)
+              setActiveNavTab('review')
+            }}
+          />
+        )}
+
         {activeNavTab === 'review' && (
           <>
             {/* Scenario Selection Toolbar */}
@@ -513,6 +527,7 @@ export function WorkspaceShell() {
         <ReviewContextBar
           analysis={analysis}
           onFilterAffected={() => setConsumerFilter('AFFECTED')}
+          onExportReport={() => setIsExportModalOpen(true)}
         />
 
         {/* 3-Column Engineering Console Workspace */}
@@ -652,6 +667,14 @@ export function WorkspaceShell() {
       <ShortcutsHelpModal
         isOpen={isHelpModalOpen}
         onClose={() => setIsHelpModalOpen(false)}
+      />
+
+      {/* Release Report Export Modal */}
+      <ReportExportModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        analysis={analysis}
+        onToast={showToast}
       />
 
       {/* Accessible Floating Toast Notifications */}
