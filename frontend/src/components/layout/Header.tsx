@@ -1,9 +1,14 @@
 import * as React from 'react'
-import { Shield, RefreshCw, Cloud, HelpCircle } from 'lucide-react'
+import { Shield, RefreshCw, Cloud, HelpCircle, Command } from 'lucide-react'
 import { API_CONFIG } from '@/config/env'
 import { eventGateApi } from '@/services/api'
 
-export function Header() {
+interface HeaderProps {
+  onOpenCommandPalette?: () => void
+  onOpenHelp?: () => void
+}
+
+export function Header({ onOpenCommandPalette, onOpenHelp }: HeaderProps) {
   const [healthStatus, setHealthStatus] = React.useState<'checking' | 'healthy' | 'unreachable'>('checking')
   const [apiVersion, setApiVersion] = React.useState<string | null>(null)
   const [lastChecked, setLastChecked] = React.useState<string | null>(null)
@@ -54,7 +59,7 @@ export function Header() {
   }, [])
 
   return (
-    <header className="border-b border-slate-800 bg-[#0b0f19] sticky top-0 z-50">
+    <header className="border-b border-slate-800 bg-[#0b0f19] sticky top-0 z-40">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
         {/* Left: Brand & Product Purpose */}
         <div className="flex items-center space-x-3">
@@ -75,6 +80,22 @@ export function Header() {
             </p>
           </div>
         </div>
+
+        {/* Center: Command Palette Trigger Button */}
+        {onOpenCommandPalette && (
+          <button
+            type="button"
+            onClick={onOpenCommandPalette}
+            className="hidden md:flex items-center space-x-2 bg-slate-900/90 hover:bg-slate-800/80 border border-slate-700/70 hover:border-slate-600 px-3 py-1 rounded-md text-xs font-mono text-slate-400 hover:text-slate-200 transition-all shadow-xs cursor-pointer"
+            title="Open command palette (Ctrl+K / ⌘K)"
+          >
+            <Command className="h-3.5 w-3.5 text-slate-400" />
+            <span>Search or jump to...</span>
+            <kbd className="bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800 text-[10px] text-slate-400">
+              ⌘K
+            </kbd>
+          </button>
+        )}
 
         {/* Right: Technical Metadata & Live Status */}
         <div className="flex items-center space-x-2 text-xs font-mono">
@@ -122,14 +143,26 @@ export function Header() {
             )}
           </button>
 
-          {/* Docs / Help link */}
-          <a
-            href="#rules"
-            title="Compatibility rules: EVT001 - EVT008"
-            className="h-7 w-7 flex items-center justify-center rounded bg-slate-900 border border-slate-800/80 hover:border-slate-700 text-slate-400 hover:text-slate-200 transition-colors"
-          >
-            <HelpCircle className="h-3.5 w-3.5" />
-          </a>
+          {/* Docs / Help link or modal */}
+          {onOpenHelp ? (
+            <button
+              type="button"
+              onClick={onOpenHelp}
+              title="View Keyboard Shortcuts & Guide"
+              className="h-7 w-7 flex items-center justify-center rounded bg-slate-900 border border-slate-800/80 hover:border-slate-700 text-slate-400 hover:text-slate-200 transition-colors"
+              aria-label="Keyboard Shortcuts & Documentation"
+            >
+              <HelpCircle className="h-3.5 w-3.5" />
+            </button>
+          ) : (
+            <a
+              href="#rules"
+              title="Compatibility rules: EVT001 - EVT008"
+              className="h-7 w-7 flex items-center justify-center rounded bg-slate-900 border border-slate-800/80 hover:border-slate-700 text-slate-400 hover:text-slate-200 transition-colors"
+            >
+              <HelpCircle className="h-3.5 w-3.5" />
+            </a>
+          )}
         </div>
       </div>
     </header>

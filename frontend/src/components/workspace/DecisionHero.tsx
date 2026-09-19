@@ -1,4 +1,4 @@
-import { Send, AlertOctagon, CheckCircle2, AlertTriangle, Radio } from 'lucide-react'
+import { Send, AlertOctagon, CheckCircle2, AlertTriangle, Radio, ShieldCheck, Lock } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -22,13 +22,13 @@ export function DecisionHero({
   // State: Loading / Analyzing
   if (isAnalyzing) {
     return (
-      <Card className="h-full flex flex-col justify-between border-slate-800">
+      <Card className="h-full flex flex-col justify-between border-slate-800 bg-[#0c1220]/80 backdrop-blur-sm shadow-md">
         <div>
-          <CardHeader className="py-3 px-4">
+          <CardHeader className="py-3 px-4 border-b border-slate-800/80">
             <div className="flex items-center justify-between">
               <CardTitle className="text-xs font-mono uppercase tracking-wider text-slate-300 flex items-center space-x-1.5">
                 <Radio className="h-3.5 w-3.5 text-blue-400 animate-pulse" />
-                <span>Release decision</span>
+                <span>Release Decision Gate</span>
               </CardTitle>
               <Badge variant="neutral" size="sm">
                 Evaluating
@@ -37,13 +37,13 @@ export function DecisionHero({
           </CardHeader>
 
           <CardContent className="p-4 space-y-4">
-            <div className="p-4 rounded border border-slate-800 bg-slate-950/60 text-center space-y-2">
+            <div className="p-5 rounded border border-slate-800 bg-slate-950/60 text-center space-y-2.5">
               <div className="inline-block h-6 w-6 border-2 border-blue-500/40 border-t-blue-400 rounded-full animate-spin" />
               <h4 className="text-xs font-semibold text-slate-200 font-mono">
                 Analyzing Compatibility
               </h4>
-              <p className="text-[11px] text-slate-400 max-w-xs mx-auto leading-relaxed">
-                Comparing proposed schema against registered consumer contracts...
+              <p className="text-[11px] text-slate-400 max-w-xs mx-auto leading-relaxed font-sans">
+                Comparing proposed schema against registered consumer contracts in DynamoDB...
               </p>
             </div>
           </CardContent>
@@ -61,13 +61,13 @@ export function DecisionHero({
   // State: Invalid Payload JSON Error
   if (hasJsonError) {
     return (
-      <Card className="h-full flex flex-col justify-between border-slate-800 border-l-2 border-l-amber-500">
+      <Card className="h-full flex flex-col justify-between border-slate-800 border-l-2 border-l-amber-500 bg-[#0c1220]/80 backdrop-blur-sm shadow-md">
         <div>
-          <CardHeader className="py-3 px-4">
+          <CardHeader className="py-3 px-4 border-b border-slate-800/80">
             <div className="flex items-center justify-between">
               <CardTitle className="text-xs font-mono uppercase tracking-wider text-slate-300 flex items-center space-x-1.5">
                 <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
-                <span>Release decision</span>
+                <span>Release Decision Gate</span>
               </CardTitle>
               <Badge variant="risk" size="sm">
                 Invalid JSON
@@ -80,7 +80,7 @@ export function DecisionHero({
               <span className="text-xs font-mono uppercase text-amber-400 font-bold block">
                 Invalid Payload
               </span>
-              <p className="text-xs text-slate-300">
+              <p className="text-xs text-slate-300 font-sans">
                 Fix JSON syntax to analyze.
               </p>
             </div>
@@ -102,12 +102,13 @@ export function DecisionHero({
   // State: Idle / Standby
   if (!analysis) {
     return (
-      <Card className="h-full flex flex-col justify-between border-slate-800">
+      <Card className="h-full flex flex-col justify-between border-slate-800 bg-[#0c1220]/80 backdrop-blur-sm shadow-md">
         <div>
-          <CardHeader className="py-3 px-4">
+          <CardHeader className="py-3 px-4 border-b border-slate-800/80">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-xs font-mono uppercase tracking-wider text-slate-300">
-                Release decision
+              <CardTitle className="text-xs font-mono uppercase tracking-wider text-slate-300 flex items-center space-x-1.5">
+                <ShieldCheck className="h-3.5 w-3.5 text-slate-400" />
+                <span>Release Decision Gate</span>
               </CardTitle>
               <Badge variant="neutral" size="sm">
                 Standby
@@ -116,13 +117,18 @@ export function DecisionHero({
           </CardHeader>
 
           <CardContent className="p-4 space-y-3">
-            <div className="p-3.5 rounded border border-slate-800 bg-slate-950/50 space-y-1">
-              <h4 className="text-xs font-semibold text-slate-300 font-mono">
-                Ready to Analyze
+            <div className="p-4 rounded border border-slate-800 bg-slate-950/50 space-y-1.5">
+              <h4 className="text-xs font-semibold text-slate-200 font-mono flex items-center space-x-1.5">
+                <span>Ready to Analyze</span>
               </h4>
-              <p className="text-[11px] text-slate-400 leading-relaxed">
-                No analysis yet. Choose an event version and click &quot;Analyze change&quot; to test proposed schema evolution against downstream consumers.
+              <p className="text-[11px] text-slate-400 leading-relaxed font-sans">
+                Select an event version and click &quot;Analyze Compatibility&quot; (or press Ctrl+Enter) to evaluate schema changes against downstream consumers.
               </p>
+              <div className="pt-2 flex items-center space-x-2 text-[10px] text-slate-500 font-mono">
+                <span className="bg-slate-900 border border-slate-800 px-1.5 py-0.5 rounded">Pre-flight check</span>
+                <span>•</span>
+                <span>Zero cloud cost</span>
+              </div>
             </div>
           </CardContent>
         </div>
@@ -142,19 +148,26 @@ export function DecisionHero({
 
   return (
     <Card
-      className={`h-full flex flex-col justify-between border-slate-800 ${
+      className={`h-full flex flex-col justify-between border-slate-800 bg-[#0c1220]/80 backdrop-blur-sm shadow-md ${
         decision === 'ALLOW'
-          ? 'border-l-2 border-l-emerald-500'
+          ? 'border-l-2 border-l-emerald-500 shadow-emerald-950/20'
           : decision === 'BLOCK'
-          ? 'border-l-2 border-l-rose-500'
-          : 'border-l-2 border-l-amber-500'
+          ? 'border-l-2 border-l-rose-500 shadow-rose-950/20'
+          : 'border-l-2 border-l-amber-500 shadow-amber-950/20'
       }`}
     >
       <div>
-        <CardHeader className="py-3 px-4">
+        <CardHeader className="py-3 px-4 border-b border-slate-800/80">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-xs font-mono uppercase tracking-wider text-slate-300">
-              Release decision
+            <CardTitle className="text-xs font-mono uppercase tracking-wider text-slate-300 flex items-center space-x-1.5">
+              {decision === 'ALLOW' ? (
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+              ) : decision === 'BLOCK' ? (
+                <Lock className="h-3.5 w-3.5 text-rose-400" />
+              ) : (
+                <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
+              )}
+              <span>Release Decision Gate</span>
             </CardTitle>
             <Badge variant={decision.toLowerCase() as 'allow' | 'block' | 'review'} size="sm">
               {decision}
@@ -185,8 +198,9 @@ export function DecisionHero({
                 <p className="text-[11px] text-slate-300 mt-1 leading-relaxed font-sans">
                   {summary}
                 </p>
-                <div className="mt-2 text-[10px] text-emerald-400 font-mono">
-                  All registered consumers are compatible.
+                <div className="mt-2 text-[10px] text-emerald-400 font-mono flex items-center space-x-1">
+                  <CheckCircle2 className="h-3 w-3" />
+                  <span>All registered consumers are compatible.</span>
                 </div>
               </div>
             </div>
@@ -229,7 +243,7 @@ export function DecisionHero({
                     </div>
                   </div>
                 )}
-                <p className="text-[10px] text-rose-400 mt-1.5">
+                <p className="text-[10px] text-rose-400 mt-1.5 font-sans">
                   EventBridge publication is prevented.
                 </p>
               </div>
@@ -271,7 +285,7 @@ export function DecisionHero({
                     </div>
                   </div>
                 )}
-                <p className="text-[10px] text-amber-400 mt-1.5">
+                <p className="text-[10px] text-amber-400 mt-1.5 font-sans">
                   Publication prevented pending future review.
                 </p>
               </div>
@@ -289,7 +303,7 @@ export function DecisionHero({
               onClick={onPublish}
               disabled={hasJsonError || isPublishing}
               isLoading={isPublishing}
-              className="w-full"
+              className="w-full shadow-lg"
               size="sm"
             >
               <Send className="h-3.5 w-3.5 mr-1.5" />
