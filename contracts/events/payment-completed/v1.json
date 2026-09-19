@@ -1,0 +1,30 @@
+{
+  "eventType": "PaymentCompleted",
+  "version": 1,
+  "fields": {
+    "paymentId": {
+      "type": "string",
+      "required": true
+    },
+    "orderId": {
+      "type": "string",
+      "required": true
+    },
+    "amount": {
+      "type": "number",
+      "required": true
+    },
+    "currency": {
+      "type": "string",
+      "required": true
+    },
+    "paymentMethod": {
+      "type": "string",
+      "required": true
+    },
+    "receiptEmail": {
+      "type": "string",
+      "required": false
+    }
+  }
+}

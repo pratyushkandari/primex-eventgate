@@ -1,0 +1,30 @@
+{
+  "eventType": "UserCreated",
+  "version": 2,
+  "fields": {
+    "userId": {
+      "type": "string",
+      "required": true
+    },
+    "email": {
+      "type": "string",
+      "required": true
+    },
+    "name": {
+      "type": "string",
+      "required": true
+    },
+    "tier": {
+      "type": "string",
+      "required": true
+    },
+    "newsletterSubscribed": {
+      "type": "boolean",
+      "required": false
+    },
+    "country": {
+      "type": "string",
+      "required": false
+    }
+  }
+}

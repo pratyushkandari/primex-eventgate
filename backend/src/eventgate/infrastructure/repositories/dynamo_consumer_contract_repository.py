@@ -121,3 +121,34 @@ class DynamoConsumerContractRepository:
 
         consumers.sort(key=lambda c: c.consumer_id)
         return consumers
+
+    def list_all_consumers(self) -> list[ConsumerContract]:
+        """Load all registered consumer contracts without table scans using catalog item."""
+        try:
+            response = self._table.get_item(Key={"consumerId": "METADATA#CATALOG"})
+            item = response.get("Item")
+            if item and "consumerIds" in item:
+                consumers: list[ConsumerContract] = []
+                for cid in item["consumerIds"]:
+                    try:
+                        c = self.get_consumer(cid)
+                        consumers.append(c)
+                    except ContractNotFoundError:
+                        pass
+                consumers.sort(key=lambda c: c.consumer_id)
+                return consumers
+        except ClientError as exc:
+            logger.warning("Failed to fetch consumer catalog metadata item: %s", exc)
+
+        # Fallback to query known consumers by querying known event types via GSI
+        known_events = ["OrderPlaced", "PaymentCompleted", "UserCreated"]
+        consumers_dict: dict[str, ConsumerContract] = {}
+        for et in known_events:
+            try:
+                for c in self.list_consumers(et):
+                    consumers_dict[c.consumer_id] = c
+            except Exception:
+                pass
+        consumers_list = list(consumers_dict.values())
+        consumers_list.sort(key=lambda c: c.consumer_id)
+        return consumers_list

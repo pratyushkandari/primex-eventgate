@@ -18,6 +18,14 @@ class IEventContractRepository(Protocol):
         """Load all versions of an event contract."""
         ...
 
+    def list_event_types(self) -> list[str]:
+        """Load all distinct registered event types."""
+        ...
+
+    def get_event_versions(self, event_type: str) -> list[int]:
+        """Load all available version numbers for an event type."""
+        ...
+
 
 class IConsumerContractRepository(Protocol):
     """Port interface for loading consumer contracts."""
@@ -28,4 +36,8 @@ class IConsumerContractRepository(Protocol):
 
     def list_consumers(self, event_type: str) -> list[ConsumerContract]:
         """Load all consumers subscribed to an event type."""
+        ...
+
+    def list_all_consumers(self) -> list[ConsumerContract]:
+        """Load all registered consumer contracts across all event types."""
         ...

@@ -129,6 +129,41 @@ class JsonEventContractRepository:
         contracts.sort(key=lambda c: c.version)
         return contracts
 
+    def list_event_types(self) -> list[str]:
+        """Return all distinct registered event type names."""
+        events_dir = self._contracts_dir / "events"
+        if not events_dir.is_dir():
+            return []
+
+        event_types: list[str] = []
+        for d in sorted(events_dir.iterdir()):
+            if d.is_dir():
+                # Inspect the first valid contract file in this dir to get canonical eventType
+                candidate_files = sorted(d.glob("v*.json"))
+                found = False
+                for cf in candidate_files:
+                    try:
+                        data = json.loads(cf.read_text(encoding="utf-8"))
+                        et = data.get("eventType")
+                        if et and isinstance(et, str):
+                            event_types.append(et)
+                            found = True
+                            break
+                    except Exception:
+                        continue
+                if not found:
+                    words = d.name.split("-")
+                    event_types.append("".join(w.capitalize() for w in words))
+        return sorted(list(dict.fromkeys(event_types)))
+
+    def get_event_versions(self, event_type: str) -> list[int]:
+        """Return all available version numbers for an event type."""
+        try:
+            contracts = self.list_event_contracts(event_type)
+            return [c.version for c in contracts]
+        except ContractNotFoundError:
+            return []
+
     def _load_contract(
         self, path: Path, expected_type: str, expected_version: int
     ) -> EventContract:

@@ -1,0 +1,22 @@
+{
+  "consumerId": "fraud-detection-service",
+  "eventType": "PaymentCompleted",
+  "expectedFields": {
+    "paymentId": {
+      "type": "string",
+      "required": true
+    },
+    "orderId": {
+      "type": "string",
+      "required": true
+    },
+    "amount": {
+      "type": "number",
+      "required": true
+    },
+    "paymentMethod": {
+      "type": "string",
+      "required": true
+    }
+  }
+}

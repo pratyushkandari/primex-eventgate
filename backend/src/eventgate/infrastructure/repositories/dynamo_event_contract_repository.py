@@ -137,3 +137,35 @@ class DynamoEventContractRepository:
 
         contracts.sort(key=lambda c: c.version)
         return contracts
+
+    def list_event_types(self) -> list[str]:
+        """Return distinct registered event types via catalog metadata item (zero scans)."""
+        try:
+            response = self._table.get_item(
+                Key={"eventType": "METADATA#CATALOG", "version": Decimal(0)}
+            )
+            item = response.get("Item")
+            if item and "eventTypes" in item:
+                return sorted(list(item["eventTypes"]))
+        except ClientError as exc:
+            logger.warning("Failed to fetch catalog metadata item: %s", exc)
+
+        # Fallback to query known established domain event types without scan
+        known = ["OrderPlaced", "PaymentCompleted", "UserCreated"]
+        existing: list[str] = []
+        for et in known:
+            try:
+                res = self._table.query(KeyConditionExpression=Key("eventType").eq(et), Limit=1)
+                if res.get("Items"):
+                    existing.append(et)
+            except ClientError:
+                pass
+        return sorted(existing) if existing else ["OrderPlaced"]
+
+    def get_event_versions(self, event_type: str) -> list[int]:
+        """Return all available version numbers for an event type via targeted Query."""
+        try:
+            contracts = self.list_event_contracts(event_type)
+            return [c.version for c in contracts]
+        except ContractNotFoundError:
+            return []

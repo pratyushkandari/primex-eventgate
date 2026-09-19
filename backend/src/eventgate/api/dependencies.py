@@ -12,6 +12,7 @@ from eventgate.application.ports.repositories import (
     IConsumerContractRepository,
     IEventContractRepository,
 )
+from eventgate.application.services.contract_catalog_service import ContractCatalogService
 from eventgate.application.services.event_analysis_service import EventAnalysisService
 from eventgate.application.services.event_publish_service import EventPublishService
 from eventgate.config.settings import (
@@ -115,6 +116,24 @@ def get_event_publisher() -> IEventPublisher:
         bus_name=get_eventbridge_bus_name(),
         region=get_aws_region(),
     )
+
+
+def get_consumer_repo() -> IConsumerContractRepository:
+    """Return the configured consumer contract repository."""
+    return _build_consumer_repo(
+        backend=get_storage_backend(),
+        contracts_dir_str=str(get_contracts_dir()),
+        consumer_table=get_consumer_contracts_table_name(),
+        region=get_aws_region(),
+    )
+
+
+def get_catalog_service(
+    event_repo: IEventContractRepository = Depends(get_event_repo),
+    consumer_repo: IConsumerContractRepository = Depends(get_consumer_repo),
+) -> ContractCatalogService:
+    """Create and return the contract catalog service."""
+    return ContractCatalogService(event_repo=event_repo, consumer_repo=consumer_repo)
 
 
 def get_publish_service(

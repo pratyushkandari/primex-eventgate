@@ -108,3 +108,10 @@ class JsonConsumerContractRepository:
         if consumer_id not in all_consumers:
             raise ContractNotFoundError(f"Consumer '{consumer_id}' was not found.")
         return all_consumers[consumer_id]
+
+    def list_all_consumers(self) -> list[ConsumerContract]:
+        """Return all registered consumer contracts sorted by consumer ID."""
+        all_consumers = self._load_all()
+        consumers = list(all_consumers.values())
+        consumers.sort(key=lambda c: c.consumer_id)
+        return consumers
