@@ -55,12 +55,12 @@ class RuntimeConfigResponse(BaseModel):
 
 
 def _load_cedar_policy_text() -> str | None:
-    # Search upwards from current file or root
+    from eventgate.config.settings import _PROJECT_ROOT
+
     candidates = [
         Path("policies/release_policy.cedar"),
-        Path(__file__).resolve().parent.parent.parent.parent.parent
-        / "policies"
-        / "release_policy.cedar",
+        _PROJECT_ROOT / "policies" / "release_policy.cedar",
+        _PROJECT_ROOT / "contracts" / "policies" / "release_policy.cedar",
     ]
     for p in candidates:
         if p.exists():
@@ -69,6 +69,7 @@ def _load_cedar_policy_text() -> str | None:
             except Exception:
                 pass
     return None
+
 
 
 @router.get(
