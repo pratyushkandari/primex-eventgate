@@ -60,6 +60,15 @@ def get_consumer_contracts_table_name() -> str:
     )
 
 
+def get_release_history_table_name() -> str:
+    """Return the DynamoDB table name for release history."""
+    import os
+
+    return os.environ.get(
+        "RELEASE_HISTORY_TABLE_NAME", "primex-eventgate-dev-release-history"
+    )
+
+
 def get_aws_region() -> str:
     """Return the configured AWS region, falling back to us-east-1."""
     import os

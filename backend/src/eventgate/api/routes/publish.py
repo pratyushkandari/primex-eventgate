@@ -34,6 +34,10 @@ class PublishRequest(BaseModel):
     payload: dict[str, Any] = Field(
         ..., description="Event payload conforming to the proposed version contract"
     )
+    environment: str = Field("production", description="Deployment environment")
+    analysis_id: str | None = Field(
+        None, alias="analysisId", description="Optional correlated analysis ID"
+    )
 
 
 class PublishResponse(BaseModel):
@@ -62,6 +66,8 @@ def publish_event(
         current_version=req.current_version,
         proposed_version=req.proposed_version,
         payload=req.payload,
+        environment=req.environment,
+        analysis_id=req.analysis_id,
         request_id=request_id,
     )
 

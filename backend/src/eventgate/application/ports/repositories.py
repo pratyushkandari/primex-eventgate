@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from eventgate.domain.history import ReleaseRecord
 from eventgate.domain.models import ConsumerContract, EventContract
 
 
@@ -40,4 +41,22 @@ class IConsumerContractRepository(Protocol):
 
     def list_all_consumers(self) -> list[ConsumerContract]:
         """Load all registered consumer contracts across all event types."""
+        ...
+
+
+class IReleaseReviewRepository(Protocol):
+    """Port interface for persisting and querying release reviews."""
+
+    def save_review(self, record: ReleaseRecord) -> ReleaseRecord:
+        """Persist or update a release review record."""
+        ...
+
+    def get_review(self, record_id: str) -> ReleaseRecord:
+        """Load a single release review record by ID."""
+        ...
+
+    def list_reviews(
+        self, event_type: str | None = None, limit: int = 50
+    ) -> list[ReleaseRecord]:
+        """Load recent release reviews, optionally filtered by event type."""
         ...

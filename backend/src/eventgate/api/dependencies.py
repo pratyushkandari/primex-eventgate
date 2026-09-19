@@ -11,10 +11,12 @@ from eventgate.application.ports.publisher import IEventPublisher
 from eventgate.application.ports.repositories import (
     IConsumerContractRepository,
     IEventContractRepository,
+    IReleaseReviewRepository,
 )
 from eventgate.application.services.contract_catalog_service import ContractCatalogService
 from eventgate.application.services.event_analysis_service import EventAnalysisService
 from eventgate.application.services.event_publish_service import EventPublishService
+from eventgate.application.services.release_history_service import ReleaseHistoryService
 from eventgate.config.settings import (
     PUBLISHER_BACKEND_EVENTBRIDGE,
     STORAGE_BACKEND_DYNAMODB,
@@ -24,9 +26,11 @@ from eventgate.config.settings import (
     get_event_contracts_table_name,
     get_event_publisher_backend,
     get_eventbridge_bus_name,
+    get_release_history_table_name,
     get_storage_backend,
 )
 from eventgate.domain.compatibility import CompatibilityEngine
+from eventgate.domain.policy import get_policy_engine
 from eventgate.infrastructure.publishers.eventbridge_publisher import EventBridgeEventPublisher
 from eventgate.infrastructure.publishers.local_publisher import LocalEventPublisher
 from eventgate.infrastructure.repositories.consumer_contract_repository import (
@@ -38,8 +42,14 @@ from eventgate.infrastructure.repositories.dynamo_consumer_contract_repository i
 from eventgate.infrastructure.repositories.dynamo_event_contract_repository import (
     DynamoEventContractRepository,
 )
+from eventgate.infrastructure.repositories.dynamo_release_review_repository import (
+    DynamoReleaseReviewRepository,
+)
 from eventgate.infrastructure.repositories.event_contract_repository import (
     JsonEventContractRepository,
+)
+from eventgate.infrastructure.repositories.release_review_repository import (
+    JsonReleaseReviewRepository,
 )
 
 
@@ -66,6 +76,17 @@ def _build_consumer_repo(
 
 
 @lru_cache(maxsize=4)
+def _build_history_repo(
+    backend: str, contracts_dir_str: str, history_table: str, region: str
+) -> IReleaseReviewRepository:
+    if backend == STORAGE_BACKEND_DYNAMODB:
+        return DynamoReleaseReviewRepository(table_name=history_table, region_name=region)
+    from pathlib import Path
+
+    return JsonReleaseReviewRepository(Path(contracts_dir_str))
+
+
+@lru_cache(maxsize=4)
 def _build_analysis_service(
     backend: str,
     contracts_dir_str: str,
@@ -75,9 +96,10 @@ def _build_analysis_service(
 ) -> EventAnalysisService:
     """Instantiate and cache the analysis service for the configured storage backend."""
     engine = CompatibilityEngine()
+    policy_engine = get_policy_engine()
     event_repo = _build_event_repo(backend, contracts_dir_str, event_table, region)
     consumer_repo = _build_consumer_repo(backend, contracts_dir_str, consumer_table, region)
-    return EventAnalysisService(event_repo, consumer_repo, engine)
+    return EventAnalysisService(event_repo, consumer_repo, engine, policy_engine=policy_engine)
 
 
 @lru_cache(maxsize=4)
@@ -107,6 +129,23 @@ def get_analysis_service() -> EventAnalysisService:
         consumer_table=get_consumer_contracts_table_name(),
         region=get_aws_region(),
     )
+
+
+def get_history_repo() -> IReleaseReviewRepository:
+    """Return the configured release history repository."""
+    return _build_history_repo(
+        backend=get_storage_backend(),
+        contracts_dir_str=str(get_contracts_dir()),
+        history_table=get_release_history_table_name(),
+        region=get_aws_region(),
+    )
+
+
+def get_history_service(
+    history_repo: IReleaseReviewRepository = Depends(get_history_repo),
+) -> ReleaseHistoryService:
+    """Create and return the release history application service."""
+    return ReleaseHistoryService(review_repo=history_repo)
 
 
 def get_event_publisher() -> IEventPublisher:
@@ -140,12 +179,14 @@ def get_publish_service(
     event_repo: IEventContractRepository = Depends(get_event_repo),
     analysis_service: EventAnalysisService = Depends(get_analysis_service),
     publisher: IEventPublisher = Depends(get_event_publisher),
+    history_service: ReleaseHistoryService = Depends(get_history_service),
 ) -> EventPublishService:
     """Create and return the event publish service with its configured dependencies."""
     return EventPublishService(
         event_repo=event_repo,
         analysis_service=analysis_service,
         publisher=publisher,
+        history_service=history_service,
     )
 
 
@@ -153,6 +194,7 @@ def get_publish_service(
 get_analysis_service.cache_clear = _build_analysis_service.cache_clear  # type: ignore[attr-defined]
 get_event_repo.cache_clear = _build_event_repo.cache_clear  # type: ignore[attr-defined]
 get_event_publisher.cache_clear = _build_publisher.cache_clear  # type: ignore[attr-defined]
+get_history_repo.cache_clear = _build_history_repo.cache_clear  # type: ignore[attr-defined]
 
 
 def get_request_id(request: Request) -> str:

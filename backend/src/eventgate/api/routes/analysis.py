@@ -14,8 +14,9 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, Field
 
-from eventgate.api.dependencies import get_analysis_service, get_request_id
+from eventgate.api.dependencies import get_analysis_service, get_history_service, get_request_id
 from eventgate.application.services.event_analysis_service import EventAnalysisService
+from eventgate.application.services.release_history_service import ReleaseHistoryService
 from eventgate.domain.models import AnalysisResult
 
 router = APIRouter(prefix="/api/v1")
@@ -38,6 +39,7 @@ class AnalyzeRequest(BaseModel):
     proposed_version: int = Field(
         ..., alias="proposedVersion", ge=1, description="Proposed event version"
     )
+    environment: str = Field("production", description="Deployment environment")
 
 
 # ---------------------------------------------------------------------------
@@ -88,6 +90,11 @@ class AnalysisResponse(BaseModel):
     event_type: str = Field(..., alias="eventType")
     current_version: int = Field(..., alias="currentVersion")
     proposed_version: int = Field(..., alias="proposedVersion")
+    environment: str = Field("production")
+    compatibility_result: str = Field("SAFE", alias="compatibilityResult")
+    policy_name: str = Field("StandardReleasePolicy", alias="policyName")
+    policy_reason: str = Field("", alias="policyReason")
+    warnings: list[str] = Field(default_factory=list)
     change_set: ChangeSetResponse = Field(..., alias="changeSet")
     findings: list[FindingResponse]
     decision: str
@@ -109,6 +116,11 @@ def _to_response(result: AnalysisResult) -> AnalysisResponse:
         event_type=result.event_type,
         current_version=result.current_version,
         proposed_version=result.proposed_version,
+        environment=result.environment,
+        compatibility_result=result.compatibility_result,
+        policy_name=result.policy_name,
+        policy_reason=result.policy_reason,
+        warnings=result.warnings,
         change_set=ChangeSetResponse(
             added_fields=result.change_set.added_fields,
             removed_fields=result.change_set.removed_fields,
@@ -158,8 +170,9 @@ def _to_response(result: AnalysisResult) -> AnalysisResponse:
     summary="Analyze event compatibility",
     description=(
         "Evaluate a proposed event contract against the contracts registered "
-        "by downstream consumers. Returns per-consumer findings and an "
-        "overall ALLOW / REVIEW / BLOCK decision."
+        "by downstream consumers. Evaluates release policy for the target "
+        "environment and returns per-consumer findings, policy reasons, and an "
+        "authoritative ALLOW / REVIEW / BLOCK decision."
     ),
 )
 async def analyze_event(
@@ -167,12 +180,53 @@ async def analyze_event(
     response: Response,
     request_id: str = Depends(get_request_id),
     service: EventAnalysisService = Depends(get_analysis_service),
+    history_service: ReleaseHistoryService = Depends(get_history_service),
 ):
     response.headers["X-Request-ID"] = request_id
     result = service.analyze(
         event_type=body.event_type,
         current_version=body.current_version,
         proposed_version=body.proposed_version,
+        environment=body.environment,
         request_id=request_id,
     )
+
+    findings_summary = [
+        {
+            "consumerId": f.consumer_id,
+            "status": f.status.value,
+            "ruleId": f.rule_id,
+            "field": f.field,
+            "expectedType": f.expected_type,
+            "proposedType": f.proposed_type,
+            "severity": f.severity.value,
+            "reason": f.reason,
+        }
+        for f in result.findings
+    ]
+    affected_consumers = sorted(
+        {f.consumer_id for f in result.findings if f.status.value != "SAFE"}
+    )
+
+    try:
+        history_service.record_evaluation(
+            analysis_id=result.analysis_id,
+            event_type=result.event_type,
+            current_version=result.current_version,
+            proposed_version=result.proposed_version,
+            environment=result.environment,
+            compatibility_result=result.compatibility_result,
+            severity=result.severity.value,
+            policy_name=result.policy_name,
+            policy_reason=result.policy_reason or result.summary,
+            decision=result.decision.value,
+            affected_consumers=affected_consumers,
+            findings_summary=findings_summary,
+            request_id=request_id,
+        )
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("Failed to record evaluation in history: %s", exc)
+
     return _to_response(result)

@@ -63,3 +63,20 @@ class EventPublishFailedError(EventGateError):
 
     def __init__(self, message: str = "The event could not be published."):
         super().__init__(message, code="EVENT_PUBLISH_FAILED")
+
+
+class ReleaseRecordNotFoundError(EventGateError):
+    """Raised when a requested release review record does not exist."""
+
+    def __init__(self, record_id: str):
+        super().__init__(
+            f"Release record '{record_id}' was not found.",
+            code="RELEASE_RECORD_NOT_FOUND",
+        )
+
+
+class ConfigurationError(EventGateError):
+    """Raised when a system or policy engine configuration is invalid."""
+
+    def __init__(self, message: str):
+        super().__init__(message, code="CONFIGURATION_ERROR")

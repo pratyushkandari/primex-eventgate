@@ -176,5 +176,10 @@ class AnalysisResult:
     decision: Decision
     severity: Severity
     summary: str
+    compatibility_result: str = "SAFE"
+    environment: str = "production"
+    policy_name: str = "StandardReleasePolicy"
+    policy_reason: str = ""
+    warnings: list[str] = field(default_factory=list)
     timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     request_id: str | None = None
