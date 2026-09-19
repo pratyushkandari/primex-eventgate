@@ -259,6 +259,11 @@ class CedarReleasePolicyEngine(IPolicyEngine):
         )
 
 
+def get_policy_engine_type() -> str:
+    """Return the configured policy engine name ('standard' or 'cedar')."""
+    return os.environ.get("EVENTGATE_POLICY_ENGINE", "standard").strip().lower()
+
+
 def get_policy_engine(provider: str | None = None) -> IPolicyEngine:
     """Instantiate and return the configured policy engine.
 

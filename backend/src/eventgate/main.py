@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from eventgate.api.errors import eventgate_error_handler, unhandled_error_handler
-from eventgate.api.routes import analysis, contracts, health, history, publish
+from eventgate.api.routes import analysis, contracts, health, history, policies, publish
 from eventgate.config.settings import SERVICE_NAME, SERVICE_VERSION
 from eventgate.domain.errors import EventGateError
 
@@ -58,5 +58,6 @@ app.include_router(contracts.router)
 app.include_router(analysis.router, tags=["Analysis"])
 app.include_router(publish.router, tags=["Publish"])
 app.include_router(history.router, tags=["History"])
+app.include_router(policies.router)
 
 logger.info("EventGate %s started — service=%s", SERVICE_VERSION, SERVICE_NAME)
