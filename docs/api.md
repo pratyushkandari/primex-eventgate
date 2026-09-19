@@ -9,15 +9,21 @@ EventGate exposes a lightweight HTTP JSON interface with camelCase field seriali
 | Method | Path | Purpose | Transport Side Effects |
 | :--- | :--- | :--- | :--- |
 | `GET` | `/health` | Service health status check | None (pure health probe) |
-| `POST` | `/api/v1/analyze` | Advisory compatibility analysis | None (pure analysis, no publishing) |
-| `POST` | `/api/v1/events/publish` | Payload validation, compatibility analysis, and gated EventBridge publishing | Publishes to EventBridge **only** on `ALLOW` |
-
-> [!NOTE]
-> **Advisory Invariant:** `GET /health` and `POST /api/v1/analyze` continue to function exactly as originally designed. They remain pure, read-only analysis endpoints with zero event bus publishing side effects.
+| `POST` | `/api/v1/analyze` | Advisory compatibility analysis & policy evaluation | None (persists initial evaluated audit record) |
+| `POST` | `/api/v1/events/publish` | Payload validation, compatibility, policy, and gated EventBridge publishing | Publishes to EventBridge **only** on `ALLOW` |
+| `GET` | `/api/v1/contracts/events` | List registered event types and metadata | None (catalog read) |
+| `GET` | `/api/v1/contracts/events/{event_type}` | Event version details and schemas | None (catalog read) |
+| `GET` | `/api/v1/contracts/consumers` | List all registered consumer services | None (catalog read) |
+| `GET` | `/api/v1/contracts/consumers/{consumer_id}` | Consumer dependency contract drill-down | None (catalog read) |
+| `GET` | `/api/v1/history/reviews` | Query persistent release review history | None (audit read) |
+| `GET` | `/api/v1/history/reviews/{record_id}` | Get specific release review record | None (audit read) |
+| `GET` | `/api/v1/history/reviews/{record_id}/report` | Export release audit report (Markdown or JSON) | None (audit report export) |
+| `GET` | `/api/v1/policies` | Active policy engine, 3x3 matrix, and Cedar policy source | None (policy inspection) |
+| `GET` | `/api/v1/config/runtime` | Authoritative runtime configuration | None (configuration probe) |
 
 ---
 
-## 2. Endpoint Details
+## 2. Core Release Endpoints
 
 ### 2.1 Health Check
 Returns operational service status and running version.
@@ -37,7 +43,7 @@ Returns operational service status and running version.
 ---
 
 ### 2.2 Event Compatibility Analysis (Advisory)
-Evaluates proposed schema evolution against active downstream consumer contracts without publishing.
+Evaluates proposed schema evolution against active downstream consumer contracts within the target environment policy without publishing to EventBridge.
 
 - **Method:** `POST`
 - **Path:** `/api/v1/analyze`
@@ -49,21 +55,59 @@ Evaluates proposed schema evolution against active downstream consumer contracts
 {
   "eventType": "OrderPlaced",
   "currentVersion": 1,
-  "proposedVersion": 2
+  "proposedVersion": 2,
+  "environment": "production"
 }
 ```
 
 #### Request Fields
-| Field | Type | Required | Description |
-| :--- | :--- | :--- | :--- |
-| `eventType` | `string` | Yes | Target event name (e.g. `OrderPlaced`) |
-| `currentVersion` | `integer` | Yes | Baseline version number ($\ge 1$) |
-| `proposedVersion` | `integer` | Yes | Proposed version number ($\ge 1$) |
+| Field | Type | Required | Default | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `eventType` | `string` | Yes | - | Target event name (e.g. `OrderPlaced`) |
+| `currentVersion` | `integer` | Yes | - | Baseline version number ($\ge 1$) |
+| `proposedVersion` | `integer` | Yes | - | Proposed version number ($\ge 1$) |
+| `environment` | `string` | No | `"production"` | Operational environment (`production`, `staging`, `development`) |
+
+#### Success Response (`200 OK`)
+```json
+{
+  "analysisId": "197ada2a-5e37-4028-9c08-56af25fed6f4",
+  "eventType": "OrderPlaced",
+  "currentVersion": 1,
+  "proposedVersion": 2,
+  "environment": "production",
+  "compatibilityResult": "SAFE",
+  "severity": "LOW",
+  "decision": "ALLOW",
+  "policyName": "StandardProductionPolicy",
+  "policyReason": "All consumers compatible in production.",
+  "policyProvider": "standard",
+  "changeSet": {
+    "addedFields": ["metadata"],
+    "removedFields": [],
+    "typeChanges": [],
+    "requirednessChanges": []
+  },
+  "findings": [
+    {
+      "consumerId": "billing-service",
+      "status": "SAFE",
+      "ruleId": "EVT005_OPTIONAL_FIELD_ADDED",
+      "field": "*",
+      "severity": "LOW",
+      "reason": "Billing Service is not affected by the proposed changes."
+    }
+  ],
+  "summary": "All 3 consumers are safe with the proposed event change.",
+  "timestamp": "2026-09-19T10:00:00.000000Z",
+  "requestId": "req-123"
+}
+```
 
 ---
 
 ### 2.3 Event Publishing & Cloud Enforcement
-Validates the event payload against the proposed contract, runs downstream consumer compatibility analysis, and publishes to Amazon EventBridge **only if the decision is `ALLOW`**.
+Validates the event payload against the proposed contract, runs downstream consumer compatibility and policy analysis, and publishes to Amazon EventBridge **only if the decision is `ALLOW`**.
 
 > [!IMPORTANT]
 > **Payload-First Validation Order:** EventGate validates the submitted `payload` against the proposed version's contract **before** executing consumer compatibility analysis. If the payload is malformed or invalid, the request fails immediately with HTTP 422 (`INVALID_EVENT_PAYLOAD`), completely bypassing consumer analysis and EventBridge transport.
@@ -79,23 +123,27 @@ Validates the event payload against the proposed contract, runs downstream consu
   "eventType": "OrderPlaced",
   "currentVersion": 1,
   "proposedVersion": 2,
+  "environment": "production",
   "payload": {
     "orderId": "O1001",
     "amount": 500,
     "items": [],
     "shippingMethod": "standard",
     "couponCode": "SAVE10"
-  }
+  },
+  "analysisId": "197ada2a-5e37-4028-9c08-56af25fed6f4"
 }
 ```
 
 #### Request Fields
-| Field | Type | Required | Description |
-| :--- | :--- | :--- | :--- |
-| `eventType` | `string` | Yes | Target event name (e.g. `OrderPlaced`) |
-| `currentVersion` | `integer` | Yes | Baseline version number ($\ge 1$) |
-| `proposedVersion` | `integer` | Yes | Proposed version number ($\ge 1$) |
-| `payload` | `object` | Yes | Domain event payload conforming to the proposed version contract |
+| Field | Type | Required | Default | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `eventType` | `string` | Yes | - | Target event name (e.g. `OrderPlaced`) |
+| `currentVersion` | `integer` | Yes | - | Baseline version number ($\ge 1$) |
+| `proposedVersion` | `integer` | Yes | - | Proposed version number ($\ge 1$) |
+| `environment` | `string` | No | `"production"` | Operational environment (`production`, `staging`, `development`) |
+| `payload` | `object` | Yes | - | Domain event payload conforming to the proposed version contract |
+| `analysisId` | `string` | No | `null` | Optional correlation ID from preceding analysis to correlate audit record |
 
 ---
 
@@ -120,54 +168,13 @@ When all consumers are compatible (`decision: "ALLOW"`):
     "eventType": "OrderPlaced",
     "currentVersion": 1,
     "proposedVersion": 2,
-    "changeSet": {
-      "addedFields": ["metadata"],
-      "removedFields": [],
-      "typeChanges": [],
-      "requirednessChanges": []
-    },
-    "findings": [
-      {
-        "consumerId": "billing-service",
-        "status": "SAFE",
-        "ruleId": "EVT005_OPTIONAL_FIELD_ADDED",
-        "field": "*",
-        "expectedType": null,
-        "proposedType": null,
-        "severity": "LOW",
-        "reason": "Billing Service is not affected by the proposed changes."
-      },
-      {
-        "consumerId": "inventory-service",
-        "status": "SAFE",
-        "ruleId": "EVT005_OPTIONAL_FIELD_ADDED",
-        "field": "*",
-        "expectedType": null,
-        "proposedType": null,
-        "severity": "LOW",
-        "reason": "Inventory Service is not affected by the proposed changes."
-      },
-      {
-        "consumerId": "analytics-service",
-        "status": "SAFE",
-        "ruleId": "EVT005_OPTIONAL_FIELD_ADDED",
-        "field": "*",
-        "expectedType": null,
-        "proposedType": null,
-        "severity": "LOW",
-        "reason": "Analytics Service is not affected by the proposed changes."
-      }
-    ],
+    "environment": "production",
     "decision": "ALLOW",
     "severity": "LOW",
-    "summary": "All 3 consumers are safe with the proposed event change.",
-    "timestamp": "2026-09-18T01:15:30.123456Z",
-    "requestId": "smoke-test-req-allow"
+    "summary": "All 3 consumers are safe with the proposed event change."
   }
 }
 ```
-
----
 
 ### 3.2 Breaking Change Blocked (`BLOCK`)
 When a consumer experiences a breaking change (`decision: "BLOCK"`):
@@ -188,18 +195,7 @@ When a consumer experiences a breaking change (`decision: "BLOCK"`):
     "eventType": "OrderPlaced",
     "currentVersion": 1,
     "proposedVersion": 3,
-    "changeSet": {
-      "addedFields": [],
-      "removedFields": [],
-      "typeChanges": [
-        {
-          "fieldName": "shippingMethod",
-          "oldType": "string",
-          "newType": "object"
-        }
-      ],
-      "requirednessChanges": []
-    },
+    "environment": "production",
     "findings": [
       {
         "consumerId": "inventory-service",
@@ -214,14 +210,10 @@ When a consumer experiences a breaking change (`decision: "BLOCK"`):
     ],
     "decision": "BLOCK",
     "severity": "HIGH",
-    "summary": "The proposed event cannot be deployed because 1 consumer would break.",
-    "timestamp": "2026-09-18T01:15:35.000000Z",
-    "requestId": "smoke-test-req-block"
+    "summary": "The proposed event cannot be deployed because 1 consumer would break."
   }
 }
 ```
-
----
 
 ### 3.3 Risky Change Review Required (`REVIEW`)
 When a consumer experiences an uncertain or risky change (`decision: "REVIEW"`):
@@ -230,48 +222,139 @@ When a consumer experiences an uncertain or risky change (`decision: "REVIEW"`):
 - **`eventBridgeEventId`:** `null`
 - **Transport Behavior:** **EventBridge publication is prevented pending future review.** Zero downstream consumer delivery.
 
+---
+
+## 4. Contract Catalog Endpoints
+
+### 4.1 List Event Types
+- **Method:** `GET`
+- **Path:** `/api/v1/contracts/events`
+- **Response (`200 OK`):**
+```json
+[
+  {
+    "eventType": "OrderPlaced",
+    "versions": [1, 2, 3, 4],
+    "latestVersion": 4,
+    "consumerCount": 3,
+    "schemaDescription": "Fired when a customer completes checkout"
+  },
+  {
+    "eventType": "PaymentCompleted",
+    "versions": [1, 2],
+    "latestVersion": 2,
+    "consumerCount": 2,
+    "schemaDescription": "Fired when payment processor settles charge"
+  },
+  {
+    "eventType": "UserCreated",
+    "versions": [1, 2],
+    "latestVersion": 2,
+    "consumerCount": 2,
+    "schemaDescription": "Fired upon user registration"
+  }
+]
+```
+
+### 4.2 Get Event Type Detail
+- **Method:** `GET`
+- **Path:** `/api/v1/contracts/events/{event_type}`
+- **Response (`200 OK`):** Returns full contract detail and schema dictionary for all versions of the event.
+
+### 4.3 List Consumers
+- **Method:** `GET`
+- **Path:** `/api/v1/contracts/consumers`
+- **Response (`200 OK`):**
+```json
+[
+  {
+    "consumerId": "billing-service",
+    "serviceName": "Billing Service",
+    "subscribedEvents": ["OrderPlaced", "PaymentCompleted"],
+    "owner": "finance-team"
+  },
+  {
+    "consumerId": "inventory-service",
+    "serviceName": "Inventory Service",
+    "subscribedEvents": ["OrderPlaced"],
+    "owner": "logistics-team"
+  }
+]
+```
+
+### 4.4 Get Consumer Detail
+- **Method:** `GET`
+- **Path:** `/api/v1/contracts/consumers/{consumer_id}`
+- **Response (`200 OK`):** Returns detailed consumer contracts including exact field dependencies, types, and requiredness.
+
+---
+
+## 5. Release History & Audit Trail Endpoints
+
+### 5.1 Query Release History
+- **Method:** `GET`
+- **Path:** `/api/v1/history/reviews`
+- **Query Parameters:**
+  - `eventType` *(optional string)*: Filter by event name
+  - `limit` *(optional int, default 50)*: Maximum records to return
+- **Response (`200 OK`):** Array of correlated `ReleaseRecord` objects.
+
+### 5.2 Get Specific Release Record
+- **Method:** `GET`
+- **Path:** `/api/v1/history/reviews/{record_id}`
+- **Response (`200 OK`):** Correlated `ReleaseRecord` entity.
+
+### 5.3 Export Audit Report
+- **Method:** `GET`
+- **Path:** `/api/v1/history/reviews/{record_id}/report?format=markdown` (or `format=json`)
+- **Response (`200 OK`):**
+  - For `format=markdown`: Content-Type `text/markdown`, returns GitHub-formatted compliance report.
+  - For `format=json`: Content-Type `application/json`, returns structured audit payload.
+
+---
+
+## 6. Policies & Runtime Configuration Endpoints
+
+### 6.1 Get Active Policies & Matrix
+- **Method:** `GET`
+- **Path:** `/api/v1/policies`
+- **Response (`200 OK`):**
 ```json
 {
-  "eventId": "f8705a9f-63cd-4194-be22-0869fe01d5b6",
-  "published": false,
-  "decision": "REVIEW",
-  "severity": "MEDIUM",
-  "eventBridgeEventId": null,
-  "analysis": {
-    "analysisId": "912384a1-4567-489a-bcde-f0123456789a",
-    "eventType": "OrderPlaced",
-    "currentVersion": 1,
-    "proposedVersion": 4,
-    "findings": [
-      {
-        "consumerId": "analytics-service",
-        "status": "RISK",
-        "ruleId": "EVT006_OPTIONAL_FIELD_REMOVED",
-        "field": "couponCode",
-        "expectedType": "string",
-        "proposedType": null,
-        "severity": "MEDIUM",
-        "reason": "Field 'couponCode' was removed. Consumer considers it optional, but removal may degrade service functionality."
-      }
-    ],
-    "decision": "REVIEW",
-    "severity": "MEDIUM",
-    "summary": "The proposed event requires review because 1 consumer compatibility check is uncertain.",
-    "timestamp": "2026-09-18T01:15:40.000000Z",
-    "requestId": "smoke-test-req-review"
-  }
+  "activeEngine": "standard",
+  "policyMatrix": {
+    "production": { "LOW": "ALLOW", "MEDIUM": "REVIEW", "HIGH": "BLOCK" },
+    "staging": { "LOW": "ALLOW", "MEDIUM": "REVIEW", "HIGH": "BLOCK" },
+    "development": { "LOW": "ALLOW", "MEDIUM": "ALLOW", "HIGH": "BLOCK" }
+  },
+  "cedarAvailable": true,
+  "cedarSource": "permit (principal, action, resource) when { ... };"
+}
+```
+
+### 6.2 Get Authoritative Runtime Configuration
+- **Method:** `GET`
+- **Path:** `/api/v1/config/runtime`
+- **Response (`200 OK`):**
+```json
+{
+  "environment": "development",
+  "storageBackend": "Local JSON",
+  "publisher": "Local Event Publisher",
+  "awsRegion": "ap-south-1",
+  "eventBus": "primex-eventgate-dev-bus",
+  "policyEngine": "Standard Deterministic Engine",
+  "contractsPath": "c:\\primex-eventgate\\contracts"
 }
 ```
 
 ---
 
-## 4. Error Responses
+## 7. Error Responses
 
 All errors return a consistent structured error envelope:
 
-### 4.1 Invalid Event Payload (`422 Unprocessable Entity`)
-Returned when the submitted `payload` does not conform to the schema of `proposedVersion`:
-
+### 7.1 Invalid Event Payload (`422 Unprocessable Entity`)
 ```json
 {
   "error": {
@@ -282,7 +365,7 @@ Returned when the submitted `payload` does not conform to the schema of `propose
 }
 ```
 
-### 4.2 Unknown Event or Version (`404 Not Found`)
+### 7.2 Unknown Event or Version (`404 Not Found`)
 ```json
 {
   "error": {
@@ -293,9 +376,7 @@ Returned when the submitted `payload` does not conform to the schema of `propose
 }
 ```
 
-### 4.3 Event Publishing Failure (`503 Service Unavailable`)
-Returned if AWS EventBridge `PutEvents` fails, returns `FailedEntryCount > 0`, or fails to return an `EventId`:
-
+### 7.3 Event Publishing Failure (`503 Service Unavailable`)
 ```json
 {
   "error": {
@@ -306,46 +387,3 @@ Returned if AWS EventBridge `PutEvents` fails, returns `FailedEntryCount > 0`, o
 }
 ```
 
----
-
-## 5. Public Endpoint Limitation & Production Scope
-
-> [!WARNING]
-> **Demonstration Scope Notice:**
-> Phase 3 does not implement authentication or authorization. This is an intentional architectural boundary for the hackathon demonstration, enabling direct evaluation and live verification.
->
-> A production deployment would require:
-> 1. Authentication via Amazon Cognito, IAM SigV4, or API Gateway Lambda Authorizers
-> 2. Fine-grained RBAC/ABAC authorization per event type
-> 3. API Gateway usage plans, throttling, and burst rate limiting
-> 4. Web Application Firewall (AWS WAF) for DDoS and abuse protection
-
----
-
-## 6. Example cURL Commands
-
-```bash
-# 1. Health Check
-curl -s -X GET "https://ux8bwi3i8l.execute-api.ap-south-1.amazonaws.com/health"
-
-# 2. Analyze Schema Transition (Pure Analysis)
-curl -s -X POST "https://ux8bwi3i8l.execute-api.ap-south-1.amazonaws.com/api/v1/analyze" \
-  -H "Content-Type: application/json" \
-  -d '{"eventType": "OrderPlaced", "currentVersion": 1, "proposedVersion": 2}'
-
-# 3. Publish Event with Gated Cloud Enforcement
-curl -s -X POST "https://ux8bwi3i8l.execute-api.ap-south-1.amazonaws.com/api/v1/events/publish" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "eventType": "OrderPlaced",
-    "currentVersion": 1,
-    "proposedVersion": 2,
-    "payload": {
-      "orderId": "O1001",
-      "amount": 500,
-      "items": [],
-      "shippingMethod": "standard",
-      "couponCode": "SAVE10"
-    }
-  }'
-```

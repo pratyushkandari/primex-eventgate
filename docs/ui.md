@@ -20,40 +20,52 @@ Instead, it embodies the design language of high-caliber engineering systems:
 
 ---
 
-## 2. Core Workflow & Information Architecture
+## 2. Core Workflow & 6-View Information Architecture
 
-The UI is structured around a single unmistakable question:
-> **"We are reviewing a proposed event contract change and deciding whether it can be released to Amazon EventBridge."**
+The UI is structured as an integrated release-control platform with six primary views accessible via the global header navigation and Command Palette (`⌘K`):
 
 ```text
- ┌────────────────────────────────────────────────────────────────────────┐
- │ HEADER: EventGate • v0.1.0 • ap-south-1 • dev • API Healthy • ⌘K Search│
- ├────────────────────────────────────────────────────────────────────────┤
- │ TRY A CHANGE: [ Safe: v1 → v2 ] [ Breaking: v1 → v3 ] [ Risk: v1 → v4 ]│
- ├────────────────────────────────────────────────────────────────────────┤
- │ PULL REQUEST REVIEW STRIP: OrderPlaced v1 → v3 • Segmented Bar • BLOCK │
- ├──────────────────────────┬──────────────────────────┬──────────────────┤
- │ COLUMN 1                 │ COLUMN 2                 │ COLUMN 3         │
- │ CONTRACT CHANGE          │ RELEASE DECISION         │ CONSUMERS        │
- │ • Event: OrderPlaced     │ • Decision: BLOCK        │ • billing-service│
- │ • Current: v1 (Baseline) │ • Safe / Blocked state   │   SAFE           │
- │ • Proposed: v3 (Breaking)│ • Severity badge         │ • inventory-svc  │
- │ • Payload Code Editor    │ • Action button          │   BREAK (Click)  │
- │   - Line numbers         │   [Publish to Bus /      │ • analytics-svc  │
- │   - Format & Reset       │    Publication Blocked]  │   SAFE           │
- │   - Inline syntax badge  │                          │ • Filter Tabs    │
- ├──────────────────────────┴──────────────────────────┴──────────────────┤
- │ DEPENDENCY TOPOLOGY: Producer (OrderPlaced) ──► Gate ──► 3 Consumers  │
- ├────────────────────────────────────────────────────────────────────────┤
- │ PUBLICATION EVIDENCE: INGESTED • Event ID • EventBridge ID • Request ID│
- ├────────────────────────────────────────────────────────────────────────┤
- │ COMPATIBILITY FINDINGS & SCHEMA DIFF: Diff filters (All/Types/Add/Rem) │
- ├────────────────────────────────────────────────────────────────────────┤
- │ OPERATIONAL EVENT PATH: Producer ──► Gate ──► Broker ──► Consumers     │
- ├────────────────────────────────────────────────────────────────────────┤
- │ RECENT REVIEWS: Browser session history (tab local)                    │
- └────────────────────────────────────────────────────────────────────────┘
+ ┌────────────────────────────────────────────────────────────────────────────────────────┐
+ │ HEADER: EventGate • [Review] [Contracts] [History] [DevTools] [Policies] [Settings]   │
+ │         v0.1.0 • ap-south-1 • dev • API Healthy • ⌘K Search                           │
+ └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+### 2.1 The Six Core Platform Workspaces
+
+1. **Review (`ReviewWorkspaceShell`):**
+   * The primary product experience for reviewing proposed contract changes and gated publishing.
+   * Features a 3-column workstation:
+     * **Column 1 (Contract Change):** Event and version selectors, environment selector (`production`, `staging`, `development`), and line-numbered JSON payload code editor with syntax diagnostics.
+     * **Column 2 (Release Decision):** Authoritative policy decision hero (`ALLOW`, `REVIEW`, `BLOCK`), impact breakdown, severity badge, and single-click gated publish button.
+     * **Column 3 (Downstream Consumers):** Consumer impact matrix with status badges (`SAFE`, `BREAK`, `RISK`), segmented filter tabs, and click-to-open drawer deep dive.
+   * **Interactive Dependency Topology:** Node graph connecting Producer $\to$ EventGate $\to$ Consumers.
+   * **Schema Diff & Compatibility Findings:** PR-style diff highlighting added, removed, and type changes with bidirectional cross-linking to affected consumers.
+   * **Correlated Publication Evidence:** Real event IDs, EventBridge IDs, and CloudWatch request correlation.
+
+2. **Contracts (`ContractRegistryView`):**
+   * Real event contract catalog and consumer explorer.
+   * Inspect all registered event types (`OrderPlaced`, `PaymentCompleted`, `UserCreated`).
+   * Version Explorer: browse field definitions, types, requiredness, and consumer dependencies.
+   * Consumer Explorer: inspect declared consumer dependencies and expectations.
+
+3. **History (`ReleaseHistoryView`):**
+   * Authoritative audit trail of evaluated and published changes.
+   * Correlated 1-to-1: an analysis request produces a release record; publishing updates that exact record.
+   * Report Export: Copy Markdown summary or download complete Markdown / JSON audit reports for compliance.
+
+4. **Developer Tools (`DeveloperToolsView`):**
+   * **Contract Test Runner:** Interactive assertion testing tool executing real backend analysis to verify expected decisions (`PASS` / `FAIL`).
+   * **CLI Command Generator:** Generates exact `eventgate check` commands with copy-to-clipboard affordance.
+   * **CI Integration Guide:** Ready-to-copy GitHub Actions release gate configuration.
+
+5. **Policies (`PoliciesView`):**
+   * Interactive 3x3 Environment Release Policy Matrix table across `production`, `staging`, and `development`.
+   * Live Cedar policy language code viewer displaying active Cedar policy statements with syntax-highlighted monospace styling.
+
+6. **Settings (`SettingsView`):**
+   * Explicitly labeled **RUNTIME CONFIGURATION** (zero fake telemetry).
+   * Displays authoritative active runtime state: Environment, Storage Backend, Event Publisher, AWS Region, Event Bus, Active Policy Engine, and Contracts Path.
 
 ---
 
@@ -172,6 +184,12 @@ The UI is structured around a single unmistakable question:
 | `Tab` | Indent 2 spaces in JSON payload editor | Editor |
 | `↑` / `↓` | Navigate command palette items | Command Palette |
 | `Enter` | Select active command palette item | Command Palette |
+| In `⌘K`: type "Review" | Switch to Release Review Workspace | Global |
+| In `⌘K`: type "Contracts" | Open Contract Registry & Consumer Explorer | Global |
+| In `⌘K`: type "History" | Open Release History Audit Trail | Global |
+| In `⌘K`: type "Dev" | Open Developer Tools & Assertion Runner | Global |
+| In `⌘K`: type "Policy" | Open Environment Policies & Cedar Viewer | Global |
+| In `⌘K`: type "Settings"| Open Authoritative Runtime Configuration | Global |
 
 ### Accessibility (a11y)
 * Semantic HTML5 elements (`<header>`, `<main>`, `<section>`, `<textarea>`, `<button>`).

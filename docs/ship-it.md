@@ -44,6 +44,7 @@ The **Ship It** track evaluates genuine deployment, architectural rigor, serverl
 | **EventBridge Rule** | `primex-eventgate-dev-order-placed-rule` | `ap-south-1` | Pattern matching `source: primex.orders` & `detail-type: OrderPlaced` |
 | **DynamoDB Table 1** | `primex-eventgate-dev-event-contracts` | `ap-south-1` | Versioned producer event contracts (`HASH: eventType`, `RANGE: version`) |
 | **DynamoDB Table 2** | `primex-eventgate-dev-consumer-contracts` | `ap-south-1` | Registered consumer contracts (`HASH: consumerId`, GSI `EventTypeIndex`) |
+| **DynamoDB Table 3** | `primex-eventgate-dev-release-history` | `ap-south-1` | Correlated release audit trail (`HASH: recordId`, GSI `EventTypeIndex`) |
 | **Core Lambda** | `primex-eventgate-dev-EventGateFunction` | `ap-south-1` | Python 3.14 runtime with FastAPI + Mangum |
 | **Billing Consumer** | `primex-eventgate-dev-BillingConsumerFunction` | `ap-south-1` | Downstream billing demonstration consumer |
 | **Inventory Consumer**| `primex-eventgate-dev-InventoryConsumerFunction` | `ap-south-1` | Downstream inventory demonstration consumer |
@@ -63,15 +64,20 @@ The **Ship It** track evaluates genuine deployment, architectural rigor, serverl
 * **Fast Execution:** Python 3.14 provides optimized opcode dispatch and faster dictionary operations.
 * **FastAPI + Mangum:** Clean ASGI architecture enabling identical code to run locally in development and in Lambda in production.
 
-### Why Amazon DynamoDB (On-Demand, Two Tables)?
+### Why Amazon DynamoDB (On-Demand, Three Tables, Zero Primary Scans)?
 * **Single-Digit Millisecond Retrieval:** Fast key-value lookups provide immediate contract access during pre-publication gating.
 * **`PAY_PER_REQUEST` Billing:** Zero minimum cost, no provisioned capacity management, automatic elastic scaling.
-* **Dual Table Architecture & Access Patterns:**
+* **Access Patterns & Zero-Scan Strategy:**
   * **EventContractsTable:** Partition key `eventType` (String), Sort key `version` (Number).
     * `GetItem(Key={"eventType": "OrderPlaced", "version": 1})`
     * `Query(KeyConditionExpression=Key("eventType").eq("OrderPlaced"))`
+    * `GetItem(Key={"eventType": "METADATA#CATALOG", "version": 0})` $\to$ Zero table scans for listing all registered event types.
   * **ConsumerContractsTable:** Partition key `consumerId` (String), GSI `EventTypeIndex` (`eventType` HASH, `consumerId` RANGE).
     * `GetItem(Key={"consumerId": "inventory-service"})`
+    * `Query(IndexName="EventTypeIndex", KeyConditionExpression=Key("eventType").eq("OrderPlaced"))`
+    * `GetItem(Key={"consumerId": "METADATA#CATALOG"})` $\to$ Zero table scans for consumer catalog discovery.
+  * **ReleaseHistoryTable:** Partition key `recordId` (String), GSI `EventTypeIndex` (`eventType` HASH, `timestamp` RANGE).
+    * `PutItem` / `UpdateItem` on `recordId = analysisId` (correlated 1-to-1).
     * `Query(IndexName="EventTypeIndex", KeyConditionExpression=Key("eventType").eq("OrderPlaced"))`
 
 ### Why Amazon EventBridge Custom Bus?
@@ -94,6 +100,8 @@ Policies:
       TableName: !Ref EventContractsTable
   - DynamoDBReadPolicy:
       TableName: !Ref ConsumerContractsTable
+  - DynamoDBCrudPolicy:
+      TableName: !Ref ReleaseHistoryTable
   - Statement:
       - Effect: Allow
         Action:

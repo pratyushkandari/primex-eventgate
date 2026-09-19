@@ -76,7 +76,7 @@ The fastest way to verify EventGate's deterministic decision engine locally is t
 
 ## 4. Local Execution Path B: Backend FastAPI & Pytest Suite
 
-EventGate includes a comprehensive unit and integration test suite executing 190 tests across all compatibility rules and API endpoints without cloud connectivity.
+EventGate includes a comprehensive unit, integration, and conformance test suite executing 270 tests across all compatibility rules, policies, catalog endpoints, history persistence, CLI commands, and CI scripts without cloud connectivity.
 
 ### Run Backend Tests & Coverage
 ```powershell
@@ -85,12 +85,12 @@ cd C:\primex-eventgate\backend
 ```
 
 **Results:**
-* **190 passed** in ~5.5s
-* **94.08% code coverage** across all domain, application, and infrastructure layers.
+* **270 passed** in ~5.0s
+* **91.71% code coverage** across all domain, application, and infrastructure layers.
 
 ### Run Linter
 ```powershell
-..\.venv\Scripts\ruff.exe check .
+..\.venv\Scripts\ruff.exe check backend scripts
 # Result: All checks passed!
 ```
 
@@ -98,7 +98,7 @@ cd C:\primex-eventgate\backend
 
 ## 5. Local Execution Path C: Frontend Developer Console
 
-The frontend control console can run locally on `http://localhost:5173` connecting either to a local backend API or the live AWS backend.
+The frontend control console runs locally on `http://localhost:5173` connecting either to a local backend API or the live AWS backend.
 
 ### Setup and Start
 ```powershell
@@ -107,8 +107,8 @@ cd C:\primex-eventgate\frontend
 # Install dependencies
 npm install
 
-# Run unit and integration tests (57 tests)
-npm test
+# Run unit and integration tests (88 tests across 22 test files)
+npm test -- --run
 
 # Run linter
 npm run lint
@@ -129,46 +129,61 @@ VITE_AWS_REGION=local
 
 ---
 
-## 6. Local Execution Path D: AWS SAM Local API
+## 6. Local Execution Path D: Developer CLI (`eventgate`)
 
-For full containerized parity mimicking AWS API Gateway and Lambda execution:
+The EventGate CLI allows engineers to evaluate contracts directly from their terminal using the identical domain core:
 
 ```powershell
-# Build SAM artifacts
-sam build
+# Safe change
+eventgate check --event OrderPlaced --current 1 --proposed 2 --env production
+# Exit code: 0 (ALLOW)
 
-# Start local HTTP API emulating API Gateway on port 3001
-sam local start-api --port 3001
-```
+# Breaking change
+eventgate check --event OrderPlaced --current 1 --proposed 3 --env production
+# Exit code: 1 (BLOCK)
 
-Then send test requests without AWS credentials:
-```powershell
-# Health check
-curl http://localhost:3001/health
+# Risky change (with --fail-on-review)
+eventgate check --event OrderPlaced --current 1 --proposed 4 --env production --fail-on-review
+# Exit code: 1 (treated as block)
 
-# Advisory compatibility check
-curl -X POST http://localhost:3001/api/v1/analyze `
-  -H "Content-Type: application/json" `
-  -d '{"eventType": "OrderPlaced", "currentVersion": 1, "proposedVersion": 2}'
+# Catalog & History
+eventgate catalog --events
+eventgate catalog --consumers
+eventgate history --limit 5
 ```
 
 ---
 
-## 7. Local Abstractions & Infrastructure Mapping
+## 7. Local Execution Path E: CI Contract Diff Runner
+
+To test pull request contract validation locally:
+
+```powershell
+# Inspects contracts/ and evaluates changes against repository base versions
+python scripts/ci_contract_diff.py contracts/events/order-placed/v3-breaking.json
+# Exit code: 1 (BLOCK)
+```
+
+---
+
+## 8. Local Abstractions & Infrastructure Mapping
 
 | Component | Local Implementation (Build It) | Cloud Implementation (Ship It) |
 | :--- | :--- | :--- |
-| **Event Contracts** | `contracts/events/*.yaml` | DynamoDB `primex-eventgate-dev-event-contracts` |
-| **Consumer Contracts**| `contracts/consumers/*.yaml` | DynamoDB `primex-eventgate-dev-consumer-contracts` |
+| **Event Contracts** | `contracts/events/**/*.json` | DynamoDB `primex-eventgate-dev-event-contracts` |
+| **Consumer Contracts**| `contracts/consumers/*.json` | DynamoDB `primex-eventgate-dev-consumer-contracts` |
+| **Release History** | `contracts/history/reviews.json` | DynamoDB `primex-eventgate-dev-release-history` |
 | **Event Publisher** | `LocalEventPublisher` (in-memory list) | `EventBridgePublisher` (`events:PutEvents`) |
 | **Execution Engine** | `CompatibilityEngine` (Python 3.14) | `CompatibilityEngine` (Python 3.14 on Lambda) |
-| **Rules Evaluated** | `EVT001` through `EVT008` (identical) | `EVT001` through `EVT008` (identical) |
+| **Policy Engine** | `StandardPolicyEngine` / `CedarPolicyEngine` | `StandardPolicyEngine` / `CedarPolicyEngine` |
+| **Catalog Metadata** | Filesystem discovery (Zero scans) | DynamoDB indexed items (`PK=METADATA#CATALOG`) |
 | **API Framework** | FastAPI (ASGI) | FastAPI via Mangum on Lambda |
 
 ---
 
-## 8. Honest Local Limitations
+## 9. Honest Local Limitations
 
 1. **Broker Parity:** The local publisher records emitted events to an in-memory test list rather than maintaining a full EventBridge daemon or LocalStack container. This ensures zero heavy Docker dependencies for standard test execution.
-2. **Contract Persistence:** Local execution loads YAML contracts directly from disk. It does not perform DynamoDB replication or transactional rollbacks.
+2. **Contract Persistence:** Local execution loads JSON contracts directly from disk and writes audit history to `contracts/history/reviews.json`. It does not perform DynamoDB replication or transactional rollbacks.
 3. **Consumer Verification:** In local mode, consumer impacts are calculated deterministically via rules. Consumer Lambdas are executed in CloudWatch during live cloud deployment, not locally spawned.
+
