@@ -14,6 +14,7 @@ import { ConsumerImpactPanel } from '@/components/workspace/ConsumerImpactPanel'
 import { REGISTERED_CONSUMERS } from '@/data/consumers'
 import { DependencyTopology } from '@/components/workspace/DependencyTopology'
 import { FindingsPanel } from '@/components/workspace/FindingsPanel'
+import { SchemaDiff } from '@/components/workspace/SchemaDiff'
 import { PublishResultPanel } from '@/components/workspace/PublishResultPanel'
 import { EventPath } from '@/components/workspace/EventPath'
 import { ConsumerDrawer } from '@/components/workspace/ConsumerDrawer'
@@ -23,9 +24,12 @@ import { ToastContainer, type ToastMessage } from '@/components/ui/Toast'
 import { DEMO_SCENARIOS, type DemoScenario } from '@/data/scenarios'
 import { eventGateApi } from '@/services/api'
 import {
+  type AnalysisRequest,
   type AnalysisResponse,
+  type PublishRequest,
   type PublishResponse,
   type Decision,
+  type Environment,
   EventGateApiError,
 } from '@/types/api'
 import {
@@ -42,6 +46,8 @@ import {
   Terminal,
   Shield,
   Settings as SettingsIcon,
+  Globe,
+  HelpCircle,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 
@@ -60,6 +66,7 @@ export function WorkspaceShell() {
   const [eventType] = React.useState<string>('OrderPlaced')
   const [currentVersion] = React.useState<number>(1)
   const [proposedVersion, setProposedVersion] = React.useState<number>(2)
+  const [environment, setEnvironment] = React.useState<Environment>('development')
   const [payloadText, setPayloadText] = React.useState<string>(() =>
     JSON.stringify(DEMO_SCENARIOS.safe.samplePayload, null, 2)
   )
@@ -127,6 +134,17 @@ export function WorkspaceShell() {
     setPublishError(null)
   }, [])
 
+  // Environment change handler — clears all stale analysis/publish state
+  const handleEnvironmentChange = React.useCallback((newEnv: Environment) => {
+    setEnvironment(newEnv)
+    setAnalysis(null)
+    setAnalysisError(null)
+    setPublishResult(null)
+    setPublishError(null)
+    setSelectedField(null)
+    setSelectedConsumerId(null)
+  }, [])
+
   // Payload text change with local JSON validation
   const handlePayloadTextChange = React.useCallback((text: string) => {
     setPayloadText(text)
@@ -176,11 +194,15 @@ export function WorkspaceShell() {
     setPublishError(null)
 
     try {
-      const res = await eventGateApi.analyzeCompatibility({
+      const req: AnalysisRequest = {
         eventType,
         currentVersion,
         proposedVersion,
-      })
+      }
+      if (environment && environment !== 'development') {
+        req.environment = environment
+      }
+      const res = await eventGateApi.analyzeCompatibility(req)
       setAnalysis(res)
 
       // Record in local session history (P2)
@@ -215,7 +237,7 @@ export function WorkspaceShell() {
     } finally {
       setIsAnalyzing(false)
     }
-  }, [eventType, currentVersion, proposedVersion, jsonError, showToast])
+  }, [eventType, currentVersion, proposedVersion, environment, jsonError, showToast])
 
   // Gated publish trigger
   const handlePublish = React.useCallback(async () => {
@@ -235,12 +257,19 @@ export function WorkspaceShell() {
     setPublishResult(null)
 
     try {
-      const res = await eventGateApi.publishEvent({
+      const req: PublishRequest = {
         eventType,
         currentVersion,
         proposedVersion,
         payload: parsedPayload,
-      })
+      }
+      if (environment && environment !== 'development') {
+        req.environment = environment
+      }
+      if (analysis.analysisId) {
+        req.analysisId = analysis.analysisId
+      }
+      const res = await eventGateApi.publishEvent(req)
       setPublishResult(res)
       showToast(
         'Event Ingested',
@@ -276,7 +305,7 @@ export function WorkspaceShell() {
     } finally {
       setIsPublishing(false)
     }
-  }, [analysis, eventType, currentVersion, proposedVersion, payloadText, jsonError, showToast])
+  }, [analysis, eventType, currentVersion, proposedVersion, environment, payloadText, jsonError, showToast])
 
   // Consumer selection handler for drawer
   const handleSelectConsumer = React.useCallback((id: string) => {
@@ -466,6 +495,39 @@ export function WorkspaceShell() {
         icon: Users,
         onSelect: () => handleSelectConsumer('analytics-service'),
       },
+      {
+        id: 'cmd-env-dev',
+        title: 'Switch Environment: Development',
+        description: 'Target development DynamoDB contracts and dev event bus',
+        category: 'Actions',
+        icon: Globe,
+        onSelect: () => handleEnvironmentChange('development'),
+      },
+      {
+        id: 'cmd-env-staging',
+        title: 'Switch Environment: Staging',
+        description: 'Target staging environment policy validation',
+        category: 'Actions',
+        icon: Globe,
+        onSelect: () => handleEnvironmentChange('staging'),
+      },
+      {
+        id: 'cmd-env-prod',
+        title: 'Switch Environment: Production',
+        description: 'Target production zero-tolerance release gating',
+        category: 'Actions',
+        icon: Globe,
+        onSelect: () => handleEnvironmentChange('production'),
+      },
+      {
+        id: 'cmd-help',
+        title: 'Open Keyboard Shortcuts & Help',
+        description: 'View command palette shortcuts, analyze hotkeys, and workflow guide',
+        category: 'Navigation',
+        icon: HelpCircle,
+        shortcut: '?',
+        onSelect: () => setIsHelpModalOpen(true),
+      },
     ]
 
     if (publishResult) {
@@ -478,6 +540,47 @@ export function WorkspaceShell() {
         onSelect: () => {
           navigator.clipboard.writeText(publishResult.eventId)
           showToast('Copied Event ID', publishResult.eventId, 'success')
+        },
+      })
+      if (publishResult.eventBridgeEventId) {
+        items.push({
+          id: 'cmd-copy-eb-id',
+          title: 'Copy EventBridge ID',
+          description: publishResult.eventBridgeEventId,
+          category: 'Clipboard',
+          icon: Copy,
+          onSelect: () => {
+            navigator.clipboard.writeText(publishResult.eventBridgeEventId || '')
+            showToast('Copied EventBridge ID', publishResult.eventBridgeEventId || undefined, 'success')
+          },
+        })
+      }
+    }
+
+    if (analysis?.analysisId) {
+      items.push({
+        id: 'cmd-copy-analysis-id',
+        title: 'Copy Analysis ID',
+        description: analysis.analysisId,
+        category: 'Clipboard',
+        icon: Copy,
+        onSelect: () => {
+          navigator.clipboard.writeText(analysis.analysisId || '')
+          showToast('Copied Analysis ID', analysis.analysisId, 'success')
+        },
+      })
+    }
+
+    if (analysis?.requestId) {
+      items.push({
+        id: 'cmd-copy-request-id',
+        title: 'Copy Request ID',
+        description: analysis.requestId,
+        category: 'Clipboard',
+        icon: Copy,
+        onSelect: () => {
+          navigator.clipboard.writeText(analysis.requestId || '')
+          showToast('Copied Request ID', analysis.requestId, 'success')
         },
       })
     }
@@ -495,6 +598,7 @@ export function WorkspaceShell() {
     handleFormatPayload,
     handleResetPayload,
     handleSelectConsumer,
+    handleEnvironmentChange,
     showToast,
   ])
 
@@ -517,6 +621,8 @@ export function WorkspaceShell() {
         onSelectTab={setActiveNavTab}
         onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
         onOpenHelp={() => setIsHelpModalOpen(true)}
+        environment={environment}
+        onEnvironmentChange={handleEnvironmentChange}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-4">
@@ -580,6 +686,7 @@ export function WorkspaceShell() {
         {/* Pull Request-Style Review Context Bar with Segmented Distribution Bar */}
         <ReviewContextBar
           analysis={analysis}
+          environment={environment}
           onFilterAffected={() => setConsumerFilter('AFFECTED')}
           onExportReport={() => setIsExportModalOpen(true)}
         />
@@ -611,6 +718,7 @@ export function WorkspaceShell() {
               isPublishing={isPublishing}
               hasJsonError={Boolean(jsonError)}
               onPublish={handlePublish}
+              environment={environment}
             />
           </div>
 
@@ -638,23 +746,32 @@ export function WorkspaceShell() {
         <PublishResultPanel
           publishResult={publishResult}
           publishError={publishError}
+          analysisId={analysis?.analysisId}
         />
 
         {/* Compatibility Findings & Schema Diff with Bidirectional Cross-Linking */}
         {analysis && (
-          <FindingsPanel
-            analysis={analysis}
-            selectedField={selectedField}
-            onSelectField={setSelectedField}
-            selectedConsumerId={selectedConsumerId}
-            onSelectConsumer={handleSelectConsumer}
-          />
+          <>
+            <FindingsPanel
+              analysis={analysis}
+              selectedField={selectedField}
+              onSelectField={setSelectedField}
+              selectedConsumerId={selectedConsumerId}
+              onSelectConsumer={handleSelectConsumer}
+            />
+            <SchemaDiff
+              changeSet={analysis.changeSet}
+              selectedField={selectedField}
+              onSelectField={setSelectedField}
+            />
+          </>
         )}
 
         {/* Event Path Pipeline Strip */}
         <EventPath
           decision={analysis?.decision ?? null}
           isPublished={Boolean(publishResult?.published)}
+          environment={environment}
         />
 
         {/* Session History (Browser tab session only) */}

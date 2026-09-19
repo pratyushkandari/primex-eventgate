@@ -1,14 +1,15 @@
 import { ArrowRight, CheckCircle2, ShieldAlert, ShieldCheck, ShieldQuestion } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
-import type { Decision } from '@/types/api'
+import type { Decision, Environment } from '@/types/api'
 
 interface EventPathProps {
   decision: Decision | null
   isPublished: boolean
+  environment?: Environment
 }
 
-export function EventPath({ decision, isPublished }: EventPathProps) {
+export function EventPath({ decision, isPublished, environment = 'production' }: EventPathProps) {
   const isBlocked = decision === 'BLOCK' || decision === 'REVIEW'
   const isAllowed = decision === 'ALLOW'
 
@@ -20,6 +21,8 @@ export function EventPath({ decision, isPublished }: EventPathProps) {
             Event path
           </CardTitle>
           <div className="flex items-center space-x-2 text-[10px] font-mono text-slate-500">
+            <span>{environment}</span>
+            <span>•</span>
             <span>Bus: primex-eventgate-dev-bus</span>
           </div>
         </div>

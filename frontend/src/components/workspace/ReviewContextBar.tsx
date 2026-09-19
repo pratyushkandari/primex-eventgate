@@ -1,15 +1,17 @@
 import { Badge } from '@/components/ui/Badge'
-import type { AnalysisResponse } from '@/types/api'
+import type { AnalysisResponse, Environment } from '@/types/api'
 import { GitPullRequest, ShieldCheck, FileText } from 'lucide-react'
 
 interface ReviewContextBarProps {
   analysis: AnalysisResponse | null
+  environment?: Environment
   onFilterAffected?: () => void
   onExportReport?: () => void
 }
 
 export function ReviewContextBar({
   analysis,
+  environment = 'production',
   onFilterAffected,
   onExportReport,
 }: ReviewContextBarProps) {
@@ -53,6 +55,9 @@ export function ReviewContextBar({
           </div>
           <span className="text-slate-400 font-medium">
             v{analysis.currentVersion} <span className="text-slate-600">→</span> v{analysis.proposedVersion}
+          </span>
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700/60 text-slate-300 font-medium">
+            {environment}
           </span>
           <Badge variant={analysis.decision.toLowerCase() as 'allow' | 'block' | 'review'} size="sm">
             {analysis.decision}

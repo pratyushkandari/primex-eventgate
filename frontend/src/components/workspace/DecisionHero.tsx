@@ -2,7 +2,7 @@ import { Send, AlertOctagon, CheckCircle2, AlertTriangle, Radio, ShieldCheck, Lo
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
-import type { AnalysisResponse } from '@/types/api'
+import type { AnalysisResponse, Environment } from '@/types/api'
 
 interface DecisionHeroProps {
   analysis: AnalysisResponse | null
@@ -10,6 +10,7 @@ interface DecisionHeroProps {
   isPublishing: boolean
   hasJsonError?: boolean
   onPublish: () => void
+  environment?: Environment
 }
 
 export function DecisionHero({
@@ -18,6 +19,7 @@ export function DecisionHero({
   isPublishing,
   hasJsonError = false,
   onPublish,
+  environment = 'production',
 }: DecisionHeroProps) {
   // State: Loading / Analyzing
   if (isAnalyzing) {
@@ -142,7 +144,7 @@ export function DecisionHero({
     )
   }
 
-  const { decision, severity, summary } = analysis
+  const { decision, severity, summary, compatibilityResult, policyName, policyReason } = analysis
   const primaryBreak = analysis.findings.find((f) => f.status === 'BREAK')
   const primaryRisk = analysis.findings.find((f) => f.status === 'RISK')
 
@@ -176,121 +178,151 @@ export function DecisionHero({
         </CardHeader>
 
         <CardContent className="p-4 space-y-3 font-mono">
-          {/* Main Decision Status Banner */}
-          {decision === 'ALLOW' && (
-            <div className="p-3.5 rounded border border-emerald-500/30 bg-emerald-950/20 space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-400 flex-shrink-0" />
-                  <span className="text-lg font-bold text-emerald-400 tracking-wide font-mono">
-                    ALLOW
-                  </span>
-                </div>
-                <Badge variant="safe" size="sm">
-                  SEVERITY: {severity}
-                </Badge>
+          {/* Final Decision Banner — strongest visual element */}
+          <div
+            className={`p-3.5 rounded border space-y-2 ${
+              decision === 'ALLOW'
+                ? 'border-emerald-500/30 bg-emerald-950/20'
+                : decision === 'BLOCK'
+                ? 'border-rose-500/30 bg-rose-950/20'
+                : 'border-amber-500/30 bg-amber-950/20'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                {decision === 'ALLOW' && <CheckCircle2 className="h-4 w-4 text-emerald-400 flex-shrink-0" />}
+                {decision === 'BLOCK' && <AlertOctagon className="h-4 w-4 text-rose-400 flex-shrink-0" />}
+                {decision === 'REVIEW' && <AlertTriangle className="h-4 w-4 text-amber-400 flex-shrink-0" />}
+                <span
+                  className={`text-lg font-bold tracking-wide font-mono ${
+                    decision === 'ALLOW' ? 'text-emerald-400' : decision === 'BLOCK' ? 'text-rose-400' : 'text-amber-400'
+                  }`}
+                >
+                  {decision}
+                </span>
               </div>
-
-              <div>
-                <h4 className="text-xs font-semibold text-slate-100 font-sans">
-                  Safe to Publish
-                </h4>
-                <p className="text-[11px] text-slate-300 mt-1 leading-relaxed font-sans">
-                  {summary}
-                </p>
-                <div className="mt-2 text-[10px] text-emerald-400 font-mono flex items-center space-x-1">
-                  <CheckCircle2 className="h-3 w-3" />
-                  <span>All registered consumers are compatible.</span>
-                </div>
-              </div>
+              <Badge
+                variant={decision === 'ALLOW' ? 'safe' : decision === 'BLOCK' ? 'block' : 'review'}
+                size="sm"
+              >
+                SEVERITY: {severity}
+              </Badge>
             </div>
-          )}
 
-          {decision === 'BLOCK' && (
-            <div className="p-3.5 rounded border border-rose-500/30 bg-rose-950/20 space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <AlertOctagon className="h-4 w-4 text-rose-400 flex-shrink-0" />
-                  <span className="text-lg font-bold text-rose-400 tracking-wide font-mono">
-                    BLOCK
-                  </span>
-                </div>
-                <Badge variant="block" size="sm">
-                  SEVERITY: {severity}
-                </Badge>
-              </div>
-
-              <div>
-                <h4 className="text-xs font-semibold text-slate-100 font-sans">
-                  Breaking Change Intercepted
-                </h4>
-                <div className="text-[10px] text-rose-400 font-mono mt-0.5">
-                  Publication prevented
-                </div>
-                <p className="text-[11px] text-slate-300 mt-1 leading-relaxed font-sans">
-                  {summary}
-                </p>
-                {primaryBreak && (
-                  <div className="mt-2 p-2 rounded bg-rose-950/40 border border-rose-500/20 text-xs font-mono space-y-0.5">
-                    <div className="text-slate-200 font-semibold">{primaryBreak.consumerId}</div>
-                    <div className="text-rose-300 text-[11px]">
-                      {primaryBreak.field}
-                      {primaryBreak.expectedType && primaryBreak.proposedType && (
-                        <span className="text-slate-400 ml-1.5 font-normal">
-                          ({primaryBreak.expectedType} → {primaryBreak.proposedType})
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                )}
-                <p className="text-[10px] text-rose-400 mt-1.5 font-sans">
+            <div>
+              <h4 className="text-xs font-semibold text-slate-100 font-sans">
+                {decision === 'ALLOW'
+                  ? 'Safe to Publish'
+                  : decision === 'BLOCK'
+                  ? 'Breaking Change Intercepted'
+                  : 'Review Required'}
+              </h4>
+              {decision === 'BLOCK' && (
+                <div className="text-[10px] font-mono mt-0.5 text-rose-400">
                   EventBridge publication is prevented.
-                </p>
-              </div>
+                </div>
+              )}
+              {decision === 'REVIEW' && (
+                <div className="text-[10px] font-mono mt-0.5 text-amber-400">
+                  Publication prevented pending future review.
+                </div>
+              )}
+              <p className="text-[11px] text-slate-300 mt-1 leading-relaxed font-sans">
+                {summary}
+              </p>
             </div>
-          )}
 
-          {decision === 'REVIEW' && (
-            <div className="p-3.5 rounded border border-amber-500/30 bg-amber-950/20 space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <AlertTriangle className="h-4 w-4 text-amber-400 flex-shrink-0" />
-                  <span className="text-lg font-bold text-amber-400 tracking-wide font-mono">
-                    REVIEW
+            {/* Primary breaking or risk finding */}
+            {decision === 'BLOCK' && primaryBreak && (
+              <div className="p-2 rounded bg-rose-950/40 border border-rose-500/20 text-xs font-mono space-y-0.5">
+                <div className="text-slate-200 font-semibold">{primaryBreak.consumerId}</div>
+                <div className="text-rose-300 text-[11px]">
+                  {primaryBreak.field}
+                  {primaryBreak.expectedType && primaryBreak.proposedType && (
+                    <span className="text-slate-400 ml-1.5 font-normal">
+                      ({primaryBreak.expectedType} → {primaryBreak.proposedType})
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+            {decision === 'REVIEW' && primaryRisk && (
+              <div className="p-2 rounded bg-amber-950/40 border border-amber-500/20 text-xs font-mono space-y-0.5">
+                <div className="text-slate-200 font-semibold">{primaryRisk.consumerId}</div>
+                <div className="text-amber-300 text-[11px]">
+                  {primaryRisk.field}
+                  <span className="text-slate-400 ml-1.5 font-normal">
+                    (field dependency detected)
                   </span>
                 </div>
-                <Badge variant="review" size="sm">
-                  SEVERITY: {severity}
-                </Badge>
               </div>
+            )}
+          </div>
 
-              <div>
-                <h4 className="text-xs font-semibold text-slate-100 font-sans">
-                  Review Required
-                </h4>
-                <div className="text-[10px] text-amber-400 font-mono mt-0.5">
-                  Publication prevented pending review
-                </div>
-                <p className="text-[11px] text-slate-300 mt-1 leading-relaxed font-sans">
-                  {summary}
-                </p>
-                {primaryRisk && (
-                  <div className="mt-2 p-2 rounded bg-amber-950/40 border border-amber-500/20 text-xs font-mono space-y-0.5">
-                    <div className="text-slate-200 font-semibold">{primaryRisk.consumerId}</div>
-                    <div className="text-amber-300 text-[11px]">
-                      {primaryRisk.field}
-                      <span className="text-slate-400 ml-1.5 font-normal">
-                        (field dependency detected)
-                      </span>
-                    </div>
-                  </div>
-                )}
-                <p className="text-[10px] text-amber-400 mt-1.5 font-sans">
-                  Publication prevented pending future review.
-                </p>
+          {/* Two-Tier Breakdown: Compatibility + Policy */}
+          <div className="grid grid-cols-2 gap-2 text-[11px]">
+            {/* Compatibility Result */}
+            <div className="p-2.5 rounded border border-slate-800 bg-slate-950/60 space-y-1">
+              <div className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">
+                Compatibility
+              </div>
+              <div
+                className={`font-bold text-xs ${
+                  (compatibilityResult || 'SAFE') === 'SAFE'
+                    ? 'text-emerald-400'
+                    : (compatibilityResult || '') === 'BREAK'
+                    ? 'text-rose-400'
+                    : 'text-amber-400'
+                }`}
+              >
+                {compatibilityResult || (decision === 'ALLOW' ? 'SAFE' : decision === 'BLOCK' ? 'BREAK' : 'RISK')}
+              </div>
+              <div className="text-[10px] text-slate-500">
+                Severity: {severity}
               </div>
             </div>
+
+            {/* Release Policy */}
+            <div className="p-2.5 rounded border border-slate-800 bg-slate-950/60 space-y-1">
+              <div className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">
+                Release Policy
+              </div>
+              <div
+                className={`font-bold text-xs ${
+                  decision === 'ALLOW'
+                    ? 'text-emerald-400'
+                    : decision === 'BLOCK'
+                    ? 'text-rose-400'
+                    : 'text-amber-400'
+                }`}
+              >
+                {decision}
+              </div>
+              <div className="text-[10px] text-slate-500 truncate" title={policyName || undefined}>
+                {policyName || `${environment} policy`}
+              </div>
+            </div>
+          </div>
+
+          {/* Policy Reason */}
+          {policyReason && (
+            <div className="p-2 rounded border border-slate-800/60 bg-slate-950/40 text-[11px] text-slate-400 font-sans leading-relaxed">
+              <span className="text-[10px] text-slate-500 font-mono uppercase font-bold block mb-0.5">
+                Policy Reason
+              </span>
+              {policyReason}
+            </div>
           )}
+
+          {/* Environment Context */}
+          <div className="flex items-center justify-between text-[10px] font-mono text-slate-500">
+            <span>Environment: {environment}</span>
+            {analysis.requestId && (
+              <span className="truncate ml-2" title={analysis.requestId}>
+                Request: {analysis.requestId.substring(0, 12)}...
+              </span>
+            )}
+          </div>
         </CardContent>
       </div>
 

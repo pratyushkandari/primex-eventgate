@@ -2,6 +2,7 @@ import * as React from 'react'
 import { Shield, RefreshCw, Cloud, HelpCircle, Command } from 'lucide-react'
 import { API_CONFIG } from '@/config/env'
 import { eventGateApi } from '@/services/api'
+import type { Environment } from '@/types/api'
 
 export type NavTab = 'review' | 'contracts' | 'history' | 'devtools' | 'policies' | 'settings'
 
@@ -10,13 +11,19 @@ interface HeaderProps {
   onSelectTab?: (tab: NavTab) => void
   onOpenCommandPalette?: () => void
   onOpenHelp?: () => void
+  environment?: Environment
+  onEnvironmentChange?: (env: Environment) => void
 }
+
+
 
 export function Header({
   activeTab = 'review',
   onSelectTab,
   onOpenCommandPalette,
   onOpenHelp,
+  environment = 'production',
+  onEnvironmentChange,
 }: HeaderProps) {
   const [healthStatus, setHealthStatus] = React.useState<'checking' | 'healthy' | 'unreachable'>('checking')
   const [apiVersion, setApiVersion] = React.useState<string | null>(null)
@@ -142,9 +149,29 @@ export function Header({
             <span>{API_CONFIG.region}</span>
           </div>
 
-          {/* Environment */}
-          <div className="hidden sm:flex items-center bg-slate-900 border border-slate-800/80 px-2 py-1 rounded text-slate-400">
-            <span>dev</span>
+          {/* Environment Selector */}
+          <div className="hidden sm:flex items-center">
+            {onEnvironmentChange ? (
+              <button
+                type="button"
+                id="env-selector"
+                onClick={() => {
+                  const envs: Environment[] = ['development', 'staging', 'production']
+                  const nextIndex = (envs.indexOf(environment) + 1) % envs.length
+                  onEnvironmentChange(envs[nextIndex])
+                }}
+                title={`Active Environment: ${environment}. Click to toggle.`}
+                aria-label={`Target Environment: ${environment}`}
+                className="flex items-center space-x-1.5 bg-slate-900 border border-slate-800/80 hover:border-slate-700 px-2.5 py-1 rounded text-slate-300 transition-colors cursor-pointer text-xs font-mono"
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-blue-400" />
+                <span>{environment === 'development' ? 'dev' : environment}</span>
+              </button>
+            ) : (
+              <div className="bg-slate-900 border border-slate-800/80 px-2.5 py-1 rounded text-slate-400 text-xs font-mono">
+                <span>{environment === 'development' ? 'dev' : environment}</span>
+              </div>
+            )}
           </div>
 
           {/* Health Status Indicator */}

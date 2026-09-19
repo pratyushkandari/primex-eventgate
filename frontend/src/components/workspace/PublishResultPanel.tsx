@@ -7,11 +7,13 @@ import type { PublishResponse } from '@/types/api'
 interface PublishResultPanelProps {
   publishResult: PublishResponse | null
   publishError: string | null
+  analysisId?: string
 }
 
 export function PublishResultPanel({
   publishResult,
   publishError,
+  analysisId: propAnalysisId,
 }: PublishResultPanelProps) {
   const [copiedKey, setCopiedKey] = React.useState<string | null>(null)
 
@@ -91,6 +93,7 @@ export function PublishResultPanel({
 
   const { eventId, eventBridgeEventId, analysis } = publishResult
   const requestId = analysis?.requestId || null
+  const analysisId = propAnalysisId || analysis?.analysisId || null
 
   return (
     <Card className="border-emerald-500/40 bg-emerald-950/10">
@@ -110,7 +113,7 @@ export function PublishResultPanel({
 
       <CardContent className="p-4 space-y-3 font-mono text-xs">
         {/* IDs Strip */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+        <div className={`grid grid-cols-1 ${analysisId ? 'sm:grid-cols-2 lg:grid-cols-4' : 'md:grid-cols-3'} gap-2.5`}>
           {/* Event ID */}
           <div className="p-2.5 rounded border border-slate-800 bg-[#0a0e17] space-y-1">
             <div className="flex items-center justify-between text-[10px] text-slate-500 uppercase">
@@ -183,6 +186,31 @@ export function PublishResultPanel({
               {requestId ? `Request ID: ${requestId}` : 'N/A'}
             </div>
           </div>
+
+          {/* Analysis ID */}
+          {analysisId && (
+            <div className="p-2.5 rounded border border-slate-800 bg-[#0a0e17] space-y-1">
+              <div className="flex items-center justify-between text-[10px] text-slate-500 uppercase">
+                <span>Analysis ID</span>
+                <button
+                  type="button"
+                  onClick={() => handleCopy('analysisId', analysisId)}
+                  title="Copy analysis ID"
+                  className="hover:text-slate-200 flex items-center space-x-1 cursor-pointer transition-colors"
+                >
+                  {copiedKey === 'analysisId' ? (
+                    <Check className="h-3 w-3 text-emerald-400" />
+                  ) : (
+                    <Copy className="h-3 w-3" />
+                  )}
+                  <span>{copiedKey === 'analysisId' ? 'Copied' : 'Copy'}</span>
+                </button>
+              </div>
+              <div className="text-purple-400 break-all select-all font-semibold">
+                {analysisId}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Metadata Footer */}
