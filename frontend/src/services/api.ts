@@ -7,6 +7,10 @@ import { API_CONFIG } from '@/config/env'
 import {
   type AnalysisRequest,
   type AnalysisResponse,
+  type ConsumerDetail,
+  type ConsumerSummary,
+  type EventCatalogSummary,
+  type EventDetail,
   EventGateApiError,
   type HealthResponse,
   type PublishRequest,
@@ -105,5 +109,37 @@ export const eventGateApi = {
       },
       true // allow409AsJson
     )
+  },
+
+  /**
+   * Fetch all registered event types in the catalog.
+   */
+  async listEventCatalog(): Promise<EventCatalogSummary[]> {
+    return request<EventCatalogSummary[]>('/api/v1/contracts/events', { method: 'GET' })
+  },
+
+  /**
+   * Fetch full contract detail and schemas for an event type.
+   */
+  async getEventDetail(eventType: string): Promise<EventDetail> {
+    return request<EventDetail>(`/api/v1/contracts/events/${encodeURIComponent(eventType)}`, {
+      method: 'GET',
+    })
+  },
+
+  /**
+   * Fetch all registered downstream consumers.
+   */
+  async listConsumers(): Promise<ConsumerSummary[]> {
+    return request<ConsumerSummary[]>('/api/v1/contracts/consumers', { method: 'GET' })
+  },
+
+  /**
+   * Fetch consumer contract detail by consumer ID.
+   */
+  async getConsumerDetail(consumerId: string): Promise<ConsumerDetail> {
+    return request<ConsumerDetail>(`/api/v1/contracts/consumers/${encodeURIComponent(consumerId)}`, {
+      method: 'GET',
+    })
   },
 }

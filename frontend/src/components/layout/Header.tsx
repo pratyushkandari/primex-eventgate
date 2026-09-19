@@ -3,12 +3,21 @@ import { Shield, RefreshCw, Cloud, HelpCircle, Command } from 'lucide-react'
 import { API_CONFIG } from '@/config/env'
 import { eventGateApi } from '@/services/api'
 
+export type NavTab = 'review' | 'contracts' | 'history' | 'devtools' | 'policies' | 'settings'
+
 interface HeaderProps {
+  activeTab?: NavTab
+  onSelectTab?: (tab: NavTab) => void
   onOpenCommandPalette?: () => void
   onOpenHelp?: () => void
 }
 
-export function Header({ onOpenCommandPalette, onOpenHelp }: HeaderProps) {
+export function Header({
+  activeTab = 'review',
+  onSelectTab,
+  onOpenCommandPalette,
+  onOpenHelp,
+}: HeaderProps) {
   const [healthStatus, setHealthStatus] = React.useState<'checking' | 'healthy' | 'unreachable'>('checking')
   const [apiVersion, setApiVersion] = React.useState<string | null>(null)
   const [lastChecked, setLastChecked] = React.useState<string | null>(null)
@@ -81,16 +90,44 @@ export function Header({ onOpenCommandPalette, onOpenHelp }: HeaderProps) {
           </div>
         </div>
 
-        {/* Center: Command Palette Trigger Button */}
+        {/* Center: Primary Navigation Tabs */}
+        <nav className="hidden md:flex items-center space-x-1" aria-label="Primary Navigation">
+          {[
+            { id: 'review' as NavTab, label: 'Review' },
+            { id: 'contracts' as NavTab, label: 'Contracts' },
+            { id: 'history' as NavTab, label: 'History' },
+            { id: 'devtools' as NavTab, label: 'Developer Tools' },
+            { id: 'policies' as NavTab, label: 'Policies' },
+            { id: 'settings' as NavTab, label: 'Settings' },
+          ].map((tab) => {
+            const isActive = activeTab === tab.id
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => onSelectTab?.(tab.id)}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer ${
+                  isActive
+                    ? 'bg-slate-800 text-slate-100 font-semibold shadow-xs border border-slate-700/80'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+                }`}
+              >
+                {tab.label}
+              </button>
+            )
+          })}
+        </nav>
+
+        {/* Command Palette Trigger Button */}
         {onOpenCommandPalette && (
           <button
             type="button"
             onClick={onOpenCommandPalette}
-            className="hidden md:flex items-center space-x-2 bg-slate-900/90 hover:bg-slate-800/80 border border-slate-700/70 hover:border-slate-600 px-3 py-1 rounded-md text-xs font-mono text-slate-400 hover:text-slate-200 transition-all shadow-xs cursor-pointer"
+            className="hidden xl:flex items-center space-x-2 bg-slate-900/90 hover:bg-slate-800/80 border border-slate-700/70 hover:border-slate-600 px-3 py-1 rounded-md text-xs font-mono text-slate-400 hover:text-slate-200 transition-all shadow-xs cursor-pointer"
             title="Open command palette (Ctrl+K / ⌘K)"
           >
             <Command className="h-3.5 w-3.5 text-slate-400" />
-            <span>Search or jump to...</span>
+            <span>Command...</span>
             <kbd className="bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800 text-[10px] text-slate-400">
               ⌘K
             </kbd>
@@ -164,6 +201,34 @@ export function Header({ onOpenCommandPalette, onOpenHelp }: HeaderProps) {
             </a>
           )}
         </div>
+      </div>
+
+      {/* Mobile/Tablet Tab Strip */}
+      <div className="md:hidden border-t border-slate-800/80 bg-[#080d17] px-4 py-1.5 overflow-x-auto flex items-center space-x-1 scrollbar-none" aria-label="Mobile Navigation">
+        {[
+          { id: 'review' as NavTab, label: 'Review' },
+          { id: 'contracts' as NavTab, label: 'Contracts' },
+          { id: 'history' as NavTab, label: 'History' },
+          { id: 'devtools' as NavTab, label: 'Dev Tools' },
+          { id: 'policies' as NavTab, label: 'Policies' },
+          { id: 'settings' as NavTab, label: 'Settings' },
+        ].map((tab) => {
+          const isActive = activeTab === tab.id
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => onSelectTab?.(tab.id)}
+              className={`px-2.5 py-1 rounded text-xs whitespace-nowrap transition-all cursor-pointer ${
+                isActive
+                  ? 'bg-slate-800 text-slate-100 font-semibold border border-slate-700'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              {tab.label}
+            </button>
+          )
+        })}
       </div>
     </header>
   )

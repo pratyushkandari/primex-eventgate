@@ -1,5 +1,6 @@
 import * as React from 'react'
-import { Header } from '@/components/layout/Header'
+import { Header, type NavTab } from '@/components/layout/Header'
+import { ContractsHub } from '@/components/contracts/ContractsHub'
 import { ScenarioSelector } from '@/components/workspace/ScenarioSelector'
 import { ReviewContextBar } from '@/components/workspace/ReviewContextBar'
 import { EventInputPanel } from '@/components/workspace/EventInputPanel'
@@ -31,6 +32,7 @@ import {
   RotateCcw,
   Users,
   Copy,
+  Database,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 
@@ -44,6 +46,7 @@ interface SessionReviewItem {
 }
 
 export function WorkspaceShell() {
+  const [activeNavTab, setActiveNavTab] = React.useState<NavTab>('review')
   const [selectedScenarioId, setSelectedScenarioId] = React.useState<DemoScenario['id']>('safe')
   const [eventType] = React.useState<string>('OrderPlaced')
   const [currentVersion] = React.useState<number>(1)
@@ -299,6 +302,22 @@ export function WorkspaceShell() {
   const commandPaletteItems = React.useMemo<CommandItem[]>(() => {
     const items: CommandItem[] = [
       {
+        id: 'nav-review',
+        title: 'Go to Review Workspace',
+        description: 'Interactive pre-flight release analysis and decision gate',
+        category: 'Navigation',
+        icon: FileCode,
+        onSelect: () => setActiveNavTab('review'),
+      },
+      {
+        id: 'nav-contracts',
+        title: 'Go to Contract Registry',
+        description: 'Browse versioned event catalogs and consumer contracts',
+        category: 'Navigation',
+        icon: Database,
+        onSelect: () => setActiveNavTab('contracts'),
+      },
+      {
         id: 'cmd-analyze',
         title: 'Analyze Compatibility',
         description: 'Run pre-flight contract check against DynamoDB consumers',
@@ -452,17 +471,32 @@ export function WorkspaceShell() {
     <div className="min-h-screen bg-[#090d16] text-slate-100 flex flex-col selection:bg-blue-500/30 selection:text-blue-200">
       {/* Top Application Bar */}
       <Header
+        activeTab={activeNavTab}
+        onSelectTab={setActiveNavTab}
         onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
         onOpenHelp={() => setIsHelpModalOpen(true)}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-4">
-        {/* Scenario Selection Toolbar */}
-        <ScenarioSelector
-          selectedScenario={selectedScenarioId}
-          onSelectScenario={handleSelectScenario}
-          disabled={isAnalyzing || isPublishing}
-        />
+        {activeNavTab === 'contracts' && (
+          <ContractsHub
+            onOpenReviewScenario={(_et, _cur, prop) => {
+              if (prop === 2) handleSelectScenario(DEMO_SCENARIOS.safe)
+              else if (prop === 3) handleSelectScenario(DEMO_SCENARIOS.breaking)
+              else if (prop === 4) handleSelectScenario(DEMO_SCENARIOS.risk)
+              setActiveNavTab('review')
+            }}
+          />
+        )}
+
+        {activeNavTab === 'review' && (
+          <>
+            {/* Scenario Selection Toolbar */}
+            <ScenarioSelector
+              selectedScenario={selectedScenarioId}
+              onSelectScenario={handleSelectScenario}
+              disabled={isAnalyzing || isPublishing}
+            />
 
         {/* Global Analysis Error Banner */}
         {analysisError && (
@@ -586,6 +620,8 @@ export function WorkspaceShell() {
               ))}
             </div>
           </div>
+        )}
+          </>
         )}
       </main>
 

@@ -12,10 +12,60 @@ export interface HealthResponse {
   version: string
 }
 
+export type Environment = 'development' | 'staging' | 'production'
+
 export interface AnalysisRequest {
   eventType: string
   currentVersion: number
   proposedVersion: number
+  environment?: Environment
+}
+
+export interface EventCatalogSummary {
+  eventType: string
+  versionCount: number
+  versions: number[]
+  latestVersion: number
+  consumerCount: number
+}
+
+export interface EventFieldSchema {
+  name: string
+  type: string
+  required: boolean
+}
+
+export interface EventContractVersion {
+  eventType: string
+  version: number
+  fields: Record<string, EventFieldSchema>
+}
+
+export interface SubscribedConsumer {
+  consumerId: string
+  eventType: string
+  expectedFields: Record<string, { name: string; type: string; required: boolean }>
+}
+
+export interface EventDetail {
+  eventType: string
+  versionCount: number
+  versions: number[]
+  latestVersion: number
+  contracts: EventContractVersion[]
+  consumers: SubscribedConsumer[]
+}
+
+export interface ConsumerSummary {
+  consumerId: string
+  eventType: string
+  expectedFieldsCount: number
+}
+
+export interface ConsumerDetail {
+  consumerId: string
+  eventType: string
+  expectedFields: Record<string, { name: string; type: string; required: boolean }>
 }
 
 export interface TypeChange {

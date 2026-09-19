@@ -5,7 +5,7 @@ export interface CommandItem {
   id: string
   title: string
   description?: string
-  category: 'Actions' | 'Scenarios' | 'Editor' | 'Clipboard' | 'Filters'
+  category: 'Actions' | 'Scenarios' | 'Editor' | 'Clipboard' | 'Filters' | 'Navigation'
   icon: React.ComponentType<{ className?: string }>
   shortcut?: string
   disabled?: boolean
