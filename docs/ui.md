@@ -126,6 +126,9 @@ The UI is structured as an integrated release-control platform with six primary 
 ### 5. Release Decision Gate (`DecisionHero`)
 * Completely authoritative from the server; never client-recomputed.
 * Restrained border highlight (2px left border matching decision severity).
+* **Two-Tier Authoritative Decision Structure:**
+  * **Tier 1 (Schema Compatibility Evaluation):** Displays raw contract compatibility result (`SAFE`, `RISK`, `BREAK`) along with calculated change severity (`LOW`, `MEDIUM`, `HIGH`).
+  * **Tier 2 (Release Policy Evaluation):** Authoritative policy gate outcome (`ALLOW`, `REVIEW`, `BLOCK`) evaluated against the active environment (`development`, `staging`, `production`) with explicit policy engine reasoning.
 * Distinctive states:
   * **Idle:** *"Ready to Analyze"* with pre-flight check guidance.
   * **Evaluating:** Animated spinner with contract comparison note.
@@ -147,20 +150,31 @@ The UI is structured as an integrated release-control platform with six primary 
   * Expected vs proposed type transformation preview.
   * Release gate enforcement action breakdown (e.g. *HTTP 409 halted before PutEvents*).
 
-### 8. Dependency Topology Graph (`DependencyTopology`)
-* Interactive node diagram tracing:
+### 8. Interactive Dependency Topology Graph (`DependencyTopology`)
+* Production graph engine built on `@xyflow/react` rendering an interactive node canvas:
   `Producer Contract (OrderPlaced)` $\to$ `Release Gate (EventGate)` $\to$ `Downstream Consumers (Billing, Inventory, Analytics)`.
-* Nodes display live status badges (`SAFE`, `BREAK`, `RISK`).
-* Direct click interaction: Clicking any consumer node opens the Consumer Inspector Drawer.
+* **Custom Node Architecture:**
+  * `ProducerNode`: Contract metadata, version transition (`v1 → v3`).
+  * `GateNode`: Central release gate with decision indicator and status icon.
+  * `ConsumerNode`: Fan-out cards with status badges (`SAFE`, `BREAK`, `RISK`) and inline field diagnostics.
+* **Decision-Aware Edges:**
+  * `ALLOW`: Emerald animated flow indicating unimpeded event transmission.
+  * `BLOCK`: Rose dashed interrupted paths indicating halted transmission.
+  * `REVIEW`: Amber dotted held paths indicating manual review required.
+* **Canvas Controls:** Interactive pan, scroll zoom, fit-to-view, and slate dot matrix background.
+* **Accessibility Fallback (`TopologyFallback`):** Hidden accessible semantic list hierarchy ensuring 100% screen reader compatibility and keyboard activation.
 
-### 9. Schema Diff & Findings (`FindingsPanel`)
-* Styled like a pull-request code review interface.
-* **Category Filter Tabs:** Filter modifications by `All`, `Types`, `Added`, `Removed`.
-* **Click-to-Crosslink:** Clicking any diff field selects it, immediately highlighting dependent downstream consumers in the matrix.
-* **Expandable Diagnostics:** Rule cards with expandable policy enforcement metadata.
+### 9. PR-Style Schema Diff & Findings (`SchemaDiff` & `FindingsPanel`)
+* **`SchemaDiff`:** Pull-request code review interface highlighting:
+  * Green additions (`+ field added`)
+  * Red deletions (`- field removed`)
+  * Amber type changes (`~ field: string → object`)
+  * Blue requiredness shifts (`⇄ requiredness modified`)
+* **Click-to-Crosslink:** Clicking any diff field selects it, immediately highlighting dependent downstream consumers in the matrix and focusing the topology node.
+* **`FindingsPanel`:** Diagnostic breakdown of every violated compatibility rule with expandable metadata.
 
 ### 10. Operational Pipeline (`EventPath`)
-* Visual pipeline tracing: `API Gateway` $\to$ `EventGate` $\to$ `EventBridge` $\to$ `Consumers`.
+* Visual pipeline tracing: `API Gateway` $\to$ `EventGate` $\to$ `DynamoDB` $\to$ `EventBridge` $\to$ `Consumers`.
 * Strictly displays real custom bus name: `primex-eventgate-dev-bus`.
 * Differentiates **registered target**, **traffic halted before broker**, and **verified CloudWatch delivery**.
 
