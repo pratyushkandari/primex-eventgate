@@ -9,7 +9,7 @@
 
 *EventGate analyzes proposed event-contract changes against downstream consumer contracts, evaluates release policy, and prevents incompatible changes from being published.*
 
-[![Frontend](https://img.shields.io/badge/Frontend-AWS%20Amplify-FF9900?style=flat-square&logo=awsamplify&logoColor=white)](https://main.d1etyexqf0w3wz.amplifyapp.com)
+[![Frontend](https://img.shields.io/badge/Frontend-AWS%20Amplify-FF9900?style=flat-square&logo=awsamplify&logoColor=white)](https://main.d1etyxeqf0w3wz.amplifyapp.com)
 [![Backend](https://img.shields.io/badge/Backend-API%20Gateway%20%2B%20Lambda-FF9900?style=flat-square&logo=amazonaws&logoColor=white)](https://ux8bwi3i8l.execute-api.ap-south-1.amazonaws.com/health)
 [![Tests Backend](https://img.shields.io/badge/Backend%20Tests-270%20Passed-brightgreen?style=flat-square)]()
 [![Tests Frontend](https://img.shields.io/badge/Frontend%20Tests-88%20Passed-brightgreen?style=flat-square)]()
@@ -24,7 +24,7 @@
 
 | Component | URL | Provider | Role |
 | :--- | :--- | :--- | :--- |
-| **Control Console** | [`https://main.d1etyexqf0w3wz.amplifyapp.com`](https://main.d1etyexqf0w3wz.amplifyapp.com) | **AWS Amplify** | 6-view developer control plane & workspace |
+| **Control Console** | [`https://main.d1etyxeqf0w3wz.amplifyapp.com`](https://main.d1etyxeqf0w3wz.amplifyapp.com) | **AWS Amplify** | 6-view developer control plane & workspace |
 | **Enforcement API** | [`https://ux8bwi3i8l.execute-api.ap-south-1.amazonaws.com`](https://ux8bwi3i8l.execute-api.ap-south-1.amazonaws.com) | **Amazon API Gateway** | Schema gating, policy engine, & EventBridge ingress |
 
 </div>

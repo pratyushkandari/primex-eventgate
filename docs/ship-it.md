@@ -9,7 +9,7 @@ The **Ship It** track evaluates genuine deployment, architectural rigor, serverl
  ┌─────────────────────────────────────────────────────────────────────────────────────────┐
  │                                                                                         │
  │   AWS Amplify Hosting ────────► Amazon API Gateway (HTTP API v2)                        │
- │   https://main.d1etyexqf0w3wz   https://ux8bwi3i8l.execute-api.ap-south-1.amazonaws.com │
+ │   https://main.d1etyxeqf0w3wz   https://ux8bwi3i8l.execute-api.ap-south-1.amazonaws.com │
  │   .amplifyapp.com                                 │                                     │
  │                                                   ▼                                     │
  │                                          AWS Lambda (EventGate)                         │
@@ -37,7 +37,7 @@ The **Ship It** track evaluates genuine deployment, architectural rigor, serverl
 
 | Resource | Value / Identifier | AWS Region | Role |
 | :--- | :--- | :---: | :--- |
-| **Frontend Console** | `https://main.d1etyexqf0w3wz.amplifyapp.com` | `ap-south-1` | AWS Amplify continuous deployment from GitHub `main` |
+| **Frontend Console** | `https://main.d1etyxeqf0w3wz.amplifyapp.com` | `ap-south-1` | AWS Amplify continuous deployment from GitHub `main` |
 | **Enforcement API** | `https://ux8bwi3i8l.execute-api.ap-south-1.amazonaws.com` | `ap-south-1` | Amazon API Gateway HTTP API v2 |
 | **CloudFormation Stack** | `primex-eventgate-dev` | `ap-south-1` | Declarative AWS SAM deployment stack |
 | **EventBridge Bus** | `primex-eventgate-dev-bus` | `ap-south-1` | Custom broker routing approved event contracts |

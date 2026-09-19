@@ -323,9 +323,17 @@ export const ReleaseHistoryView: React.FC<ReleaseHistoryViewProps> = ({ onSelect
             )}
           </div>
         ) : (
-          <div className="overflow-hidden rounded border border-neutral-800 bg-neutral-900/40">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-neutral-300">
+          <div>
+            {hasActiveFilters && (
+              <div className="mb-2.5 flex items-center justify-between text-xs text-neutral-400">
+                <span>
+                  Showing <strong className="text-neutral-200">{filteredRecords.length}</strong> matching records (of {records.length} total)
+                </span>
+              </div>
+            )}
+            <div className="overflow-hidden rounded border border-neutral-800 bg-neutral-900/40">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs text-neutral-300">
                 <thead className="border-b border-neutral-800 bg-neutral-900/80 text-[11px] font-semibold text-neutral-400">
                   <tr>
                     <th scope="col" className="py-3 pl-4 pr-3">Record</th>
@@ -499,7 +507,8 @@ export const ReleaseHistoryView: React.FC<ReleaseHistoryViewProps> = ({ onSelect
               </table>
             </div>
           </div>
-        )}
+        </div>
+      )}
       </div>
 
       {/* Record Inspection Slide-Over Drawer */}
