@@ -33,7 +33,7 @@ where = ["backend/src"]
 
 [tool.pytest.ini_options]
 testpaths = ["backend/tests"]
-pythonpath = ["backend/src"]
+pythonpath = ["backend/src", "."]
 
 [tool.coverage.run]
 source = ["eventgate"]

@@ -1,0 +1,77 @@
+name: EventGate Contract Release Gate
+
+on:
+  pull_request:
+    paths:
+      - 'contracts/**'
+  workflow_dispatch:
+    inputs:
+      event:
+        description: 'Event Contract Name (e.g. OrderPlaced)'
+        required: true
+        default: 'OrderPlaced'
+      current:
+        description: 'Current Contract Version (e.g. 1)'
+        required: true
+        default: '1'
+      proposed:
+        description: 'Proposed Contract Version (e.g. 2)'
+        required: true
+        default: '2'
+      environment:
+        description: 'Target Deployment Environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+          - development
+
+permissions:
+  contents: read
+
+jobs:
+  contract-release-gate:
+    name: Evaluate Contract Compatibility & Policy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install EventGate Platform CLI
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Run CI Contract Diff Gate (Pull Request)
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "## EventGate CI Release Gate" >> $GITHUB_STEP_SUMMARY
+          echo "Analyzing changed event contracts in PR #${{ github.event.pull_request.number }}..." >> $GITHUB_STEP_SUMMARY
+          python scripts/ci_contract_diff.py \
+            --base-ref "origin/${{ github.base_ref }}" \
+            --head-ref "HEAD" \
+            --env "production" \
+            --fail-on-review
+
+      - name: Run Manual Contract Gate (Workflow Dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          echo "## EventGate Manual Release Gate" >> $GITHUB_STEP_SUMMARY
+          eventgate check \
+            --event "${{ inputs.event }}" \
+            --current "${{ inputs.current }}" \
+            --proposed "${{ inputs.proposed }}" \
+            --env "${{ inputs.environment }}" \
+            --format markdown \
+            --fail-on-review >> $GITHUB_STEP_SUMMARY
