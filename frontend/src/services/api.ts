@@ -20,6 +20,21 @@ import {
   type PolicyInspectionResponse,
   type RuntimeConfigResponse,
 } from '@/types/api'
+import {
+  AnalysisResponseSchema,
+  ConsumerDetailSchema,
+  ConsumerSummarySchema,
+  EventCatalogSummarySchema,
+  EventDetailSchema,
+  HealthResponseSchema,
+  PolicyInspectionResponseSchema,
+  PublishResponseSchema,
+  ReleaseRecordSchema,
+  ReportExportResponseSchema,
+  RuntimeConfigResponseSchema,
+  validateResponse,
+} from '@/schemas/api'
+import { z } from 'zod'
 
 async function request<T>(
   endpoint: string,
@@ -87,17 +102,19 @@ export const eventGateApi = {
    * Health probe verifying operational connectivity.
    */
   async checkHealth(): Promise<HealthResponse> {
-    return request<HealthResponse>('/health', { method: 'GET' })
+    const data = await request<HealthResponse>('/health', { method: 'GET' })
+    return validateResponse(HealthResponseSchema, data, 'Health')
   },
 
   /**
    * Advisory schema compatibility analysis. Does NOT publish to EventBridge.
    */
   async analyzeCompatibility(req: AnalysisRequest): Promise<AnalysisResponse> {
-    return request<AnalysisResponse>('/api/v1/analyze', {
+    const data = await request<AnalysisResponse>('/api/v1/analyze', {
       method: 'POST',
       body: JSON.stringify(req),
     })
+    return validateResponse(AnalysisResponseSchema, data, 'Analysis')
   },
 
   /**
@@ -105,7 +122,7 @@ export const eventGateApi = {
    * Returns PublishResponse even on 409 (BLOCK/REVIEW domain outcomes).
    */
   async publishEvent(req: PublishRequest): Promise<PublishResponse> {
-    return request<PublishResponse>(
+    const data = await request<PublishResponse>(
       '/api/v1/events/publish',
       {
         method: 'POST',
@@ -113,38 +130,43 @@ export const eventGateApi = {
       },
       true // allow409AsJson
     )
+    return validateResponse(PublishResponseSchema, data, 'Publish')
   },
 
   /**
    * Fetch all registered event types in the catalog.
    */
   async listEventCatalog(): Promise<EventCatalogSummary[]> {
-    return request<EventCatalogSummary[]>('/api/v1/contracts/events', { method: 'GET' })
+    const data = await request<EventCatalogSummary[]>('/api/v1/contracts/events', { method: 'GET' })
+    return validateResponse(z.array(EventCatalogSummarySchema), data, 'EventCatalog')
   },
 
   /**
    * Fetch full contract detail and schemas for an event type.
    */
   async getEventDetail(eventType: string): Promise<EventDetail> {
-    return request<EventDetail>(`/api/v1/contracts/events/${encodeURIComponent(eventType)}`, {
+    const data = await request<EventDetail>(`/api/v1/contracts/events/${encodeURIComponent(eventType)}`, {
       method: 'GET',
     })
+    return validateResponse(EventDetailSchema, data, 'EventDetail')
   },
 
   /**
    * Fetch all registered downstream consumers.
    */
   async listConsumers(): Promise<ConsumerSummary[]> {
-    return request<ConsumerSummary[]>('/api/v1/contracts/consumers', { method: 'GET' })
+    const data = await request<ConsumerSummary[]>('/api/v1/contracts/consumers', { method: 'GET' })
+    return validateResponse(z.array(ConsumerSummarySchema), data, 'ConsumerList')
   },
 
   /**
    * Fetch consumer contract detail by consumer ID.
    */
   async getConsumerDetail(consumerId: string): Promise<ConsumerDetail> {
-    return request<ConsumerDetail>(`/api/v1/contracts/consumers/${encodeURIComponent(consumerId)}`, {
+    const data = await request<ConsumerDetail>(`/api/v1/contracts/consumers/${encodeURIComponent(consumerId)}`, {
       method: 'GET',
     })
+    return validateResponse(ConsumerDetailSchema, data, 'ConsumerDetail')
   },
 
   /**
@@ -155,49 +177,55 @@ export const eventGateApi = {
     if (eventType) params.set('eventType', eventType)
     if (limit) params.set('limit', String(limit))
     const qs = params.toString() ? `?${params.toString()}` : ''
-    return request<ReleaseRecord[]>(`/api/v1/history${qs}`, { method: 'GET' })
+    const data = await request<ReleaseRecord[]>(`/api/v1/history${qs}`, { method: 'GET' })
+    return validateResponse(z.array(ReleaseRecordSchema), data, 'ReleaseHistory')
   },
 
   /**
    * Fetch single release review record by record ID or analysis ID.
    */
   async getReview(recordId: string): Promise<ReleaseRecord> {
-    return request<ReleaseRecord>(`/api/v1/history/${encodeURIComponent(recordId)}`, {
+    const data = await request<ReleaseRecord>(`/api/v1/history/${encodeURIComponent(recordId)}`, {
       method: 'GET',
     })
+    return validateResponse(ReleaseRecordSchema, data, 'ReleaseRecord')
   },
 
   /**
    * Export release report for a historical record.
    */
   async getReport(recordId: string, format = 'markdown'): Promise<ReportExportResponse> {
-    return request<ReportExportResponse>(
+    const data = await request<ReportExportResponse>(
       `/api/v1/history/${encodeURIComponent(recordId)}/report?format=${encodeURIComponent(format)}`,
       { method: 'GET' }
     )
+    return validateResponse(ReportExportResponseSchema, data, 'ReportExport')
   },
 
   /**
    * Export report directly from an active in-memory review state.
    */
   async exportActiveReport(data: Record<string, unknown>): Promise<ReportExportResponse> {
-    return request<ReportExportResponse>('/api/v1/reports/export', {
+    const raw = await request<ReportExportResponse>('/api/v1/reports/export', {
       method: 'POST',
       body: JSON.stringify(data),
     })
+    return validateResponse(ReportExportResponseSchema, raw, 'ActiveReportExport')
   },
 
   /**
    * Fetch active policy configuration, matrix, and Cedar specifications.
    */
   async getPolicies(): Promise<PolicyInspectionResponse> {
-    return request<PolicyInspectionResponse>('/api/v1/policies', { method: 'GET' })
+    const data = await request<PolicyInspectionResponse>('/api/v1/policies', { method: 'GET' })
+    return validateResponse(PolicyInspectionResponseSchema, data, 'Policies')
   },
 
   /**
    * Fetch authoritative runtime configuration.
    */
   async getRuntimeConfig(): Promise<RuntimeConfigResponse> {
-    return request<RuntimeConfigResponse>('/api/v1/config/runtime', { method: 'GET' })
+    const data = await request<RuntimeConfigResponse>('/api/v1/config/runtime', { method: 'GET' })
+    return validateResponse(RuntimeConfigResponseSchema, data, 'RuntimeConfig')
   },
 }
