@@ -185,6 +185,18 @@ The UI is structured as an integrated release-control platform with six primary 
   * Evaluation results (`Analysis Complete: ALLOW / BLOCK / REVIEW`)
   * Ingestion confirmations (`Event Ingested: ID ...`)
 
+### 12. Runtime API Response Validation (Zod)
+* Structural runtime validation enforcing API contracts across all network boundaries without duplicating domain business rules:
+  * Enforces `AnalysisResponse`, `PublishResponse`, `ReleaseRecord`, `EventCatalog`, `ConsumerDetail`, `PolicyInspection`, and `RuntimeConfig` schemas.
+  * Rejects malformed server responses before they can corrupt UI state or introduce silent undefined bugs.
+  * Formats Zod structural violations into actionable diagnostic errors preserving request correlation.
+
+### 13. Accessible Topology Fallback (`TopologyFallback`)
+* Semantic text representation and keyboard-accessible control panel paired with the `@xyflow/react` node graph:
+  * Enables screen-reader users to navigate the release blast radius hierarchy from Producer $\to$ EventGate $\to$ Consumers.
+  * Provides keyboard-interactive consumer cards displaying status badges (`SAFE`, `BREAK`, `RISK`), severity levels, and deep-dive drawer activation.
+  * Ensures compliance with WCAG AA accessibility standards even in non-canvas assistive reading environments.
+
 ---
 
 ## 5. Accessibility & Keyboard Shortcuts
