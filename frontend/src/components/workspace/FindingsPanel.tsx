@@ -55,7 +55,7 @@ export function FindingsPanel({
         <div className="flex items-center justify-between">
           <CardTitle className="text-xs font-mono uppercase tracking-wider text-slate-300 flex items-center space-x-2">
             <GitPullRequest className="h-3.5 w-3.5 text-blue-400" />
-            <span>Compatibility findings & Schema diff</span>
+            <span>Compatibility Findings</span>
           </CardTitle>
           <div className="flex items-center space-x-2">
             <Badge

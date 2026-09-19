@@ -144,7 +144,7 @@ describe('WorkspaceShell integrated workflow', () => {
 
   it('renders all main panels and connects to live health', async () => {
     render(<WorkspaceShell />)
-    await waitFor(() => expect(screen.getByText('API Healthy')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('API ONLINE')).toBeInTheDocument())
 
     expect(screen.getAllByText('EventGate').length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText(/Contract change/i)).toBeInTheDocument()
@@ -155,7 +155,7 @@ describe('WorkspaceShell integrated workflow', () => {
 
   it('switches between sample scenarios without fabricating analysis', async () => {
     render(<WorkspaceShell />)
-    await waitFor(() => expect(screen.getByText('API Healthy')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('API ONLINE')).toBeInTheDocument())
 
     // Initial state is Safe scenario (v2)
     const select = screen.getByRole('combobox') as HTMLSelectElement
@@ -178,16 +178,16 @@ describe('WorkspaceShell integrated workflow', () => {
     vi.mocked(eventGateApi.analyzeCompatibility).mockResolvedValue(mockAllowAnalysis)
 
     render(<WorkspaceShell />)
-    await waitFor(() => expect(screen.getByText('API Healthy')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('API ONLINE')).toBeInTheDocument())
 
     const analyzeBtn = screen.getByRole('button', { name: /Analyze/i })
     fireEvent.click(analyzeBtn)
 
     await waitFor(() => {
       expect(screen.getAllByText('ALLOW')[0]).toBeInTheDocument()
-      expect(screen.getByText('Safe to Publish')).toBeInTheDocument()
+      expect(screen.getByText('Publication permitted.')).toBeInTheDocument()
       expect(screen.getByText('SEVERITY: LOW')).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: /Publish Event to EventBridge/i })).toBeEnabled()
+      expect(screen.getByRole('button', { name: /Publish Event/i })).toBeEnabled()
     })
 
     expect(eventGateApi.analyzeCompatibility).toHaveBeenCalledWith({
@@ -202,7 +202,7 @@ describe('WorkspaceShell integrated workflow', () => {
     vi.mocked(eventGateApi.analyzeCompatibility).mockResolvedValue(mockBlockAnalysis)
 
     render(<WorkspaceShell />)
-    await waitFor(() => expect(screen.getByText('API Healthy')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('API ONLINE')).toBeInTheDocument())
 
     const breakingBtn = screen.getByRole('button', { name: /Breaking/i })
     fireEvent.click(breakingBtn)
@@ -212,9 +212,9 @@ describe('WorkspaceShell integrated workflow', () => {
 
     await waitFor(() => {
       expect(screen.getAllByText('BLOCK')[0]).toBeInTheDocument()
-      expect(screen.getByText('Breaking Change Intercepted')).toBeInTheDocument()
+      expect(screen.getByText('Publication prevented.')).toBeInTheDocument()
       expect(screen.getByText('SEVERITY: HIGH')).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: /Publication Prevented by Gate/i })).toBeDisabled()
+      expect(screen.getByRole('button', { name: /Publication prevented/i })).toBeDisabled()
     })
   })
 
@@ -222,7 +222,7 @@ describe('WorkspaceShell integrated workflow', () => {
     vi.mocked(eventGateApi.analyzeCompatibility).mockResolvedValue(mockReviewAnalysis)
 
     render(<WorkspaceShell />)
-    await waitFor(() => expect(screen.getByText('API Healthy')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('API ONLINE')).toBeInTheDocument())
 
     const riskBtn = screen.getByRole('button', { name: /Risk/i })
     fireEvent.click(riskBtn)
@@ -232,9 +232,9 @@ describe('WorkspaceShell integrated workflow', () => {
 
     await waitFor(() => {
       expect(screen.getAllByText('REVIEW')[0]).toBeInTheDocument()
-      expect(screen.getByText('Review Required')).toBeInTheDocument()
+      expect(screen.getByText('Publication held pending review.')).toBeInTheDocument()
       expect(screen.getByText('SEVERITY: MEDIUM')).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: /Publication Prevented by Gate/i })).toBeDisabled()
+      expect(screen.getByRole('button', { name: /Publication held pending review/i })).toBeDisabled()
     })
   })
 
@@ -243,19 +243,19 @@ describe('WorkspaceShell integrated workflow', () => {
     vi.mocked(eventGateApi.publishEvent).mockResolvedValue(mockPublishResponse)
 
     render(<WorkspaceShell />)
-    await waitFor(() => expect(screen.getByText('API Healthy')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('API ONLINE')).toBeInTheDocument())
 
     // Step 1: Analyze
     const analyzeBtn = screen.getByRole('button', { name: /Analyze/i })
     fireEvent.click(analyzeBtn)
-    await waitFor(() => expect(screen.getByText('Safe to Publish')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Publication permitted.')).toBeInTheDocument())
 
     // Step 2: Publish
-    const publishBtn = screen.getByRole('button', { name: /Publish Event to EventBridge/i })
+    const publishBtn = screen.getByRole('button', { name: /Publish Event/i })
     fireEvent.click(publishBtn)
 
     await waitFor(() => {
-      expect(screen.getByText(/Published/i)).toBeInTheDocument()
+      expect(screen.getByText('Published to Amazon EventBridge')).toBeInTheDocument()
       expect(screen.getByText('evt-allow-verified-1')).toBeInTheDocument()
       expect(screen.getByText('eb-verified-entry-888')).toBeInTheDocument()
     })
@@ -275,12 +275,12 @@ describe('WorkspaceShell integrated workflow', () => {
     vi.mocked(eventGateApi.analyzeCompatibility).mockResolvedValue(mockAllowAnalysis)
 
     render(<WorkspaceShell />)
-    await waitFor(() => expect(screen.getByText('API Healthy')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('API ONLINE')).toBeInTheDocument())
 
     // Analyze in default production environment
     const analyzeBtn = screen.getByRole('button', { name: /Analyze/i })
     fireEvent.click(analyzeBtn)
-    await waitFor(() => expect(screen.getByText('Safe to Publish')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Publication permitted.')).toBeInTheDocument())
 
     // Click environment selector to open dropdown menu
     const envBtn = screen.getByLabelText(/Target Environment: production/i)
@@ -292,12 +292,12 @@ describe('WorkspaceShell integrated workflow', () => {
 
     // Verify stale decision is cleared and reset to Ready to Analyze
     expect(screen.getByText('Ready to Analyze')).toBeInTheDocument()
-    expect(screen.queryByText('Safe to Publish')).not.toBeInTheDocument()
+    expect(screen.queryByText('Publication permitted.')).not.toBeInTheDocument()
   })
 
   it('prevents analysis submission when JSON payload has syntax errors', async () => {
     render(<WorkspaceShell />)
-    await waitFor(() => expect(screen.getByText('API Healthy')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('API ONLINE')).toBeInTheDocument())
 
     const textarea = screen.getByPlaceholderText('Enter JSON payload...')
     fireEvent.change(textarea, { target: { value: '{"orderId": INVALID_SYNTAX}' } })
@@ -313,15 +313,15 @@ describe('WorkspaceShell integrated workflow', () => {
     vi.mocked(eventGateApi.analyzeCompatibility).mockResolvedValue(mockAllowAnalysis)
 
     render(<WorkspaceShell />)
-    await waitFor(() => expect(screen.getByText('API Healthy')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('API ONLINE')).toBeInTheDocument())
 
     // Initial valid analysis produces ALLOW
     const analyzeBtn = screen.getByRole('button', { name: /Analyze/i })
     fireEvent.click(analyzeBtn)
 
     await waitFor(() => {
-      expect(screen.getByText('Safe to Publish')).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: /Publish Event to EventBridge/i })).toBeEnabled()
+      expect(screen.getByText('Publication permitted.')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Publish Event/i })).toBeEnabled()
     })
 
     // Now corrupt the JSON payload
@@ -330,7 +330,7 @@ describe('WorkspaceShell integrated workflow', () => {
 
     // Verify stale ALLOW result is cleared and neutral Invalid Payload state is displayed
     await waitFor(() => {
-      expect(screen.queryByText('Safe to Publish')).not.toBeInTheDocument()
+      expect(screen.queryByText('Publication permitted.')).not.toBeInTheDocument()
       expect(screen.getByText('Invalid Payload')).toBeInTheDocument()
       expect(screen.getByText('Fix JSON syntax to analyze.')).toBeInTheDocument()
     })
@@ -351,7 +351,7 @@ describe('WorkspaceShell integrated workflow', () => {
     vi.mocked(eventGateApi.analyzeCompatibility).mockResolvedValue(mockAllowAnalysis)
 
     render(<WorkspaceShell />)
-    await waitFor(() => expect(screen.getByText('API Healthy')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('API ONLINE')).toBeInTheDocument())
 
     const textarea = screen.getByPlaceholderText('Enter JSON payload...')
     const analyzeBtn = screen.getByRole('button', { name: /Analyze/i })
@@ -372,8 +372,8 @@ describe('WorkspaceShell integrated workflow', () => {
     fireEvent.click(analyzeBtn)
 
     await waitFor(() => {
-      expect(screen.getByText('Safe to Publish')).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: /Publish Event to EventBridge/i })).toBeEnabled()
+      expect(screen.getByText('Publication permitted.')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Publish Event/i })).toBeEnabled()
     })
   })
 
@@ -381,7 +381,7 @@ describe('WorkspaceShell integrated workflow', () => {
     vi.mocked(eventGateApi.analyzeCompatibility).mockRejectedValue(new Error('Network timeout'))
 
     render(<WorkspaceShell />)
-    await waitFor(() => expect(screen.getByText('API Healthy')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('API ONLINE')).toBeInTheDocument())
 
     const analyzeBtn = screen.getByRole('button', { name: /Analyze/i })
     fireEvent.click(analyzeBtn)
@@ -396,7 +396,7 @@ describe('WorkspaceShell integrated workflow', () => {
     vi.mocked(eventGateApi.analyzeCompatibility).mockResolvedValue(mockAllowAnalysis)
 
     render(<WorkspaceShell />)
-    await waitFor(() => expect(screen.getByText('API Healthy')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('API ONLINE')).toBeInTheDocument())
 
     const analyzeBtn = screen.getByRole('button', { name: /Analyze/i })
     fireEvent.click(analyzeBtn)
@@ -420,13 +420,13 @@ describe('WorkspaceShell integrated workflow', () => {
     )
 
     render(<WorkspaceShell />)
-    await waitFor(() => expect(screen.getByText('API Healthy')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('API ONLINE')).toBeInTheDocument())
 
     const analyzeBtn = screen.getByRole('button', { name: /Analyze/i })
     fireEvent.click(analyzeBtn)
-    await waitFor(() => expect(screen.getByText('Safe to Publish')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Publication permitted.')).toBeInTheDocument())
 
-    const publishBtn = screen.getByRole('button', { name: /Publish Event to EventBridge/i })
+    const publishBtn = screen.getByRole('button', { name: /Publish Event/i })
     fireEvent.click(publishBtn)
 
     await waitFor(() => {
@@ -446,13 +446,13 @@ describe('WorkspaceShell integrated workflow', () => {
     )
 
     render(<WorkspaceShell />)
-    await waitFor(() => expect(screen.getByText('API Healthy')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('API ONLINE')).toBeInTheDocument())
 
     const analyzeBtn = screen.getByRole('button', { name: /Analyze/i })
     fireEvent.click(analyzeBtn)
-    await waitFor(() => expect(screen.getByText('Safe to Publish')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Publication permitted.')).toBeInTheDocument())
 
-    const publishBtn = screen.getByRole('button', { name: /Publish Event to EventBridge/i })
+    const publishBtn = screen.getByRole('button', { name: /Publish Event/i })
     fireEvent.click(publishBtn)
 
     await waitFor(() => {

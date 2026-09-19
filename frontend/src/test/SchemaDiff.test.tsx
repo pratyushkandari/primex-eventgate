@@ -28,10 +28,10 @@ describe('SchemaDiff component', () => {
 
     render(<SchemaDiff changeSet={changeSet} />)
 
-    expect(screen.getByText('+1 added')).toBeInTheDocument()
-    expect(screen.getByText('-1 removed')).toBeInTheDocument()
-    expect(screen.getByText('1 type change')).toBeInTheDocument()
-    expect(screen.getByText('1 requiredness')).toBeInTheDocument()
+    expect(screen.getByText('+1 ADDED')).toBeInTheDocument()
+    expect(screen.getByText('−1 REMOVED')).toBeInTheDocument()
+    expect(screen.getByText('1 TYPE CHANGE')).toBeInTheDocument()
+    expect(screen.getByText('1 REQUIREDNESS CHANGE')).toBeInTheDocument()
 
     expect(screen.getByText('loyaltyTier')).toBeInTheDocument()
     expect(screen.getByText('discountCode')).toBeInTheDocument()

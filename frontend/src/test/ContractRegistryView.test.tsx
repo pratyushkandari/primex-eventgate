@@ -84,7 +84,7 @@ describe('ContractRegistryView component', () => {
   it('renders event catalog list from server', async () => {
     renderWithClient(<ContractRegistryView />)
 
-    expect(screen.getByText(/loading event contract catalog/i)).toBeInTheDocument()
+    expect(screen.getByText(/loading event contracts/i)).toBeInTheDocument()
 
     await waitFor(() => {
       expect(screen.getAllByText('OrderPlaced').length).toBeGreaterThan(0)

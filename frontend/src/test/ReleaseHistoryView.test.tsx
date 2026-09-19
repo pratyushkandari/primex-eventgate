@@ -94,9 +94,8 @@ describe('ReleaseHistoryView component', () => {
     renderWithClient(<ReleaseHistoryView />)
 
     await waitFor(() => {
-      expect(screen.getByText(/No release evaluations recorded/i)).toBeInTheDocument()
+      expect(screen.getByText(/No release records yet/i)).toBeInTheDocument()
     })
-    expect(screen.getByText(/Zero fake functionality/i)).toBeInTheDocument()
   })
 
   it('renders release records table with stats and details', async () => {
@@ -109,7 +108,7 @@ describe('ReleaseHistoryView component', () => {
     })
 
     // Check stats
-    expect(screen.getByText('Total Evaluations')).toBeInTheDocument()
+    expect(screen.getByText('Evaluations')).toBeInTheDocument()
     expect(screen.getByText('2')).toBeInTheDocument() // total count
 
     // Check table content (2 table rows + 1 filter dropdown option)
@@ -332,7 +331,7 @@ describe('ReleaseHistoryView component', () => {
       // Search query not matching
       fireEvent.change(searchInput, { target: { value: 'nonexistent-query' } })
       expect(screen.queryByText(/rec-002/i)).not.toBeInTheDocument()
-      expect(screen.getByText(/No matching release evaluations/i)).toBeInTheDocument()
+      expect(screen.getByText(/No release records match the current filters/i)).toBeInTheDocument()
     })
 
     it('clears active filters and restores all records', async () => {
@@ -380,9 +379,9 @@ describe('ReleaseHistoryView component', () => {
       fireEvent.change(envSelect, { target: { value: 'development' } })
       fireEvent.change(decisionSelect, { target: { value: 'BLOCK' } })
 
-      expect(screen.getByText('No matching release evaluations')).toBeInTheDocument()
+      expect(screen.getByText('No release records match the current filters.')).toBeInTheDocument()
       expect(
-        screen.getByText(/No historical records matched your active filter criteria/i)
+        screen.getByText(/Try adjusting or clearing your active filter criteria/i)
       ).toBeInTheDocument()
 
       // Click clear filters from the empty state

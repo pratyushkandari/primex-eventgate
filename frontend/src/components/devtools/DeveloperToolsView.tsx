@@ -19,13 +19,50 @@ interface DeveloperToolsViewProps {
   onOpenReviewScenario?: (eventType: string, current: number, proposed: number) => void
 }
 
+function getSuggestedDecision(
+  event: string,
+  current: number,
+  proposed: number,
+  env: Environment,
+): Decision {
+  if (event === 'OrderPlaced') {
+    if (current === 1 && proposed === 2) return 'ALLOW'
+    if (current === 1 && proposed === 3) return 'BLOCK'
+    if (current === 1 && proposed === 4) return env === 'development' ? 'ALLOW' : 'REVIEW'
+  }
+  if (current === proposed) return 'ALLOW'
+  return 'ALLOW'
+}
+
 export function DeveloperToolsView({ onOpenReviewScenario }: DeveloperToolsViewProps) {
   // Test runner state
   const [eventType, setEventType] = React.useState('OrderPlaced')
   const [currentVersion, setCurrentVersion] = React.useState(1)
   const [proposedVersion, setProposedVersion] = React.useState(2)
   const [environment, setEnvironment] = React.useState<Environment>('production')
-  const [expectedDecision, setExpectedDecision] = React.useState<Decision>('ALLOW')
+  const suggestedDecision = React.useMemo(
+    () => getSuggestedDecision(eventType, currentVersion, proposedVersion, environment),
+    [eventType, currentVersion, proposedVersion, environment]
+  )
+
+  const [manualOverrideDecision, setManualOverrideDecision] = React.useState<Decision | null>(null)
+  const isManualOverride = manualOverrideDecision !== null
+  const expectedDecision = manualOverrideDecision ?? suggestedDecision
+
+  const handleExpectedDecisionChange = (decision: Decision) => {
+    setManualOverrideDecision(decision)
+  }
+
+  const handleResetToSuggested = () => {
+    setManualOverrideDecision(null)
+  }
+
+  const handleApplyPreset = (event: string, cur: number, prop: number) => {
+    setEventType(event)
+    setCurrentVersion(cur)
+    setProposedVersion(prop)
+    setManualOverrideDecision(null)
+  }
 
   // Execution state
   const [isRunning, setIsRunning] = React.useState(false)
@@ -78,19 +115,19 @@ export function DeveloperToolsView({ onOpenReviewScenario }: DeveloperToolsViewP
 
   const cliCommands = [
     {
-      title: 'Release Gate Check (Standard)',
+      title: 'Check release compatibility',
       cmd: `eventgate check --event ${eventType} --current ${currentVersion} --proposed ${proposedVersion} --env ${environment}`,
     },
     {
-      title: 'Release Gate Check (Fail on Review in CI)',
+      title: 'Check release compatibility (strict CI review gate)',
       cmd: `eventgate check --event ${eventType} --current ${currentVersion} --proposed ${proposedVersion} --env ${environment} --fail-on-review`,
     },
     {
-      title: 'Automated Regression Assertion',
+      title: 'Run contract assertion',
       cmd: `eventgate test --event ${eventType} --current ${currentVersion} --proposed ${proposedVersion} --expected ${expectedDecision} --env ${environment}`,
     },
     {
-      title: 'Inspect Registered Contract Detail',
+      title: 'Inspect registered contract',
       cmd: `eventgate catalog --event ${eventType}`,
     },
   ]
@@ -123,6 +160,46 @@ export function DeveloperToolsView({ onOpenReviewScenario }: DeveloperToolsViewP
                 <h2 className="text-sm font-semibold text-slate-200">Contract Test Runner</h2>
               </div>
               <span className="text-[11px] font-mono text-slate-500">Live API Execution</span>
+            </div>
+
+            {/* Scenario Presets */}
+            <div className="mb-4 pb-3 border-b border-slate-800">
+              <span className="text-[11px] font-mono text-slate-400 block mb-2">Scenario Presets:</span>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleApplyPreset('OrderPlaced', 1, 2)}
+                  className={`px-2.5 py-1 text-xs font-mono rounded border transition-colors cursor-pointer ${
+                    eventType === 'OrderPlaced' && currentVersion === 1 && proposedVersion === 2
+                      ? 'bg-emerald-950/50 text-emerald-300 border-emerald-500/50 font-semibold'
+                      : 'bg-slate-900 text-slate-300 border-slate-700/60 hover:bg-slate-800'
+                  }`}
+                >
+                  OrderPlaced v1 → v2 (SAFE)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleApplyPreset('OrderPlaced', 1, 3)}
+                  className={`px-2.5 py-1 text-xs font-mono rounded border transition-colors cursor-pointer ${
+                    eventType === 'OrderPlaced' && currentVersion === 1 && proposedVersion === 3
+                      ? 'bg-rose-950/50 text-rose-300 border-rose-500/50 font-semibold'
+                      : 'bg-slate-900 text-slate-300 border-slate-700/60 hover:bg-slate-800'
+                  }`}
+                >
+                  OrderPlaced v1 → v3 (BREAK)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleApplyPreset('OrderPlaced', 1, 4)}
+                  className={`px-2.5 py-1 text-xs font-mono rounded border transition-colors cursor-pointer ${
+                    eventType === 'OrderPlaced' && currentVersion === 1 && proposedVersion === 4
+                      ? 'bg-amber-950/50 text-amber-300 border-amber-500/50 font-semibold'
+                      : 'bg-slate-900 text-slate-300 border-slate-700/60 hover:bg-slate-800'
+                  }`}
+                >
+                  OrderPlaced v1 → v4 (RISK)
+                </button>
+              </div>
             </div>
 
             {/* Test Configuration Controls */}
@@ -182,13 +259,29 @@ export function DeveloperToolsView({ onOpenReviewScenario }: DeveloperToolsViewP
                 <label className="block text-slate-400 mb-1">Expected Decision</label>
                 <select
                   value={expectedDecision}
-                  onChange={(e) => setExpectedDecision(e.target.value as Decision)}
+                  onChange={(e) => handleExpectedDecisionChange(e.target.value as Decision)}
                   className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 focus:outline-hidden focus:border-blue-500"
                 >
                   <option value="ALLOW">ALLOW</option>
                   <option value="REVIEW">REVIEW</option>
                   <option value="BLOCK">BLOCK</option>
                 </select>
+                <div className="flex items-center justify-between mt-1.5 text-[10px]">
+                  {isManualOverride ? (
+                    <>
+                      <span className="text-amber-400 font-medium">Manual expectation</span>
+                      <button
+                        type="button"
+                        onClick={handleResetToSuggested}
+                        className="text-blue-400 hover:text-blue-300 underline cursor-pointer"
+                      >
+                        Reset to suggested ({suggestedDecision})
+                      </button>
+                    </>
+                  ) : (
+                    <span className="text-slate-400">Suggested from scenario</span>
+                  )}
+                </div>
               </div>
             </div>
 

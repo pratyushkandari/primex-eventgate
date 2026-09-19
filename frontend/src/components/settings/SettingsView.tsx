@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   Server,
   Database,
@@ -8,12 +9,21 @@ import {
   RefreshCw,
   XCircle,
   CheckCircle2,
+  Copy,
+  Check,
 } from 'lucide-react'
 import { useRuntimeConfig } from '@/services/queries'
 import { Badge } from '@/components/ui/Badge'
 
 export function SettingsView() {
   const { data: config, isLoading, error, refetch } = useRuntimeConfig()
+  const [copiedKey, setCopiedKey] = useState<string | null>(null)
+
+  const handleCopy = (text: string, key: string) => {
+    navigator.clipboard.writeText(text)
+    setCopiedKey(key)
+    setTimeout(() => setCopiedKey(null), 2000)
+  }
 
   if (isLoading) {
     return (
@@ -29,13 +39,13 @@ export function SettingsView() {
       <div className="bg-rose-950/30 border border-rose-500/50 rounded-lg p-5 text-xs text-rose-300 font-mono">
         <div className="flex items-center space-x-2 font-bold mb-1">
           <XCircle className="h-4 w-4 text-rose-400" />
-          <span>Failed to inspect runtime platform configuration</span>
+          <span>Runtime configuration is currently unavailable.</span>
         </div>
-        <p>{error?.message || 'Configuration service unavailable'}</p>
+        <p className="text-rose-300/80">Check the release API connection and retry.</p>
         <button
           type="button"
           onClick={() => refetch()}
-          className="mt-3 text-blue-400 hover:text-blue-300 underline cursor-pointer"
+          className="mt-3 inline-flex items-center px-3 py-1.5 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs transition-colors cursor-pointer"
         >
           Retry
         </button>
@@ -159,9 +169,23 @@ export function SettingsView() {
               </div>
 
               <div>
-                <span className="text-sm font-bold text-slate-100 block">
-                  {item.value}
-                </span>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold text-slate-100 block">
+                    {item.value}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleCopy(item.value, item.label)}
+                    className="text-slate-500 hover:text-slate-300 transition-colors p-1 cursor-pointer"
+                    title={`Copy ${item.label}`}
+                  >
+                    {copiedKey === item.label ? (
+                      <Check className="h-3 w-3 text-emerald-400" />
+                    ) : (
+                      <Copy className="h-3 w-3" />
+                    )}
+                  </button>
+                </div>
                 <span className="text-xs text-slate-400 mt-1 block">
                   {item.detail}
                 </span>
@@ -173,9 +197,28 @@ export function SettingsView() {
 
       {/* Contracts Directory Detail */}
       <div className="bg-[#0b0f19] border border-slate-800 rounded-lg p-4 font-mono text-xs space-y-2">
-        <div className="flex items-center space-x-2 text-slate-300 font-semibold">
-          <FolderTree className="h-4 w-4 text-purple-400" />
-          <span>Resolved Contracts Repository Directory</span>
+        <div className="flex items-center justify-between text-slate-300 font-semibold">
+          <div className="flex items-center space-x-2">
+            <FolderTree className="h-4 w-4 text-purple-400" />
+            <span>Resolved Contracts Repository Directory</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => handleCopy(config.contractsDirectory, 'contractsDir')}
+            className="flex items-center space-x-1 text-slate-400 hover:text-slate-200 text-[11px] cursor-pointer"
+          >
+            {copiedKey === 'contractsDir' ? (
+              <>
+                <Check className="h-3 w-3 text-emerald-400" />
+                <span className="text-emerald-400">Copied</span>
+              </>
+            ) : (
+              <>
+                <Copy className="h-3 w-3" />
+                <span>Copy</span>
+              </>
+            )}
+          </button>
         </div>
         <pre className="bg-slate-950 p-2.5 rounded border border-slate-800 text-slate-300 text-xs overflow-x-auto select-all">
           {config.contractsDirectory}

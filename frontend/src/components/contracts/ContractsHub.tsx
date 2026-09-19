@@ -27,7 +27,7 @@ export function ContractsHub({ onOpenReviewScenario }: ContractsHubProps) {
           }`}
         >
           <Database className="w-3.5 h-3.5 text-emerald-400" />
-          Event Catalog
+          Event Contracts
         </button>
 
         <button

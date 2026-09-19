@@ -179,7 +179,7 @@ export function ConsumerDrawer({
                 )}
 
                 <div className="space-y-1">
-                  <span className="text-slate-400 font-sans block">Diagnosis:</span>
+                  <span className="text-slate-400 font-sans block">Why it matters:</span>
                   <p className="text-slate-300 font-sans text-xs leading-relaxed bg-slate-900/50 p-2 rounded">
                     {finding.reason}
                   </p>
@@ -191,20 +191,20 @@ export function ConsumerDrawer({
           {/* Operational Consequence */}
           <div className="space-y-2 text-xs">
             <span className="text-[10px] text-slate-500 uppercase tracking-wider block">
-              Release Gate Enforcement Action
+              Enforcement
             </span>
             <div className="bg-[#090d16] border border-slate-800 rounded p-3 text-xs leading-relaxed text-slate-300 font-sans">
               {isBreak ? (
                 <p>
-                  <strong className="text-rose-400 font-mono">PUBLICATION HALTED:</strong> EventGate returns HTTP 409 and halts before calling EventBridge <code className="text-slate-200 font-mono">events:PutEvents</code>. Zero breaking events propagate to <code className="text-slate-200 font-mono">{consumerId}</code>.
+                  <strong className="text-rose-400 font-mono">Publication prevented.</strong> EventGate returns HTTP 409 before calling EventBridge PutEvents.
                 </p>
               ) : isRisk ? (
                 <p>
-                  <strong className="text-amber-400 font-mono">REVIEW REQUIRED:</strong> Publication is prevented pending developer sign-off to ensure <code className="text-slate-200 font-mono">{consumerId}</code> does not experience runtime regression.
+                  <strong className="text-amber-400 font-mono">Publication held pending review.</strong> EventGate holds publication before EventBridge PutEvents pending review.
                 </p>
               ) : (
                 <p>
-                  <strong className="text-emerald-400 font-mono">COMPATIBLE:</strong> The proposed contract conforms with all schema constraints registered by <code className="text-slate-200 font-mono">{consumerId}</code>.
+                  <strong className="text-emerald-400 font-mono">Publication permitted.</strong> The proposed contract conforms with all schema constraints registered by <code className="text-slate-200 font-mono">{consumerId}</code>.
                 </p>
               )}
             </div>

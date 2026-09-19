@@ -24,7 +24,6 @@ export function Header({
   onEnvironmentChange,
 }: HeaderProps) {
   const [healthStatus, setHealthStatus] = React.useState<'checking' | 'healthy' | 'unreachable'>('checking')
-  const [apiVersion, setApiVersion] = React.useState<string | null>(null)
   const [lastChecked, setLastChecked] = React.useState<string | null>(null)
   const [isEnvMenuOpen, setIsEnvMenuOpen] = React.useState(false)
   const envMenuRef = React.useRef<HTMLDivElement>(null)
@@ -44,7 +43,6 @@ export function Header({
       const res = await eventGateApi.checkHealth()
       if (res.status === 'ok') {
         setHealthStatus('healthy')
-        setApiVersion(res.version)
         setLastChecked(new Date().toLocaleTimeString())
       } else {
         setHealthStatus('unreachable')
@@ -67,7 +65,6 @@ export function Header({
         if (ignore) return
         if (res.status === 'ok') {
           setHealthStatus('healthy')
-          setApiVersion(res.version)
           setLastChecked(new Date().toLocaleTimeString())
         } else {
           setHealthStatus('unreachable')
@@ -96,9 +93,6 @@ export function Header({
             <div className="flex items-center space-x-2">
               <span className="font-semibold text-sm tracking-tight text-slate-100">
                 EventGate
-              </span>
-              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700/60">
-                v{apiVersion || '0.1.0'}
               </span>
             </div>
             <p className="text-[11px] text-slate-400 font-mono hidden sm:block">
@@ -248,13 +242,13 @@ export function Header({
             {healthStatus === 'healthy' && (
               <>
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                <span className="text-emerald-400 font-medium">API Healthy</span>
+                <span className="text-emerald-400 font-medium">API ONLINE</span>
               </>
             )}
             {healthStatus === 'unreachable' && (
               <>
                 <span className="h-1.5 w-1.5 rounded-full bg-rose-400" />
-                <span className="text-rose-400 font-medium">API Unavailable</span>
+                <span className="text-rose-400 font-medium">API OFFLINE</span>
                 <span className="text-[10px] text-rose-300/80 underline ml-1">Retry</span>
               </>
             )}

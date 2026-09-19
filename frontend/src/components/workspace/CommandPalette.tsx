@@ -1,11 +1,21 @@
 import * as React from 'react'
 import { Search, X } from 'lucide-react'
 
+export type CommandCategory =
+  | 'Navigation'
+  | 'Actions'
+  | 'Scenarios'
+  | 'Filters'
+  | 'Consumers'
+  | 'Environments'
+  | 'Identifiers'
+  | 'Help'
+
 export interface CommandItem {
   id: string
   title: string
   description?: string
-  category: 'Actions' | 'Scenarios' | 'Editor' | 'Clipboard' | 'Filters' | 'Navigation'
+  category: CommandCategory
   icon: React.ComponentType<{ className?: string }>
   shortcut?: string
   disabled?: boolean

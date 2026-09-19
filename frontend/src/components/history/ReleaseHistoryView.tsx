@@ -158,11 +158,11 @@ export const ReleaseHistoryView: React.FC<ReleaseHistoryViewProps> = ({ onSelect
             <div className="flex items-center gap-2">
               <History className="h-5 w-5 text-indigo-400" />
               <h1 className="text-lg font-semibold tracking-tight text-neutral-100">
-                Release History & Audit Trail
+                Release History
               </h1>
             </div>
             <p className="mt-1 text-xs text-neutral-400">
-              Immutable ledger of contract compatibility analyses, policy evaluations, and EventBridge publications.
+              Recorded release decisions and publication outcomes.
             </p>
           </div>
 
@@ -245,33 +245,34 @@ export const ReleaseHistoryView: React.FC<ReleaseHistoryViewProps> = ({ onSelect
         </div>
 
         {/* Summary Metric Strip */}
+        {/* Summary Metric Strip */}
         <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div className="rounded border border-neutral-800/80 bg-neutral-900/60 p-3">
-            <span className="text-[11px] font-medium text-neutral-400">Total Evaluations</span>
+            <span className="text-[11px] font-medium text-neutral-400">Evaluations</span>
             <div className="mt-1 flex items-baseline gap-2">
               <span className="text-xl font-bold text-neutral-100">{stats.total}</span>
               <span className="text-[11px] text-neutral-500">recorded</span>
             </div>
           </div>
           <div className="rounded border border-emerald-900/30 bg-emerald-950/10 p-3">
-            <span className="text-[11px] font-medium text-emerald-400">Published to Transport</span>
+            <span className="text-[11px] font-medium text-emerald-400">Published</span>
             <div className="mt-1 flex items-baseline gap-2">
               <span className="text-xl font-bold text-emerald-300">{stats.published}</span>
-              <span className="text-[11px] text-emerald-500/80">verified</span>
+              <span className="text-[11px] text-emerald-500/80">delivered</span>
             </div>
           </div>
           <div className="rounded border border-rose-900/30 bg-rose-950/10 p-3">
-            <span className="text-[11px] font-medium text-rose-400">Gate Blocked</span>
+            <span className="text-[11px] font-medium text-rose-400">Blocked</span>
             <div className="mt-1 flex items-baseline gap-2">
               <span className="text-xl font-bold text-rose-300">{stats.blocked}</span>
-              <span className="text-[11px] text-rose-500/80">intercepted</span>
+              <span className="text-[11px] text-rose-500/80">prevented</span>
             </div>
           </div>
           <div className="rounded border border-amber-900/30 bg-amber-950/10 p-3">
-            <span className="text-[11px] font-medium text-amber-400">Under Review</span>
+            <span className="text-[11px] font-medium text-amber-400">Review</span>
             <div className="mt-1 flex items-baseline gap-2">
               <span className="text-xl font-bold text-amber-300">{stats.review}</span>
-              <span className="text-[11px] text-amber-500/80">flagged</span>
+              <span className="text-[11px] text-amber-500/80">held</span>
             </div>
           </div>
         </div>
@@ -289,13 +290,13 @@ export const ReleaseHistoryView: React.FC<ReleaseHistoryViewProps> = ({ onSelect
         ) : isError ? (
           <div className="rounded border border-rose-900/40 bg-rose-950/20 p-6 text-center">
             <ShieldAlert className="mx-auto h-8 w-8 text-rose-400" />
-            <h3 className="mt-2 text-sm font-semibold text-rose-200">Unable to load release history</h3>
+            <h3 className="mt-2 text-sm font-semibold text-rose-200">Release history is currently unavailable.</h3>
             <p className="mt-1 text-xs text-rose-300/80">
-              Could not retrieve audit records from the configured repository.
+              Check the release API connection and retry.
             </p>
             <button
               onClick={() => refetch()}
-              className="mt-4 rounded bg-neutral-800 px-3 py-1.5 text-xs text-neutral-200 hover:bg-neutral-700"
+              className="mt-4 rounded bg-neutral-800 px-3 py-1.5 text-xs text-neutral-200 hover:bg-neutral-700 cursor-pointer"
             >
               Retry
             </button>
@@ -304,17 +305,17 @@ export const ReleaseHistoryView: React.FC<ReleaseHistoryViewProps> = ({ onSelect
           <div className="rounded-lg border border-dashed border-neutral-800 bg-neutral-900/20 p-12 text-center">
             <History className="mx-auto h-10 w-10 text-neutral-600" />
             <h3 className="mt-3 text-sm font-medium text-neutral-300">
-              {hasActiveFilters ? 'No matching release evaluations' : 'No release evaluations recorded'}
+              {hasActiveFilters ? 'No release records match the current filters.' : 'No release records yet.'}
             </h3>
             <p className="mx-auto mt-1 max-w-sm text-xs text-neutral-500">
               {hasActiveFilters
-                ? 'No historical records matched your active filter criteria.'
-                : 'Zero fake functionality: fresh state is clean. Real records are generated when contract changes are analyzed or published.'}
+                ? 'Try adjusting or clearing your active filter criteria.'
+                : 'Recorded release decisions and publication outcomes will appear here after events are analyzed or published.'}
             </p>
             {hasActiveFilters && (
               <button
                 onClick={handleClearFilters}
-                className="mt-4 inline-flex items-center gap-1.5 rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700"
+                className="mt-4 inline-flex items-center gap-1.5 rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700 cursor-pointer"
               >
                 <X className="h-3.5 w-3.5" />
                 <span>Clear filters</span>
@@ -327,14 +328,15 @@ export const ReleaseHistoryView: React.FC<ReleaseHistoryViewProps> = ({ onSelect
               <table className="w-full text-left text-xs text-neutral-300">
                 <thead className="border-b border-neutral-800 bg-neutral-900/80 text-[11px] font-semibold text-neutral-400">
                   <tr>
-                    <th scope="col" className="py-3 pl-4 pr-3">Record ID</th>
-                    <th scope="col" className="px-3 py-3">Event Type</th>
-                    <th scope="col" className="px-3 py-3">Transition</th>
+                    <th scope="col" className="py-3 pl-4 pr-3">Record</th>
+                    <th scope="col" className="px-3 py-3">Event</th>
+                    <th scope="col" className="px-3 py-3">Version Change</th>
                     <th scope="col" className="px-3 py-3">Environment</th>
                     <th scope="col" className="px-3 py-3">Compatibility</th>
-                    <th scope="col" className="px-3 py-3">Policy Decision</th>
-                    <th scope="col" className="px-3 py-3">Publication Status</th>
+                    <th scope="col" className="px-3 py-3">Decision</th>
+                    <th scope="col" className="px-3 py-3">Affected Consumers</th>
                     <th scope="col" className="px-3 py-3">Timestamp</th>
+                    <th scope="col" className="px-3 py-3">Publication Status</th>
                     <th scope="col" className="py-3 pl-3 pr-4 text-right">Actions</th>
                   </tr>
                 </thead>

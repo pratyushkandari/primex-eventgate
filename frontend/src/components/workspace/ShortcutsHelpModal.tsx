@@ -99,19 +99,19 @@ export function ShortcutsHelpModal({ isOpen, onClose }: ShortcutsHelpModalProps)
 
           <div className="bg-[#080c14] border border-slate-800 rounded-lg p-3 space-y-2 text-[11px]">
             <div className="flex items-start justify-between gap-2 pb-1.5 border-b border-slate-800/60">
-              <span className="font-bold text-rose-400">EVT001 (BREAK)</span>
+              <span className="font-bold text-rose-400">EVT001 — Field Type Changed</span>
               <span className="text-slate-300 text-right font-sans">
-                Incompatible type mutation (e.g. number → string breaks deserializer)
+                Incompatible type mutation (e.g. string → object breaks deserializer)
               </span>
             </div>
             <div className="flex items-start justify-between gap-2 pb-1.5 border-b border-slate-800/60">
-              <span className="font-bold text-amber-400">EVT006 (RISK)</span>
+              <span className="font-bold text-amber-400">EVT006 — Optional Field Removed</span>
               <span className="text-slate-300 text-right font-sans">
                 Field removed while registered downstream consumers depend on it
               </span>
             </div>
             <div className="flex items-start justify-between gap-2">
-              <span className="font-bold text-emerald-400">EVT008 (ALLOW)</span>
+              <span className="font-bold text-emerald-400">EVT008 — Consumer Unaffected</span>
               <span className="text-slate-300 text-right font-sans">
                 Additive backward-compatible modification (safe forward evolution)
               </span>
@@ -119,15 +119,15 @@ export function ShortcutsHelpModal({ isOpen, onClose }: ShortcutsHelpModalProps)
           </div>
         </div>
 
-        {/* Architecture Section */}
+        {/* Enforcement Path Section */}
         <div className="space-y-2">
           <div className="flex items-center space-x-2 text-xs font-semibold text-slate-300">
             <Cpu className="h-3.5 w-3.5 text-purple-400" />
-            <span>Architecture & Enforcement Guarantee</span>
+            <span>Enforcement Path</span>
           </div>
 
           <p className="text-xs text-slate-400 font-sans leading-relaxed bg-[#080c14] border border-slate-800 rounded-lg p-3">
-            EventGate intercepts all incoming event release requests inside the Lambda handler. Before executing <code className="text-slate-200 font-mono">events:PutEvents</code>, it compares the proposed event schema against consumer dependency contracts stored in DynamoDB. Incompatible breaking releases are halted with HTTP 409, guaranteeing zero unvetted event pollution in Amazon EventBridge.
+            EventGate evaluates incoming release requests in Lambda before invoking EventBridge. The proposed schema is compared against consumer contracts in DynamoDB. When compatibility rules evaluate to BLOCK, EventGate returns HTTP 409 before calling EventBridge PutEvents.
           </p>
         </div>
 

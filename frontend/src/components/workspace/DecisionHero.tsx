@@ -30,7 +30,7 @@ export function DecisionHero({
             <div className="flex items-center justify-between">
               <CardTitle className="text-xs font-mono uppercase tracking-wider text-slate-300 flex items-center space-x-1.5">
                 <Radio className="h-3.5 w-3.5 text-blue-400 animate-pulse" />
-                <span>Release Decision Gate</span>
+                <span>Release Decision</span>
               </CardTitle>
               <Badge variant="neutral" size="sm">
                 Evaluating
@@ -69,7 +69,7 @@ export function DecisionHero({
             <div className="flex items-center justify-between">
               <CardTitle className="text-xs font-mono uppercase tracking-wider text-slate-300 flex items-center space-x-1.5">
                 <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
-                <span>Release Decision Gate</span>
+                <span>Release Decision</span>
               </CardTitle>
               <Badge variant="risk" size="sm">
                 Invalid JSON
@@ -110,7 +110,7 @@ export function DecisionHero({
             <div className="flex items-center justify-between">
               <CardTitle className="text-xs font-mono uppercase tracking-wider text-slate-300 flex items-center space-x-1.5">
                 <ShieldCheck className="h-3.5 w-3.5 text-slate-400" />
-                <span>Release Decision Gate</span>
+                <span>Release Decision</span>
               </CardTitle>
               <Badge variant="neutral" size="sm">
                 Standby
@@ -129,7 +129,7 @@ export function DecisionHero({
               <div className="pt-2 flex items-center space-x-2 text-[10px] text-slate-500 font-mono">
                 <span className="bg-slate-900 border border-slate-800 px-1.5 py-0.5 rounded">Pre-flight check</span>
                 <span>•</span>
-                <span>Zero cloud cost</span>
+                <span>Deterministic rules</span>
               </div>
             </div>
           </CardContent>
@@ -169,7 +169,7 @@ export function DecisionHero({
               ) : (
                 <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
               )}
-              <span>Release Decision Gate</span>
+              <span>Release Decision</span>
             </CardTitle>
             <Badge variant={decision.toLowerCase() as 'allow' | 'block' | 'review'} size="sm">
               {decision}
@@ -212,19 +212,24 @@ export function DecisionHero({
             <div>
               <h4 className="text-xs font-semibold text-slate-100 font-sans">
                 {decision === 'ALLOW'
-                  ? 'Safe to Publish'
+                  ? 'Publication permitted.'
                   : decision === 'BLOCK'
-                  ? 'Breaking Change Intercepted'
-                  : 'Review Required'}
+                  ? 'Publication prevented.'
+                  : 'Publication held pending review.'}
               </h4>
+              {decision === 'ALLOW' && (
+                <div className="text-[10px] font-mono mt-0.5 text-emerald-400">
+                  Event path: EventGate → EventBridge → Consumers
+                </div>
+              )}
               {decision === 'BLOCK' && (
                 <div className="text-[10px] font-mono mt-0.5 text-rose-400">
-                  EventBridge publication is prevented.
+                  EventBridge: NOT CALLED · Consumers: NOT REACHED
                 </div>
               )}
               {decision === 'REVIEW' && (
                 <div className="text-[10px] font-mono mt-0.5 text-amber-400">
-                  Publication prevented pending future review.
+                  EventBridge: NOT CALLED · Consumers: NOT REACHED
                 </div>
               )}
               <p className="text-[11px] text-slate-300 mt-1 leading-relaxed font-sans">
@@ -339,10 +344,10 @@ export function DecisionHero({
               size="sm"
             >
               <Send className="h-3.5 w-3.5 mr-1.5" />
-              <span>Publish Event to EventBridge</span>
+              <span>Publish Event</span>
             </Button>
             <p className="text-[10px] text-slate-500 text-center mt-1.5 font-mono">
-              Enforces gate and triggers EventBridge fan-out
+              Publication permitted to Amazon EventBridge bus
             </p>
           </div>
         ) : (
@@ -353,10 +358,12 @@ export function DecisionHero({
               className="w-full opacity-40 cursor-not-allowed text-xs font-mono"
               size="sm"
             >
-              Publication Prevented by Gate
+              {decision === 'BLOCK' ? 'Publication prevented' : 'Publication held pending review'}
             </Button>
             <p className="text-[10px] text-slate-500 text-center mt-1.5 font-mono">
-              Only verified ALLOW events can be published to EventBridge
+              {decision === 'BLOCK'
+                ? 'Publication prevented before EventBridge PutEvents'
+                : 'Publication held pending review before EventBridge PutEvents'}
             </p>
           </div>
         )}

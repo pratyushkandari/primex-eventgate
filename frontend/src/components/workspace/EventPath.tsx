@@ -10,7 +10,6 @@ interface EventPathProps {
 }
 
 export function EventPath({ decision, isPublished, environment = 'production' }: EventPathProps) {
-  const isBlocked = decision === 'BLOCK' || decision === 'REVIEW'
   const isAllowed = decision === 'ALLOW'
 
   return (
@@ -86,12 +85,19 @@ export function EventPath({ decision, isPublished, environment = 'production' }:
 
           {/* Transition 2 */}
           <div className="hidden md:flex justify-center">
-            {isBlocked ? (
+            {decision === 'BLOCK' ? (
               <span
                 title="Publication prevented by Gate"
-                className="text-rose-500 text-xs font-bold select-none"
+                className="text-rose-400 text-xs font-bold select-none"
               >
-                ✕
+                ⊘
+              </span>
+            ) : decision === 'REVIEW' ? (
+              <span
+                title="Publication held pending review"
+                className="text-amber-400 text-xs font-bold select-none"
+              >
+                ⊘
               </span>
             ) : isAllowed ? (
               <ArrowRight className="h-4 w-4 text-emerald-400" />
@@ -105,37 +111,45 @@ export function EventPath({ decision, isPublished, environment = 'production' }:
             className={`border rounded p-2.5 space-y-1 transition-colors ${
               isPublished
                 ? 'bg-emerald-950/30 border-emerald-500/50'
-                : isBlocked
+                : decision === 'BLOCK'
                 ? 'bg-rose-950/20 border-rose-500/30'
+                : decision === 'REVIEW'
+                ? 'bg-amber-950/20 border-amber-500/30'
                 : 'bg-slate-950/80 border-slate-800'
             }`}
           >
             <div className="flex items-center justify-between">
               <span className="text-[10px] text-slate-500 uppercase block">Broker</span>
               {isPublished && <CheckCircle2 className="h-3 w-3 text-emerald-400" />}
-              {isBlocked && <span className="text-[10px] text-rose-400 font-bold">HALTED</span>}
+              {decision === 'BLOCK' && <span className="text-[10px] text-rose-400 font-bold">PREVENTED</span>}
+              {decision === 'REVIEW' && <span className="text-[10px] text-amber-400 font-bold">HELD</span>}
+              {decision === 'ALLOW' && !isPublished && <span className="text-[10px] text-emerald-400 font-mono">READY</span>}
             </div>
             <span className="font-semibold text-slate-200 block">EventBridge</span>
             <span
               className={`text-[10px] block font-mono ${
                 isPublished
                   ? 'text-emerald-400 font-medium'
-                  : isBlocked
+                  : decision === 'BLOCK'
                   ? 'text-rose-400 font-medium'
+                  : decision === 'REVIEW'
+                  ? 'text-amber-400 font-medium'
                   : 'text-slate-400'
               }`}
             >
               {isPublished
-                ? 'INGESTED'
-                : isBlocked
+                ? 'PUBLISHED'
+                : decision === 'BLOCK' || decision === 'REVIEW'
                 ? 'NOT CALLED'
                 : 'primex-eventgate-dev-bus'}
             </span>
             <span className="text-[9px] text-slate-500 block">
               {isPublished
-                ? 'Ingested to bus'
-                : isBlocked
-                ? 'Traffic halted'
+                ? 'Delivered to bus'
+                : decision === 'BLOCK'
+                ? 'Publication prevented'
+                : decision === 'REVIEW'
+                ? 'Publication held'
                 : 'Custom event bus'}
             </span>
           </div>
@@ -144,8 +158,10 @@ export function EventPath({ decision, isPublished, environment = 'production' }:
           <div className="hidden md:flex justify-center">
             {isPublished ? (
               <ArrowRight className="h-4 w-4 text-emerald-400" />
-            ) : isBlocked ? (
-              <span className="text-slate-700 text-xs select-none">—</span>
+            ) : decision === 'BLOCK' ? (
+              <span className="text-rose-400 text-xs font-bold select-none">⊘</span>
+            ) : decision === 'REVIEW' ? (
+              <span className="text-amber-400 text-xs font-bold select-none">⊘</span>
             ) : (
               <ArrowRight className="h-4 w-4 text-slate-700" />
             )}
@@ -156,8 +172,8 @@ export function EventPath({ decision, isPublished, environment = 'production' }:
             className={`border rounded p-2.5 space-y-1 transition-colors ${
               isPublished
                 ? 'bg-emerald-950/30 border-emerald-500/50'
-                : isBlocked
-                ? 'bg-slate-950/30 border-slate-800/60 opacity-50'
+                : decision === 'BLOCK' || decision === 'REVIEW'
+                ? 'bg-slate-950/30 border-slate-800/60 opacity-60'
                 : 'bg-slate-950/80 border-slate-800'
             }`}
           >
@@ -167,8 +183,10 @@ export function EventPath({ decision, isPublished, environment = 'production' }:
                 <Badge variant="safe" size="sm">
                   DELIVERED
                 </Badge>
-              ) : isBlocked ? (
-                <span className="text-[10px] text-slate-500 font-mono">BLOCKED</span>
+              ) : decision === 'BLOCK' || decision === 'REVIEW' ? (
+                <span className={`text-[10px] font-mono ${decision === 'BLOCK' ? 'text-rose-400' : 'text-amber-400'}`}>
+                  NOT REACHED
+                </span>
               ) : (
                 <span className="text-[10px] text-slate-500 font-mono">TARGETS</span>
               )}
@@ -177,15 +195,15 @@ export function EventPath({ decision, isPublished, environment = 'production' }:
             <span className="text-[10px] text-slate-400 block font-mono">
               {isPublished
                 ? 'Billing · Inventory · Analytics'
-                : isBlocked
+                : decision === 'BLOCK' || decision === 'REVIEW'
                 ? 'NOT REACHED'
                 : '3 registered targets'}
             </span>
             <span className="text-[9px] text-slate-500 block">
               {isPublished
-                ? 'Verified via CloudWatch logs'
-                : isBlocked
-                ? 'Zero propagation'
+                ? 'Delivered to subscribers'
+                : decision === 'BLOCK' || decision === 'REVIEW'
+                ? 'Consumers not reached'
                 : 'Registered consumer contracts'}
             </span>
           </div>

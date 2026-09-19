@@ -41,10 +41,10 @@ describe('DecisionHero component', () => {
     )
 
     expect(screen.getAllByText('ALLOW').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getByText('Safe to Publish')).toBeInTheDocument()
+    expect(screen.getByText('Publication permitted.')).toBeInTheDocument()
     expect(screen.getByText('SEVERITY: LOW')).toBeInTheDocument()
 
-    const publishBtn = screen.getByRole('button', { name: /Publish Event to EventBridge/i })
+    const publishBtn = screen.getByRole('button', { name: /Publish Event/i })
     expect(publishBtn).toBeEnabled()
     fireEvent.click(publishBtn)
     expect(handlePublish).toHaveBeenCalledTimes(1)
@@ -63,11 +63,11 @@ describe('DecisionHero component', () => {
     )
 
     expect(screen.getAllByText('BLOCK').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getByText('Breaking Change Intercepted')).toBeInTheDocument()
+    expect(screen.getByText('Publication prevented.')).toBeInTheDocument()
     expect(screen.getByText('SEVERITY: HIGH')).toBeInTheDocument()
-    expect(screen.getByText('EventBridge publication is prevented.')).toBeInTheDocument()
+    expect(screen.getByText(/EventBridge: NOT CALLED/i)).toBeInTheDocument()
 
-    const publishBtn = screen.getByRole('button', { name: /Publication Prevented by Gate/i })
+    const publishBtn = screen.getByRole('button', { name: /Publication prevented/i })
     expect(publishBtn).toBeDisabled()
   })
 
@@ -84,11 +84,11 @@ describe('DecisionHero component', () => {
     )
 
     expect(screen.getAllByText('REVIEW').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getByText('Review Required')).toBeInTheDocument()
+    expect(screen.getByText('Publication held pending review.')).toBeInTheDocument()
     expect(screen.getByText('SEVERITY: MEDIUM')).toBeInTheDocument()
-    expect(screen.getByText('Publication prevented pending future review.')).toBeInTheDocument()
+    expect(screen.getByText(/EventBridge: NOT CALLED/i)).toBeInTheDocument()
 
-    const publishBtn = screen.getByRole('button', { name: /Publication Prevented by Gate/i })
+    const publishBtn = screen.getByRole('button', { name: /Publication held pending review/i })
     expect(publishBtn).toBeDisabled()
   })
 

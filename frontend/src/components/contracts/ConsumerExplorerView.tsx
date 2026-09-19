@@ -21,7 +21,7 @@ interface ConsumerExplorerViewProps {
 }
 
 export function ConsumerExplorerView({ onSelectEvent }: ConsumerExplorerViewProps) {
-  const { data: consumers, isLoading, error } = useConsumers()
+  const { data: consumers, isLoading, error, refetch } = useConsumers()
   const [selectedConsumerId, setSelectedConsumerId] = useState<string>('inventory-service')
   const [searchQuery, setSearchQuery] = useState('')
 
@@ -39,7 +39,7 @@ export function ConsumerExplorerView({ onSelectEvent }: ConsumerExplorerViewProp
         <div>
           <h2 className="text-lg font-semibold text-zinc-100 flex items-center gap-2">
             <Users className="w-5 h-5 text-indigo-400" />
-            Downstream Consumer Contract Explorer
+            Downstream Consumer Explorer
           </h2>
           <p className="text-xs text-zinc-400 mt-0.5">
             Inspect downstream consumer dependencies, expected field schemas, and type expectations.
@@ -65,8 +65,36 @@ export function ConsumerExplorerView({ onSelectEvent }: ConsumerExplorerViewProp
       )}
 
       {error && (
-        <div className="p-4 rounded-md bg-rose-950/30 border border-rose-800/60 text-xs text-rose-300">
-          Failed to load consumers: {error.message}
+        <div className="p-4 rounded-md bg-rose-950/30 border border-rose-800/60 text-xs text-rose-300 flex items-center justify-between">
+          <div>
+            <span className="font-semibold block">Unable to load consumer contracts.</span>
+            <span className="text-[11px] text-rose-300/80">Check the release API connection and retry.</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => refetch()}
+            className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded text-xs transition-colors cursor-pointer"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {!isLoading && !error && filteredConsumers.length === 0 && (
+        <div className="p-12 text-center text-xs text-zinc-500 rounded-lg border border-dashed border-zinc-800 bg-zinc-900/20">
+          <Users className="mx-auto h-8 w-8 text-zinc-600 mb-2" />
+          <span className="font-medium text-zinc-300 block">
+            {searchQuery ? 'No consumer contracts match the search query.' : 'No consumer contracts registered yet.'}
+          </span>
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="mt-2 text-indigo-400 hover:underline cursor-pointer"
+            >
+              Clear search filter
+            </button>
+          )}
         </div>
       )}
 

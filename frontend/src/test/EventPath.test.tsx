@@ -21,14 +21,15 @@ describe('EventPath component', () => {
   it('renders BLOCK interception state with halted traffic indicator', () => {
     render(<EventPath decision="BLOCK" isPublished={false} />)
     expect(screen.getByText('decision: BLOCK')).toBeInTheDocument()
-    expect(screen.getByText('Traffic halted')).toBeInTheDocument()
-    expect(screen.getByText('Zero propagation')).toBeInTheDocument()
-    expect(screen.getByText('✕')).toBeInTheDocument()
+    expect(screen.getByText('PREVENTED')).toBeInTheDocument()
+    expect(screen.getByText('NOT CALLED')).toBeInTheDocument()
+    expect(screen.getAllByText('NOT REACHED').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('⊘').length).toBeGreaterThan(0)
   })
 
   it('renders published fan-out delivery to consumers', () => {
     render(<EventPath decision="ALLOW" isPublished={true} />)
-    expect(screen.getByText('Ingested to bus')).toBeInTheDocument()
+    expect(screen.getByText('Delivered to bus')).toBeInTheDocument()
     expect(screen.getByText('DELIVERED')).toBeInTheDocument()
   })
 })

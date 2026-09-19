@@ -38,13 +38,13 @@ export function PoliciesView() {
       <div className="bg-rose-950/30 border border-rose-500/50 rounded-lg p-5 text-xs text-rose-300 font-mono">
         <div className="flex items-center space-x-2 font-bold mb-1">
           <XCircle className="h-4 w-4 text-rose-400" />
-          <span>Failed to load release policy configuration</span>
+          <span>Unable to load release policy.</span>
         </div>
-        <p>{error?.message || 'Policy provider unavailable'}</p>
+        <p className="text-rose-300/80">Check the release API connection and retry.</p>
         <button
           type="button"
           onClick={() => refetch()}
-          className="mt-3 text-blue-400 hover:text-blue-300 underline cursor-pointer"
+          className="mt-3 inline-flex items-center px-3 py-1.5 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs transition-colors cursor-pointer"
         >
           Retry
         </button>
@@ -73,6 +73,38 @@ export function PoliciesView() {
           <span className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-200">
             {policiesData.activeEngine}
           </span>
+        </div>
+      </div>
+
+      {/* Decision Pipeline Architecture Banner */}
+      <div className="bg-[#0b0f19] border border-slate-800 rounded-lg p-3.5 text-xs font-mono">
+        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-2">
+          Decision Pipeline
+        </span>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <div className="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-300">
+            <span className="text-slate-500 text-[10px] block">Stage 1</span>
+            <span className="font-bold text-blue-400">Compatibility</span>
+            <span className="text-[10px] text-slate-400 ml-1.5">(SAFE / RISK / BREAK)</span>
+          </div>
+          <span className="text-slate-600">→</span>
+          <div className="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-300">
+            <span className="text-slate-500 text-[10px] block">Stage 2</span>
+            <span className="font-bold text-purple-400">Severity</span>
+            <span className="text-[10px] text-slate-400 ml-1.5">(LOW / MEDIUM / HIGH)</span>
+          </div>
+          <span className="text-slate-600">→</span>
+          <div className="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-300">
+            <span className="text-slate-500 text-[10px] block">Stage 3</span>
+            <span className="font-bold text-amber-400">Release Policy</span>
+            <span className="text-[10px] text-slate-400 ml-1.5">(Environment Matrix)</span>
+          </div>
+          <span className="text-slate-600">→</span>
+          <div className="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-300">
+            <span className="text-slate-500 text-[10px] block">Final</span>
+            <span className="font-bold text-emerald-400">Decision</span>
+            <span className="text-[10px] text-slate-400 ml-1.5">(ALLOW / REVIEW / BLOCK)</span>
+          </div>
         </div>
       </div>
 

@@ -21,7 +21,7 @@ interface ContractRegistryViewProps {
 }
 
 export function ContractRegistryView({ onOpenReviewScenario }: ContractRegistryViewProps) {
-  const { data: catalog, isLoading, error } = useEventCatalog()
+  const { data: catalog, isLoading, error, refetch } = useEventCatalog()
   const [selectedEventType, setSelectedEventType] = useState<string>('OrderPlaced')
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedVersionNum, setSelectedVersionNum] = useState<number | null>(null)
@@ -45,7 +45,7 @@ export function ContractRegistryView({ onOpenReviewScenario }: ContractRegistryV
         <div>
           <h2 className="text-lg font-semibold text-zinc-100 flex items-center gap-2">
             <Database className="w-5 h-5 text-emerald-400" />
-            Event Contract Registry
+            Event Contracts
           </h2>
           <p className="text-xs text-zinc-400 mt-0.5">
             Authoritative event schema definitions and versioned contract registry.
@@ -66,13 +66,41 @@ export function ContractRegistryView({ onOpenReviewScenario }: ContractRegistryV
 
       {isLoading && (
         <div className="p-12 text-center text-xs text-zinc-500 animate-pulse">
-          Loading event contract catalog from server...
+          Loading event contracts from server...
         </div>
       )}
 
       {error && (
-        <div className="p-4 rounded-md bg-rose-950/30 border border-rose-800/60 text-xs text-rose-300">
-          Failed to load event catalog: {error.message}
+        <div className="p-4 rounded-md bg-rose-950/30 border border-rose-800/60 text-xs text-rose-300 flex items-center justify-between">
+          <div>
+            <span className="font-semibold block">Unable to load event contracts.</span>
+            <span className="text-[11px] text-rose-300/80">Check the release API connection and retry.</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => refetch()}
+            className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded text-xs transition-colors cursor-pointer"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {!isLoading && !error && filteredCatalog.length === 0 && (
+        <div className="p-12 text-center text-xs text-zinc-500 rounded-lg border border-dashed border-zinc-800 bg-zinc-900/20">
+          <Database className="mx-auto h-8 w-8 text-zinc-600 mb-2" />
+          <span className="font-medium text-zinc-300 block">
+            {searchQuery ? 'No event contracts match the current search query.' : 'No event contracts registered yet.'}
+          </span>
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="mt-2 text-emerald-400 hover:underline cursor-pointer"
+            >
+              Clear search filter
+            </button>
+          )}
         </div>
       )}
 

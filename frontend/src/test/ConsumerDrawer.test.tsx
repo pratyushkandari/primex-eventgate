@@ -52,8 +52,7 @@ describe('ConsumerDrawer component', () => {
     expect(screen.getByText('EVT001_FIELD_TYPE_CHANGED')).toBeInTheDocument()
     expect(screen.getByText('shippingMethod')).toBeInTheDocument()
     expect(screen.getByText('string')).toBeInTheDocument()
-    expect(screen.getByText('object')).toBeInTheDocument()
-    expect(screen.getByText(/PUBLICATION HALTED/i)).toBeInTheDocument()
+    expect(screen.getByText(/Publication prevented/i)).toBeInTheDocument()
   })
 
   it('calls onClose when Dismiss button is clicked', () => {

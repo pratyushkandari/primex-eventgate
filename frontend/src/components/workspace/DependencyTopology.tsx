@@ -89,6 +89,7 @@ function GateNode({ data }: NodeProps) {
 function ConsumerNode({ data }: NodeProps) {
   const status = data.status as ConsumerStatus
   const isSelected = data.isSelected as boolean
+  const isMuted = data.isMuted as boolean
   const finding = data.finding as { field?: string; expectedType?: string | null; proposedType?: string | null } | null
 
   const borderColor =
@@ -113,7 +114,11 @@ function ConsumerNode({ data }: NodeProps) {
         }
       }}
       className={`text-left w-full p-2.5 rounded-lg border ${borderColor} ${bgColor} min-w-[140px] shadow-sm font-mono cursor-pointer transition-all ${
-        isSelected ? 'ring-2 ring-blue-500 scale-[1.02]' : 'hover:border-slate-600'
+        isSelected
+          ? 'ring-2 ring-blue-500 scale-[1.02] opacity-100'
+          : isMuted
+          ? 'opacity-40 hover:opacity-90'
+          : 'hover:border-slate-600'
       }`}
     >
       <Handle type="target" position={Position.Left} className="!bg-slate-500 !w-2 !h-2 !border-0" />
@@ -232,9 +237,15 @@ export function DependencyTopology({
       },
     ]
 
+    const hasImpactedConsumers = consumers.some((c) => getConsumerStatus(c.id) !== 'SAFE')
+
     consumers.forEach((c, i) => {
       const status = getConsumerStatus(c.id)
       const finding = getConsumerFinding(c.id)
+      const isMuted = selectedConsumerId
+        ? selectedConsumerId !== c.id
+        : hasImpactedConsumers && status === 'SAFE'
+
       currentNodes.push({
         id: c.id,
         type: 'consumer',
@@ -244,6 +255,7 @@ export function DependencyTopology({
           name: c.name,
           status,
           isSelected: selectedConsumerId === c.id,
+          isMuted,
           finding: finding
             ? { field: finding.field, expectedType: finding.expectedType, proposedType: finding.proposedType }
             : null,
@@ -309,12 +321,12 @@ export function DependencyTopology({
   )
 
   return (
-    <Card className="border-slate-800 bg-[#0c121e]">
-      <CardHeader className="py-3 px-4">
+    <Card className="border-slate-800 bg-[#0c1220]/80">
+      <CardHeader className="py-3 px-4 border-b border-slate-800/80">
         <div className="flex items-center justify-between">
           <CardTitle className="text-xs font-mono uppercase tracking-wider text-slate-300 flex items-center space-x-2">
             <Network className="h-3.5 w-3.5 text-blue-400" />
-            <span>Dependency topology & contract graph</span>
+            <span>Dependency Topology</span>
           </CardTitle>
           <span className="text-[10px] text-slate-500 font-mono">
             Interactive Node Map • Click to inspect

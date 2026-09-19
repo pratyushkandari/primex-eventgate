@@ -338,8 +338,8 @@ export function WorkspaceShell() {
     const items: CommandItem[] = [
       {
         id: 'nav-review',
-        title: 'Go to Review Workspace',
-        description: 'Interactive pre-flight release analysis and decision gate',
+        title: 'Open Review Workspace',
+        description: 'Pre-flight release analysis and decision gate',
         category: 'Navigation',
         icon: FileCode,
         onSelect: () => setActiveNavTab('review'),
@@ -354,7 +354,7 @@ export function WorkspaceShell() {
       },
       {
         id: 'nav-history',
-        title: 'Open History',
+        title: 'Open Release History',
         description: 'Persistent audit trail and release evidence records',
         category: 'Navigation',
         icon: HistoryIcon,
@@ -386,8 +386,8 @@ export function WorkspaceShell() {
       },
       {
         id: 'cmd-analyze',
-        title: 'Analyze Compatibility',
-        description: 'Run pre-flight contract check against DynamoDB consumers',
+        title: 'Run Compatibility Analysis',
+        description: 'Run pre-flight contract check against registered consumers',
         category: 'Actions',
         icon: Play,
         shortcut: '⌘↵',
@@ -397,41 +397,17 @@ export function WorkspaceShell() {
       {
         id: 'cmd-publish',
         title: 'Publish to EventBridge',
-        description: 'Enforces gate and publishes allowed event',
+        description: 'Enforces release gate and publishes allowed event to EventBridge',
         category: 'Actions',
         icon: Send,
         disabled: isPublishing || !analysis || analysis.decision !== 'ALLOW' || Boolean(jsonError),
         onSelect: () => handlePublish(),
       },
       {
-        id: 'cmd-scenario-safe',
-        title: 'Scenario: Safe Addition (v2)',
-        description: 'Adds optional loyaltyTier field - backward compatible',
-        category: 'Scenarios',
-        icon: Sparkles,
-        onSelect: () => handleSelectScenario(DEMO_SCENARIOS.safe),
-      },
-      {
-        id: 'cmd-scenario-breaking',
-        title: 'Scenario: Breaking Change (v3)',
-        description: 'Mutates totalAmount from number to string - breaks billing',
-        category: 'Scenarios',
-        icon: Sparkles,
-        onSelect: () => handleSelectScenario(DEMO_SCENARIOS.breaking),
-      },
-      {
-        id: 'cmd-scenario-risky',
-        title: 'Scenario: Risky Removal (v4)',
-        description: 'Removes notes field used downstream by analytics',
-        category: 'Scenarios',
-        icon: Sparkles,
-        onSelect: () => handleSelectScenario(DEMO_SCENARIOS.risk),
-      },
-      {
         id: 'cmd-format',
-        title: 'Format JSON Payload',
+        title: 'Format Payload JSON',
         description: 'Beautify JSON indentation in editor',
-        category: 'Editor',
+        category: 'Actions',
         icon: FileCode,
         onSelect: () => handleFormatPayload(),
       },
@@ -439,14 +415,38 @@ export function WorkspaceShell() {
         id: 'cmd-reset',
         title: 'Reset Payload',
         description: 'Restore default sample payload for current scenario',
-        category: 'Editor',
+        category: 'Actions',
         icon: RotateCcw,
         onSelect: () => handleResetPayload(),
       },
       {
+        id: 'cmd-scenario-safe',
+        title: 'Scenario: Safe Addition (v2)',
+        description: 'Adds optional loyaltyTier field - backward compatible (ALLOW)',
+        category: 'Scenarios',
+        icon: Sparkles,
+        onSelect: () => handleSelectScenario(DEMO_SCENARIOS.safe),
+      },
+      {
+        id: 'cmd-scenario-breaking',
+        title: 'Scenario: Breaking Change (v3)',
+        description: 'Mutates shippingMethod from string to object - breaking (BLOCK)',
+        category: 'Scenarios',
+        icon: Sparkles,
+        onSelect: () => handleSelectScenario(DEMO_SCENARIOS.breaking),
+      },
+      {
+        id: 'cmd-scenario-risky',
+        title: 'Scenario: Risky Removal (v4)',
+        description: 'Removes couponCode field used downstream by analytics (REVIEW)',
+        category: 'Scenarios',
+        icon: Sparkles,
+        onSelect: () => handleSelectScenario(DEMO_SCENARIOS.risk),
+      },
+      {
         id: 'cmd-filter-all',
         title: 'Filter: All Consumers',
-        description: 'Display all 3 registered downstream consumers',
+        description: 'Display all registered downstream consumers',
         category: 'Filters',
         icon: Users,
         onSelect: () => setConsumerFilter('ALL'),
@@ -471,7 +471,7 @@ export function WorkspaceShell() {
         id: 'cmd-inspect-billing',
         title: 'Inspect Billing Service',
         description: 'Deep dive into billing-service consumer contract',
-        category: 'Actions',
+        category: 'Consumers',
         icon: Users,
         onSelect: () => handleSelectConsumer('billing-service'),
       },
@@ -479,7 +479,7 @@ export function WorkspaceShell() {
         id: 'cmd-inspect-inventory',
         title: 'Inspect Inventory Service',
         description: 'Deep dive into inventory-service consumer contract',
-        category: 'Actions',
+        category: 'Consumers',
         icon: Users,
         onSelect: () => handleSelectConsumer('inventory-service'),
       },
@@ -487,15 +487,15 @@ export function WorkspaceShell() {
         id: 'cmd-inspect-analytics',
         title: 'Inspect Analytics Service',
         description: 'Deep dive into analytics-service consumer contract',
-        category: 'Actions',
+        category: 'Consumers',
         icon: Users,
         onSelect: () => handleSelectConsumer('analytics-service'),
       },
       {
         id: 'cmd-env-dev',
         title: 'Switch Environment: Development',
-        description: 'Target development DynamoDB contracts and dev event bus',
-        category: 'Actions',
+        description: 'Target development contracts and dev event bus',
+        category: 'Environments',
         icon: Globe,
         onSelect: () => handleEnvironmentChange('development'),
       },
@@ -503,15 +503,15 @@ export function WorkspaceShell() {
         id: 'cmd-env-staging',
         title: 'Switch Environment: Staging',
         description: 'Target staging environment policy validation',
-        category: 'Actions',
+        category: 'Environments',
         icon: Globe,
         onSelect: () => handleEnvironmentChange('staging'),
       },
       {
         id: 'cmd-env-prod',
         title: 'Switch Environment: Production',
-        description: 'Target production zero-tolerance release gating',
-        category: 'Actions',
+        description: 'Target production release gating policies',
+        category: 'Environments',
         icon: Globe,
         onSelect: () => handleEnvironmentChange('production'),
       },
@@ -519,7 +519,7 @@ export function WorkspaceShell() {
         id: 'cmd-help',
         title: 'Open Keyboard Shortcuts & Help',
         description: 'View command palette shortcuts, analyze hotkeys, and workflow guide',
-        category: 'Navigation',
+        category: 'Help',
         icon: HelpCircle,
         shortcut: '?',
         onSelect: () => setIsHelpModalOpen(true),
@@ -531,7 +531,7 @@ export function WorkspaceShell() {
         id: 'cmd-copy-event-id',
         title: 'Copy Event ID',
         description: publishResult.eventId,
-        category: 'Clipboard',
+        category: 'Identifiers',
         icon: Copy,
         onSelect: () => {
           navigator.clipboard.writeText(publishResult.eventId)
@@ -543,7 +543,7 @@ export function WorkspaceShell() {
           id: 'cmd-copy-eb-id',
           title: 'Copy EventBridge ID',
           description: publishResult.eventBridgeEventId,
-          category: 'Clipboard',
+          category: 'Identifiers',
           icon: Copy,
           onSelect: () => {
             navigator.clipboard.writeText(publishResult.eventBridgeEventId || '')
@@ -558,7 +558,7 @@ export function WorkspaceShell() {
         id: 'cmd-copy-analysis-id',
         title: 'Copy Analysis ID',
         description: analysis.analysisId,
-        category: 'Clipboard',
+        category: 'Identifiers',
         icon: Copy,
         onSelect: () => {
           navigator.clipboard.writeText(analysis.analysisId || '')
@@ -572,7 +572,7 @@ export function WorkspaceShell() {
         id: 'cmd-copy-request-id',
         title: 'Copy Request ID',
         description: analysis.requestId,
-        category: 'Clipboard',
+        category: 'Identifiers',
         icon: Copy,
         onSelect: () => {
           navigator.clipboard.writeText(analysis.requestId || '')
@@ -753,14 +753,35 @@ export function WorkspaceShell() {
             <FindingsPanel
               analysis={analysis}
               selectedField={selectedField}
-              onSelectField={setSelectedField}
+              onSelectField={(field) => {
+                if (selectedField === field) {
+                  setSelectedField(null)
+                } else {
+                  setSelectedField(field)
+                  if (field) {
+                    const matched = analysis.findings.find((f) => f.field === field)
+                    if (matched) setSelectedConsumerId(matched.consumerId)
+                  }
+                }
+              }}
               selectedConsumerId={selectedConsumerId}
               onSelectConsumer={handleSelectConsumer}
             />
             <SchemaDiff
               changeSet={analysis.changeSet}
+              findings={analysis.findings}
               selectedField={selectedField}
-              onSelectField={setSelectedField}
+              onSelectField={(field) => {
+                if (selectedField === field) {
+                  setSelectedField(null)
+                } else {
+                  setSelectedField(field)
+                  if (field) {
+                    const matched = analysis.findings.find((f) => f.field === field)
+                    if (matched) setSelectedConsumerId(matched.consumerId)
+                  }
+                }
+              }}
             />
           </>
         )}
