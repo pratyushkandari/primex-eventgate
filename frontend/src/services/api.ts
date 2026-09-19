@@ -17,6 +17,8 @@ import {
   type PublishResponse,
   type ReleaseRecord,
   type ReportExportResponse,
+  type PolicyInspectionResponse,
+  type RuntimeConfigResponse,
 } from '@/types/api'
 
 async function request<T>(
@@ -183,5 +185,19 @@ export const eventGateApi = {
       method: 'POST',
       body: JSON.stringify(data),
     })
+  },
+
+  /**
+   * Fetch active policy configuration, matrix, and Cedar specifications.
+   */
+  async getPolicies(): Promise<PolicyInspectionResponse> {
+    return request<PolicyInspectionResponse>('/api/v1/policies', { method: 'GET' })
+  },
+
+  /**
+   * Fetch authoritative runtime configuration.
+   */
+  async getRuntimeConfig(): Promise<RuntimeConfigResponse> {
+    return request<RuntimeConfigResponse>('/api/v1/config/runtime', { method: 'GET' })
   },
 }

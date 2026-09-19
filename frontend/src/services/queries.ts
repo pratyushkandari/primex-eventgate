@@ -10,6 +10,8 @@ import type {
   EventCatalogSummary,
   EventDetail,
   ReleaseRecord,
+  PolicyInspectionResponse,
+  RuntimeConfigResponse,
 } from '@/types/api'
 
 export const queryKeys = {
@@ -20,6 +22,8 @@ export const queryKeys = {
   consumerDetail: (consumerId: string) => ['contracts', 'consumers', consumerId] as const,
   history: (eventType?: string) => ['history', eventType || 'all'] as const,
   reviewDetail: (recordId: string) => ['history', 'record', recordId] as const,
+  policies: ['policies'] as const,
+  runtimeConfig: ['config', 'runtime'] as const,
 }
 
 export function useEventCatalog() {
@@ -79,5 +83,21 @@ export function useReviewDetail(recordId: string | null) {
     },
     enabled: Boolean(recordId),
     staleTime: 30_000,
+  })
+}
+
+export function usePolicies() {
+  return useQuery<PolicyInspectionResponse, Error>({
+    queryKey: queryKeys.policies,
+    queryFn: () => eventGateApi.getPolicies(),
+    staleTime: 60_000,
+  })
+}
+
+export function useRuntimeConfig() {
+  return useQuery<RuntimeConfigResponse, Error>({
+    queryKey: queryKeys.runtimeConfig,
+    queryFn: () => eventGateApi.getRuntimeConfig(),
+    staleTime: 60_000,
   })
 }

@@ -2,6 +2,9 @@ import * as React from 'react'
 import { Header, type NavTab } from '@/components/layout/Header'
 import { ContractsHub } from '@/components/contracts/ContractsHub'
 import { ReleaseHistoryView } from '@/components/history/ReleaseHistoryView'
+import { DeveloperToolsView } from '@/components/devtools/DeveloperToolsView'
+import { PoliciesView } from '@/components/policies/PoliciesView'
+import { SettingsView } from '@/components/settings/SettingsView'
 import { ReportExportModal } from '@/components/workspace/ReportExportModal'
 import { ScenarioSelector } from '@/components/workspace/ScenarioSelector'
 import { ReviewContextBar } from '@/components/workspace/ReviewContextBar'
@@ -35,6 +38,10 @@ import {
   Users,
   Copy,
   Database,
+  History as HistoryIcon,
+  Terminal,
+  Shield,
+  Settings as SettingsIcon,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 
@@ -314,11 +321,43 @@ export function WorkspaceShell() {
       },
       {
         id: 'nav-contracts',
-        title: 'Go to Contract Registry',
+        title: 'Open Contracts',
         description: 'Browse versioned event catalogs and consumer contracts',
         category: 'Navigation',
         icon: Database,
         onSelect: () => setActiveNavTab('contracts'),
+      },
+      {
+        id: 'nav-history',
+        title: 'Open History',
+        description: 'Persistent audit trail and release evidence records',
+        category: 'Navigation',
+        icon: HistoryIcon,
+        onSelect: () => setActiveNavTab('history'),
+      },
+      {
+        id: 'nav-devtools',
+        title: 'Open Developer Tools',
+        description: 'Contract test runner and CLI command generator',
+        category: 'Navigation',
+        icon: Terminal,
+        onSelect: () => setActiveNavTab('devtools'),
+      },
+      {
+        id: 'nav-policies',
+        title: 'Open Policies',
+        description: 'Environment release matrix and Cedar policy inspection',
+        category: 'Navigation',
+        icon: Shield,
+        onSelect: () => setActiveNavTab('policies'),
+      },
+      {
+        id: 'nav-settings',
+        title: 'Open Settings',
+        description: 'Inspect authoritative runtime platform configuration',
+        category: 'Navigation',
+        icon: SettingsIcon,
+        onSelect: () => setActiveNavTab('settings'),
       },
       {
         id: 'cmd-analyze',
@@ -502,6 +541,21 @@ export function WorkspaceShell() {
             }}
           />
         )}
+
+        {activeNavTab === 'devtools' && (
+          <DeveloperToolsView
+            onOpenReviewScenario={(_et, _cur, prop) => {
+              if (prop === 2) handleSelectScenario(DEMO_SCENARIOS.safe)
+              else if (prop === 3) handleSelectScenario(DEMO_SCENARIOS.breaking)
+              else if (prop === 4) handleSelectScenario(DEMO_SCENARIOS.risk)
+              setActiveNavTab('review')
+            }}
+          />
+        )}
+
+        {activeNavTab === 'policies' && <PoliciesView />}
+
+        {activeNavTab === 'settings' && <SettingsView />}
 
         {activeNavTab === 'review' && (
           <>

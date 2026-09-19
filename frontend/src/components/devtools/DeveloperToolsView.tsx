@@ -1,0 +1,410 @@
+import * as React from 'react'
+import {
+  Terminal,
+  CheckCircle2,
+  XCircle,
+  Play,
+  Copy,
+  Check,
+  GitPullRequest,
+  RefreshCw,
+} from 'lucide-react'
+import { eventGateApi } from '@/services/api'
+import type { AnalysisResponse, Decision, Environment } from '@/types/api'
+import { Badge } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
+
+interface DeveloperToolsViewProps {
+  onOpenReviewScenario?: (eventType: string, current: number, proposed: number) => void
+}
+
+export function DeveloperToolsView({ onOpenReviewScenario }: DeveloperToolsViewProps) {
+  // Test runner state
+  const [eventType, setEventType] = React.useState('OrderPlaced')
+  const [currentVersion, setCurrentVersion] = React.useState(1)
+  const [proposedVersion, setProposedVersion] = React.useState(2)
+  const [environment, setEnvironment] = React.useState<Environment>('production')
+  const [expectedDecision, setExpectedDecision] = React.useState<Decision>('ALLOW')
+
+  // Execution state
+  const [isRunning, setIsRunning] = React.useState(false)
+  const [testResult, setTestResult] = React.useState<AnalysisResponse | null>(null)
+  const [testError, setTestError] = React.useState<string | null>(null)
+  const [copiedIndex, setCopiedIndex] = React.useState<number | null>(null)
+
+  const handleRunAssertion = async () => {
+    setIsRunning(true)
+    setTestError(null)
+    setTestResult(null)
+
+    try {
+      const res = await eventGateApi.analyzeCompatibility({
+        eventType,
+        currentVersion,
+        proposedVersion,
+        environment,
+      })
+      setTestResult(res)
+    } catch (err) {
+      setTestError(err instanceof Error ? err.message : 'Execution failed')
+    } finally {
+      setIsRunning(false)
+    }
+  }
+
+  const isPassed = testResult && testResult.decision === expectedDecision
+
+  const copyToClipboard = (text: string, index: number) => {
+    navigator.clipboard.writeText(text)
+    setCopiedIndex(index)
+    setTimeout(() => setCopiedIndex(null), 2000)
+  }
+
+  const cliCommands = [
+    {
+      title: 'Release Gate Check (Standard)',
+      cmd: `eventgate check --event ${eventType} --current ${currentVersion} --proposed ${proposedVersion} --env ${environment}`,
+    },
+    {
+      title: 'Release Gate Check (Fail on Review in CI)',
+      cmd: `eventgate check --event ${eventType} --current ${currentVersion} --proposed ${proposedVersion} --env ${environment} --fail-on-review`,
+    },
+    {
+      title: 'Automated Regression Assertion',
+      cmd: `eventgate test --event ${eventType} --current ${currentVersion} --proposed ${proposedVersion} --expected ${expectedDecision} --env ${environment}`,
+    },
+    {
+      title: 'Inspect Registered Contract Detail',
+      cmd: `eventgate catalog --event ${eventType}`,
+    },
+  ]
+
+  return (
+    <div className="space-y-6 pb-12">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+        <div>
+          <div className="flex items-center space-x-2">
+            <h1 className="text-xl font-bold tracking-tight text-slate-100">Developer Tools</h1>
+            <Badge variant="default" size="sm">
+              Engine Suite
+            </Badge>
+          </div>
+          <p className="text-xs text-slate-400 font-mono mt-1">
+            Deterministic contract test runner, CLI command generator, and CI integration guidance
+          </p>
+        </div>
+      </div>
+
+      {/* Grid: Test Runner + CLI Generator */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Left Col: Contract Test Runner (7 Cols) */}
+        <div className="lg:col-span-7 space-y-4">
+          <div className="bg-[#0b0f19] border border-slate-800 rounded-lg p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center space-x-2">
+                <Play className="h-4 w-4 text-blue-400" />
+                <h2 className="text-sm font-semibold text-slate-200">Contract Test Runner</h2>
+              </div>
+              <span className="text-[11px] font-mono text-slate-500">Live API Execution</span>
+            </div>
+
+            {/* Test Configuration Controls */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-mono mb-4">
+              <div>
+                <label className="block text-slate-400 mb-1">Event Type</label>
+                <select
+                  value={eventType}
+                  onChange={(e) => setEventType(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 focus:outline-hidden focus:border-blue-500"
+                >
+                  <option value="OrderPlaced">OrderPlaced</option>
+                  <option value="PaymentCompleted">PaymentCompleted</option>
+                  <option value="UserCreated">UserCreated</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1">Environment</label>
+                <select
+                  value={environment}
+                  onChange={(e) => setEnvironment(e.target.value as Environment)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 focus:outline-hidden focus:border-blue-500"
+                >
+                  <option value="production">production</option>
+                  <option value="staging">staging</option>
+                  <option value="development">development</option>
+                </select>
+              </div>
+
+              <div className="flex items-center space-x-3">
+                <div className="flex-1">
+                  <label className="block text-slate-400 mb-1">Current Version</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={currentVersion}
+                    onChange={(e) => setCurrentVersion(Number(e.target.value))}
+                    className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 focus:outline-hidden focus:border-blue-500"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-slate-400 mb-1">Proposed Version</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={proposedVersion}
+                    onChange={(e) => setProposedVersion(Number(e.target.value))}
+                    className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 focus:outline-hidden focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1">Expected Decision</label>
+                <select
+                  value={expectedDecision}
+                  onChange={(e) => setExpectedDecision(e.target.value as Decision)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 focus:outline-hidden focus:border-blue-500"
+                >
+                  <option value="ALLOW">ALLOW</option>
+                  <option value="REVIEW">REVIEW</option>
+                  <option value="BLOCK">BLOCK</option>
+                </select>
+              </div>
+            </div>
+
+            <Button
+              onClick={handleRunAssertion}
+              disabled={isRunning}
+              variant="primary"
+              className="w-full justify-center"
+            >
+              {isRunning ? (
+                <>
+                  <RefreshCw className="h-3.5 w-3.5 mr-2 animate-spin" />
+                  Running Backend Assertion...
+                </>
+              ) : (
+                <>
+                  <Play className="h-3.5 w-3.5 mr-2" />
+                  Execute Contract Assertion
+                </>
+              )}
+            </Button>
+          </div>
+
+          {/* Test Error */}
+          {testError && (
+            <div className="bg-rose-950/30 border border-rose-500/50 rounded-lg p-3 text-xs text-rose-300 font-mono">
+              <span className="font-bold">Assertion Execution Error:</span> {testError}
+            </div>
+          )}
+
+          {/* Assertion Result Outcome Banner */}
+          {testResult && (
+            <div
+              className={`border rounded-lg p-4 space-y-3 font-mono ${
+                isPassed
+                  ? 'bg-emerald-950/20 border-emerald-500/40 text-emerald-300'
+                  : 'bg-rose-950/20 border-rose-500/40 text-rose-300'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2.5">
+                  {isPassed ? (
+                    <CheckCircle2 className="h-5 w-5 text-emerald-400 flex-shrink-0" />
+                  ) : (
+                    <XCircle className="h-5 w-5 text-rose-400 flex-shrink-0" />
+                  )}
+                  <div>
+                    <span className="text-sm font-bold tracking-wider">
+                      {isPassed ? 'ASSERTION PASSED' : 'ASSERTION FAILED'}
+                    </span>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      {isPassed
+                        ? `Expected ${expectedDecision}, got ${testResult.decision}. Gate permitted transition according to policy.`
+                        : `Expected ${expectedDecision}, but actual gate decision evaluated to ${testResult.decision}.`}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <Badge
+                    variant={
+                      testResult.decision.toLowerCase() as 'allow' | 'block' | 'review'
+                    }
+                  >
+                    Actual: {testResult.decision}
+                  </Badge>
+                  {onOpenReviewScenario && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onOpenReviewScenario(eventType, currentVersion, proposedVersion)
+                      }
+                      className="text-xs text-blue-400 hover:text-blue-300 underline cursor-pointer"
+                    >
+                      Open in Review
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Detail Metrics */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-800/80 text-xs">
+                <div>
+                  <span className="text-[10px] text-slate-500 block">Compatibility</span>
+                  <span className="font-bold text-slate-200">
+                    {testResult.compatibilityResult}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-500 block">Severity</span>
+                  <span className="font-bold text-slate-200">
+                    {testResult.severity}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-500 block">Policy Engine</span>
+                  <span className="font-bold text-slate-200">
+                    {testResult.policyName || 'StandardReleasePolicy'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-500 block">Applied Policy</span>
+                  <span className="font-bold text-slate-200">
+                    {testResult.policyReason ? 'CUSTOM' : 'DEFAULT'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Per-Consumer Breakdown */}
+              <div className="pt-2">
+                <span className="text-[11px] font-bold text-slate-300 block mb-1.5">
+                  Consumer Dependency Findings ({testResult.findings.length} findings):
+                </span>
+                <div className="bg-slate-950/60 border border-slate-800 rounded divide-y divide-slate-800/60 text-xs">
+                  {testResult.findings.map((f, fIdx) => (
+                    <div
+                      key={`${f.consumerId}-${f.field || fIdx}`}
+                      className="p-2.5 flex items-center justify-between"
+                    >
+                      <div>
+                        <span className="font-bold text-slate-200">{f.consumerId}</span>
+                        <span className="text-slate-500 text-[11px] ml-2">
+                          ({f.ruleId || 'ALL_FIELDS_COMPATIBLE'})
+                        </span>
+                        {f.field && (
+                          <span className="text-slate-400 text-[11px] ml-1.5">
+                            field: <code className="text-slate-300">{f.field}</code>
+                          </span>
+                        )}
+                        {f.reason && (
+                          <p className="text-[11px] text-slate-400 mt-0.5">{f.reason}</p>
+                        )}
+                      </div>
+                      <Badge
+                        variant={
+                          f.status.toLowerCase() as 'safe' | 'risk' | 'break'
+                        }
+                        size="sm"
+                      >
+                        {f.status}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Right Col: CLI Generator & CI Guide (5 Cols) */}
+        <div className="lg:col-span-5 space-y-4">
+          {/* CLI Generator */}
+          <div className="bg-[#0b0f19] border border-slate-800 rounded-lg p-5">
+            <div className="flex items-center space-x-2 mb-3">
+              <Terminal className="h-4 w-4 text-emerald-400" />
+              <h2 className="text-sm font-semibold text-slate-200">CLI Generator</h2>
+            </div>
+            <p className="text-xs text-slate-400 font-mono mb-4">
+              Real command-line invocations matching the active runner inputs:
+            </p>
+
+            <div className="space-y-3">
+              {cliCommands.map((item, idx) => (
+                <div
+                  key={item.title}
+                  className="bg-slate-950/90 border border-slate-800 rounded p-2.5 font-mono text-xs"
+                >
+                  <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                    <span>{item.title}</span>
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(item.cmd, idx)}
+                      className="flex items-center space-x-1 text-blue-400 hover:text-blue-300 cursor-pointer"
+                    >
+                      {copiedIndex === idx ? (
+                        <>
+                          <Check className="h-3 w-3 text-emerald-400" />
+                          <span className="text-emerald-400">Copied</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-3 w-3" />
+                          <span>Copy</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <pre className="text-emerald-400 overflow-x-auto py-1 text-[11px] select-all whitespace-pre-wrap break-all">
+                    {item.cmd}
+                  </pre>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* CI Workflow Guidance */}
+          <div className="bg-[#0b0f19] border border-slate-800 rounded-lg p-5 font-mono text-xs space-y-3">
+            <div className="flex items-center space-x-2 text-slate-200">
+              <GitPullRequest className="h-4 w-4 text-blue-400" />
+              <h3 className="text-sm font-semibold">CI / CD Gate Standards</h3>
+            </div>
+            <p className="text-slate-400 text-[11px]">
+              The EventGate CLI returns deterministic exit codes to enforce hard boundaries in CI:
+            </p>
+
+            <div className="grid grid-cols-3 gap-2 text-center text-[11px]">
+              <div className="bg-emerald-950/30 border border-emerald-500/30 rounded p-1.5">
+                <span className="font-bold text-emerald-400 block">Exit 0</span>
+                <span className="text-slate-400 text-[10px]">ALLOW (Safe)</span>
+              </div>
+              <div className="bg-rose-950/30 border border-rose-500/30 rounded p-1.5">
+                <span className="font-bold text-rose-400 block">Exit 1</span>
+                <span className="text-slate-400 text-[10px]">BLOCK (Break)</span>
+              </div>
+              <div className="bg-amber-950/30 border border-amber-500/30 rounded p-1.5">
+                <span className="font-bold text-amber-400 block">Exit 2</span>
+                <span className="text-slate-400 text-[10px]">REVIEW (Risk)</span>
+              </div>
+            </div>
+
+            <div className="bg-slate-950/80 border border-slate-800/80 rounded p-2.5 text-[11px] text-slate-400">
+              <span className="text-slate-300 font-bold block mb-1">
+                GitHub Actions Workflow
+              </span>
+              <code>.github/workflows/eventgate-contract-check.yml</code>
+              <p className="mt-1 text-[10px] text-slate-500">
+                Automatically triggered on PR when files under <code>contracts/**</code> change.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

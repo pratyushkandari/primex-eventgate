@@ -192,3 +192,33 @@ export class EventGateApiError extends Error {
     Object.setPrototypeOf(this, EventGateApiError.prototype)
   }
 }
+
+export interface PolicyMatrixRow {
+  environment: string
+  low: string
+  medium: string
+  high: string
+}
+
+export interface PolicyInspectionResponse {
+  activeEngine: string
+  engineName: string
+  description: string
+  matrix: PolicyMatrixRow[]
+  cedarPolicyAvailable: boolean
+  cedarPolicyText?: string | null
+}
+
+export interface RuntimeConfigResponse {
+  environment: string
+  storageBackend: string
+  storageBackendType: string
+  publisherBackend: string
+  publisherBackendType: string
+  awsRegion: string
+  eventBridgeBus: string
+  policyEngine: string
+  policyEngineType: string
+  contractsDirectory: string
+}
+
