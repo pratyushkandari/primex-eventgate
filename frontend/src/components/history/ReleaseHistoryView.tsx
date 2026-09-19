@@ -32,6 +32,8 @@ interface ReleaseHistoryViewProps {
 
 export const ReleaseHistoryView: React.FC<ReleaseHistoryViewProps> = ({ onSelectReview }) => {
   const [selectedEventType, setSelectedEventType] = useState<string>('')
+  const [selectedEnvironment, setSelectedEnvironment] = useState<string>('')
+  const [selectedDecision, setSelectedDecision] = useState<string>('')
   const [searchQuery, setSearchQuery] = useState('')
   const [inspectRecord, setInspectRecord] = useState<ReleaseRecord | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -41,20 +43,52 @@ export const ReleaseHistoryView: React.FC<ReleaseHistoryViewProps> = ({ onSelect
     selectedEventType || undefined
   )
 
+  const hasActiveFilters = Boolean(
+    selectedEventType || selectedEnvironment || selectedDecision || searchQuery.trim()
+  )
+
+  const handleClearFilters = () => {
+    setSelectedEventType('')
+    setSelectedEnvironment('')
+    setSelectedDecision('')
+    setSearchQuery('')
+  }
+
   const filteredRecords = useMemo(() => {
-    if (!searchQuery.trim()) return records
-    const q = searchQuery.toLowerCase().trim()
     return records.filter((r) => {
-      return (
-        r.recordId.toLowerCase().includes(q) ||
-        r.eventType.toLowerCase().includes(q) ||
-        (r.requestId && r.requestId.toLowerCase().includes(q)) ||
-        (r.eventId && r.eventId.toLowerCase().includes(q)) ||
-        (r.eventBridgeEventId && r.eventBridgeEventId.toLowerCase().includes(q)) ||
-        r.environment.toLowerCase().includes(q)
-      )
+      // Event Type filter
+      if (selectedEventType && r.eventType !== selectedEventType) {
+        return false
+      }
+      // Environment filter
+      if (
+        selectedEnvironment &&
+        r.environment.toLowerCase() !== selectedEnvironment.toLowerCase()
+      ) {
+        return false
+      }
+      // Decision filter
+      if (selectedDecision && r.decision !== selectedDecision) {
+        return false
+      }
+      // Generic search
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim()
+        const matchesSearch =
+          r.recordId.toLowerCase().includes(q) ||
+          r.eventType.toLowerCase().includes(q) ||
+          (r.requestId && r.requestId.toLowerCase().includes(q)) ||
+          (r.eventId && r.eventId.toLowerCase().includes(q)) ||
+          (r.eventBridgeEventId && r.eventBridgeEventId.toLowerCase().includes(q)) ||
+          r.environment.toLowerCase().includes(q) ||
+          r.decision.toLowerCase().includes(q) ||
+          (r.policyReason && r.policyReason.toLowerCase().includes(q)) ||
+          (r.affectedConsumers && r.affectedConsumers.some((c) => c.toLowerCase().includes(q)))
+        if (!matchesSearch) return false
+      }
+      return true
     })
-  }, [records, searchQuery])
+  }, [records, selectedEventType, selectedEnvironment, selectedDecision, searchQuery])
 
   const stats = useMemo(() => {
     const total = records.length
@@ -158,6 +192,45 @@ export const ReleaseHistoryView: React.FC<ReleaseHistoryViewProps> = ({ onSelect
               <option value="UserCreated">UserCreated</option>
             </select>
 
+            {/* Environment Filter */}
+            <select
+              value={selectedEnvironment}
+              onChange={(e) => setSelectedEnvironment(e.target.value)}
+              className="h-8 rounded border border-neutral-800 bg-neutral-900 px-2.5 text-xs text-neutral-200 focus:border-indigo-500 focus:outline-none"
+              aria-label="Filter by Environment"
+            >
+              <option value="">All Environments</option>
+              <option value="development">development</option>
+              <option value="staging">staging</option>
+              <option value="production">production</option>
+            </select>
+
+            {/* Decision Filter */}
+            <select
+              value={selectedDecision}
+              onChange={(e) => setSelectedDecision(e.target.value)}
+              className="h-8 rounded border border-neutral-800 bg-neutral-900 px-2.5 text-xs text-neutral-200 focus:border-indigo-500 focus:outline-none"
+              aria-label="Filter by Decision"
+            >
+              <option value="">All Decisions</option>
+              <option value="ALLOW">ALLOW</option>
+              <option value="REVIEW">REVIEW</option>
+              <option value="BLOCK">BLOCK</option>
+            </select>
+
+            {/* Clear Filters */}
+            {hasActiveFilters && (
+              <button
+                onClick={handleClearFilters}
+                className="flex h-8 items-center gap-1 rounded border border-neutral-800 bg-neutral-900 px-2.5 text-xs font-medium text-neutral-400 hover:border-neutral-700 hover:text-neutral-200 focus:outline-none"
+                title="Clear all filters"
+                aria-label="Clear filters"
+              >
+                <X className="h-3.5 w-3.5" />
+                <span>Clear filters</span>
+              </button>
+            )}
+
             {/* Refresh */}
             <button
               onClick={() => refetch()}
@@ -230,12 +303,23 @@ export const ReleaseHistoryView: React.FC<ReleaseHistoryViewProps> = ({ onSelect
         ) : filteredRecords.length === 0 ? (
           <div className="rounded-lg border border-dashed border-neutral-800 bg-neutral-900/20 p-12 text-center">
             <History className="mx-auto h-10 w-10 text-neutral-600" />
-            <h3 className="mt-3 text-sm font-medium text-neutral-300">No release evaluations recorded</h3>
+            <h3 className="mt-3 text-sm font-medium text-neutral-300">
+              {hasActiveFilters ? 'No matching release evaluations' : 'No release evaluations recorded'}
+            </h3>
             <p className="mx-auto mt-1 max-w-sm text-xs text-neutral-500">
-              {searchQuery
-                ? 'No historical records matched your search query.'
+              {hasActiveFilters
+                ? 'No historical records matched your active filter criteria.'
                 : 'Zero fake functionality: fresh state is clean. Real records are generated when contract changes are analyzed or published.'}
             </p>
+            {hasActiveFilters && (
+              <button
+                onClick={handleClearFilters}
+                className="mt-4 inline-flex items-center gap-1.5 rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700"
+              >
+                <X className="h-3.5 w-3.5" />
+                <span>Clear filters</span>
+              </button>
+            )}
           </div>
         ) : (
           <div className="overflow-hidden rounded border border-neutral-800 bg-neutral-900/40">
