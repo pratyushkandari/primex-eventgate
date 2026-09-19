@@ -53,13 +53,26 @@ export function SettingsView() {
     )
   }
 
+  const stackStage = config.eventBridgeBus.includes('-dev-')
+    ? 'dev'
+    : config.eventBridgeBus.includes('-staging-')
+    ? 'staging'
+    : 'prod'
+
   const items = [
     {
       label: 'Target Environment',
       value: config.environment,
-      detail: 'Authoritative deployment environment context',
+      detail: 'Release policy evaluation target (production / staging / development)',
       icon: Server,
-      badge: 'Active Context',
+      badge: 'Release Target',
+    },
+    {
+      label: 'Runtime Infrastructure Stack',
+      value: `primex-eventgate-${stackStage}`,
+      detail: `AWS CloudFormation deployment tier (${stackStage}) hosting EventGate runtime`,
+      icon: Cloud,
+      badge: `AWS Stack: ${stackStage}`,
     },
     {
       label: 'Storage Backend',
