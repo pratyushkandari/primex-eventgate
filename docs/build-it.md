@@ -20,7 +20,7 @@ The **Build It** track evaluates technical execution, developer ergonomics, port
       │   (Build It Track)    │                       │   (Ship It Track)     │
       ├───────────────────────┤                       ├───────────────────────┤
       │ • Local Filesystem    │                       │ • Amazon DynamoDB     │
-      │   (contracts/ YAML)   │                       │   (EventContracts)    │
+      │   (contracts/ JSON)   │                       │   (EventContracts)    │
       │ • LocalEventPublisher │                       │ • Amazon EventBridge  │
       │   (In-memory sink)    │                       │   (primex-eventgate-  │
       │ • SAM Local / FastAPI │                       │    dev-bus)           │
@@ -76,7 +76,7 @@ The fastest way to verify EventGate's deterministic decision engine locally is t
 
 ## 4. Local Execution Path B: Backend FastAPI & Pytest Suite
 
-EventGate includes a comprehensive unit, integration, and conformance test suite executing 270 tests across all compatibility rules, policies, catalog endpoints, history persistence, CLI commands, and CI scripts without cloud connectivity.
+EventGate includes a comprehensive unit, integration, and conformance test suite executing 279 tests across all compatibility rules, policies, catalog endpoints, history persistence, CLI commands, and CI scripts without cloud connectivity.
 
 ### Run Backend Tests & Coverage
 ```powershell
@@ -85,8 +85,8 @@ cd C:\primex-eventgate\backend
 ```
 
 **Results:**
-* **270 passed** in ~5.0s
-* **91.71% code coverage** across all domain, application, and infrastructure layers.
+* **279 passed** in ~4.8s
+* **91.54% code coverage** across all domain, application, and infrastructure layers.
 
 ### Run Linter
 ```powershell
@@ -107,7 +107,7 @@ cd C:\primex-eventgate\frontend
 # Install dependencies
 npm install
 
-# Run unit and integration tests (88 tests across 22 test files)
+# Run unit and integration tests (114 tests across 25 test files)
 npm test -- --run
 
 # Run linter

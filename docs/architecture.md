@@ -115,7 +115,7 @@ A single release workflow produces a single correlated audit record.
   - `/api/v1/analyze`: Advisory compatibility analysis.
   - `/api/v1/events/publish`: Gated publication.
   - `/api/v1/contracts/events` & `/api/v1/contracts/consumers`: Contract and consumer catalog.
-  - `/api/v1/history/reviews` & `/api/v1/history/reviews/{id}/report`: Persistent audit trail & reports.
+  - `/api/v1/history`, `/api/v1/history/{record_id}`, & `/api/v1/history/{record_id}/report`: Persistent audit trail & reports.
   - `/api/v1/policies`: Active policy engine status, 3x3 matrix, and Cedar source.
   - `/api/v1/config/runtime`: Authoritative runtime configuration.
 

@@ -29,8 +29,8 @@ EventGate enforces a strict three-tier separation between structural compatibili
        FINAL RELEASE DECISION
           ALLOW | REVIEW | BLOCK
                  │
-                 ├──► ALLOW   ──► Approved for Amazon EventBridge publication
-                 ├──► REVIEW  ──► Publication PREVENTED (Manual approval required)
+                 ├──► ALLOW   ──► Publication PERMITTED (Approved for Amazon EventBridge publication)
+                 ├──► REVIEW  ──► Publication HELD (Pending review; manual approval required)
                  └──► BLOCK   ──► Publication PREVENTED (Breaking changes strictly blocked)
 ```
 

@@ -97,10 +97,10 @@ aws cloudformation describe-stacks `
 ```
 
 Expected output keys:
-- `ApiUrl` (e.g. `https://abc123xyz.execute-api.us-east-1.amazonaws.com`)
-- `EventContractsTableName` (e.g. `primex-eventgate-dev-event-contracts`)
-- `ConsumerContractsTableName` (e.g. `primex-eventgate-dev-consumer-contracts`)
-- `LambdaFunctionName` (e.g. `primex-eventgate-dev-api`)
+- `ApiUrl` (e.g. `https://ux8bwi3i8l.execute-api.ap-south-1.amazonaws.com`)
+- `EventContractsTableName` (`primex-eventgate-dev-event-contracts`)
+- `ConsumerContractsTableName` (`primex-eventgate-dev-consumer-contracts`)
+- `LambdaFunctionName` (`primex-eventgate-dev-api`)
 
 ---
 
@@ -132,9 +132,13 @@ python scripts/aws_smoke_test.py https://ux8bwi3i8l.execute-api.ap-south-1.amazo
 
 ### 6.2 Manual Verification with curl / Invoke-RestMethod
 
+```powershell
+$API_URL = "https://ux8bwi3i8l.execute-api.ap-south-1.amazonaws.com"
+```
+
 #### Health Check:
 ```powershell
-Invoke-RestMethod -Uri "https://abc123xyz.execute-api.us-east-1.amazonaws.com/health" -Method GET
+Invoke-RestMethod -Uri "$API_URL/health" -Method GET
 ```
 Expected response:
 ```json
@@ -147,28 +151,28 @@ Expected response:
 
 #### Scenario A: v1 -> v2 (Safe / Optional Field Added)
 ```powershell
-Invoke-RestMethod -Uri "https://abc123xyz.execute-api.us-east-1.amazonaws.com/api/v1/analyze" `
+Invoke-RestMethod -Uri "$API_URL/api/v1/analyze" `
   -Method POST `
   -ContentType "application/json" `
-  -Body '{"eventType": "OrderPlaced", "currentVersion": 1, "proposedVersion": 2}'
+  -Body '{"eventType": "OrderPlaced", "currentVersion": 1, "proposedVersion": 2, "environment": "production"}'
 ```
 Expected: `decision: "ALLOW"`, `severity: "LOW"`.
 
 #### Scenario B: v1 -> v3 (Breaking / Field Type Changed)
 ```powershell
-Invoke-RestMethod -Uri "https://abc123xyz.execute-api.us-east-1.amazonaws.com/api/v1/analyze" `
+Invoke-RestMethod -Uri "$API_URL/api/v1/analyze" `
   -Method POST `
   -ContentType "application/json" `
-  -Body '{"eventType": "OrderPlaced", "currentVersion": 1, "proposedVersion": 3}'
+  -Body '{"eventType": "OrderPlaced", "currentVersion": 1, "proposedVersion": 3, "environment": "production"}'
 ```
 Expected: `decision: "BLOCK"`, `severity: "HIGH"`, inventory-service `BREAK`.
 
 #### Scenario C: v1 -> v4 (Risk / Optional Field Removed)
 ```powershell
-Invoke-RestMethod -Uri "https://abc123xyz.execute-api.us-east-1.amazonaws.com/api/v1/analyze" `
+Invoke-RestMethod -Uri "$API_URL/api/v1/analyze" `
   -Method POST `
   -ContentType "application/json" `
-  -Body '{"eventType": "OrderPlaced", "currentVersion": 1, "proposedVersion": 4}'
+  -Body '{"eventType": "OrderPlaced", "currentVersion": 1, "proposedVersion": 4, "environment": "production"}'
 ```
 Expected: `decision: "REVIEW"`, `severity: "MEDIUM"`, analytics-service `RISK`.
 

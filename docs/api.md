@@ -14,10 +14,10 @@ EventGate exposes a lightweight HTTP JSON interface with camelCase field seriali
 | `GET` | `/api/v1/contracts/events` | List registered event types and metadata | None (catalog read) |
 | `GET` | `/api/v1/contracts/events/{event_type}` | Event version details and schemas | None (catalog read) |
 | `GET` | `/api/v1/contracts/consumers` | List all registered consumer services | None (catalog read) |
-| `GET` | `/api/v1/contracts/consumers/{consumer_id}` | Consumer dependency contract drill-down | None (catalog read) |
-| `GET` | `/api/v1/history/reviews` | Query persistent release review history | None (audit read) |
-| `GET` | `/api/v1/history/reviews/{record_id}` | Get specific release review record | None (audit read) |
-| `GET` | `/api/v1/history/reviews/{record_id}/report` | Export release audit report (Markdown or JSON) | None (audit report export) |
+| `GET` | `/api/v1/history` | Query persistent release review history | None (audit read) |
+| `GET` | `/api/v1/history/{record_id}` | Get specific release review record | None (audit read) |
+| `GET` | `/api/v1/history/{record_id}/report` | Export release audit report (Markdown or JSON) | None (audit report export) |
+| `POST` | `/api/v1/reports/export` | Export release report directly from active review payload | None (ad-hoc report export) |
 | `GET` | `/api/v1/policies` | Active policy engine, 3x3 matrix, and Cedar policy source | None (policy inspection) |
 | `GET` | `/api/v1/config/runtime` | Authoritative runtime configuration | None (configuration probe) |
 
@@ -293,7 +293,7 @@ When a consumer experiences an uncertain or risky change (`decision: "REVIEW"`):
 
 ### 5.1 Query Release History
 - **Method:** `GET`
-- **Path:** `/api/v1/history/reviews`
+- **Path:** `/api/v1/history`
 - **Query Parameters:**
   - `eventType` *(optional string)*: Filter by event name
   - `limit` *(optional int, default 50)*: Maximum records to return
@@ -301,15 +301,21 @@ When a consumer experiences an uncertain or risky change (`decision: "REVIEW"`):
 
 ### 5.2 Get Specific Release Record
 - **Method:** `GET`
-- **Path:** `/api/v1/history/reviews/{record_id}`
+- **Path:** `/api/v1/history/{record_id}`
 - **Response (`200 OK`):** Correlated `ReleaseRecord` entity.
 
 ### 5.3 Export Audit Report
 - **Method:** `GET`
-- **Path:** `/api/v1/history/reviews/{record_id}/report?format=markdown` (or `format=json`)
+- **Path:** `/api/v1/history/{record_id}/report?format=markdown` (or `format=json`)
 - **Response (`200 OK`):**
   - For `format=markdown`: Content-Type `text/markdown`, returns GitHub-formatted compliance report.
   - For `format=json`: Content-Type `application/json`, returns structured audit payload.
+
+### 5.4 Export Active Review Report
+- **Method:** `POST`
+- **Path:** `/api/v1/reports/export`
+- **Request Body:** Active review payload with `format` ("markdown" | "json")
+- **Response (`200 OK`):** Structured report payload with filename and content.
 
 ---
 
