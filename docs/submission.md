@@ -175,10 +175,10 @@ The web console provides a responsive, high-density engineering workspace built 
 
 ---
 
-## 13. AI-Assisted Development Disclosure
+## 13. AI-Assisted Development
 
-In accordance with First Commit hackathon guidelines:
+In accordance with First Commit 2026 hackathon guidelines:
+* **Google Antigravity:** Used for coding and software-development work (implementation, refactoring, test scaffolding, and repository-level iteration).
+* **ChatGPT:** Used for technical research, idea refinement, architecture discussion, and development planning.
 
-* **AI Tools Used:** Google Antigravity IDE and Gemini models.
-* **Scope of Assistance:** Used as an interactive pair-programming assistant for boilerplate generation, test case scaffolding, documentation drafting, and UI design token refinement.
-* **Engineering Ownership:** All architectural designs, domain models, compatibility algorithms, AWS SAM template definitions, security boundaries, and verification procedures were authored, reviewed, and validated by the team.
+The team reviewed, integrated, tested, debugged, deployed, and verified the resulting implementation. Detailed disclosure is available in [docs/ai-assisted-development.md](ai-assisted-development.md).

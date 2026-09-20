@@ -645,16 +645,13 @@ Production verification completed; working tree clean; 279 backend tests and 114
 * 💻 [CLI Reference Guide](docs/cli.md) — Developer command-line interface documentation.
 * 🎨 [UI & Design System](docs/ui.md) — Workspace layout, design tokens, and user experience rationale.
 * 🚀 [Deployment Guide](docs/deployment.md) — Step-by-step AWS SAM deployment and DynamoDB seeding instructions.
+* 🤖 [AI-Assisted Development](docs/ai-assisted-development.md) — Transparency disclosure on AI tools used and engineering ownership.
 
 ---
 
-## AI-Assisted Development Disclosure
+## AI-Assisted Development
 
-In accordance with First Commit hackathon guidelines:
-
-* **AI Tools Used:** Google Antigravity IDE and Gemini models.
-* **Scope of Assistance:** Used as an interactive pair-programming assistant for boilerplate generation, test case scaffolding, documentation drafting, and UI design token refinement.
-* **Engineering Ownership:** All architectural designs, domain models, compatibility algorithms, AWS SAM template definitions, security boundaries, and verification procedures were authored, reviewed, and validated by the team.
+AI-assisted development tools used during the project are documented in [AI-Assisted Development](docs/ai-assisted-development.md). In accordance with First Commit hackathon guidelines, tools were used as task-specific aids for implementation (Google Antigravity) and research/planning (ChatGPT) while the team retained full engineering ownership and verification responsibility.
 
 ---
 
