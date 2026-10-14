@@ -89,7 +89,7 @@ When authorized, the deployment creates:
 
 ## 4. Deployment Procedure Options
 
-### Option A: AWS Management Console (Recommended for Hackathon Demo)
+### Option A: AWS Management Console (Git-Driven Continuous Deployment)
 1. Open the [AWS Amplify Console](https://console.aws.amazon.com/amplify/home).
 2. Click **Deploy an app** $\to$ Select **GitHub** as the source repository.
 3. Choose repository `pratyushkandari/primex-eventgate` and branch `main`.
