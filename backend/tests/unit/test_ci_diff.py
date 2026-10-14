@@ -99,3 +99,44 @@ def test_ci_diff_main_breaking():
     ):
         code = main()
         assert code == 1
+
+
+def test_ci_diff_main_review_without_fail_on_review(tmp_path: Path):
+    summary_file = tmp_path / "summary.md"
+    with patch(
+        "sys.argv",
+        [
+            "ci_contract_diff.py",
+            "-f",
+            "contracts/events/order-placed/v4-risk.json",
+            "--env",
+            "production",
+            "--summary-file",
+            str(summary_file),
+        ],
+    ):
+        code = main()
+        assert code == 0
+        summary_text = summary_file.read_text(encoding="utf-8")
+        assert "`REVIEW` (Manual Approval Required)" in summary_text
+
+
+def test_ci_diff_main_review_with_fail_on_review(tmp_path: Path):
+    summary_file = tmp_path / "summary.md"
+    with patch(
+        "sys.argv",
+        [
+            "ci_contract_diff.py",
+            "-f",
+            "contracts/events/order-placed/v4-risk.json",
+            "--env",
+            "production",
+            "--fail-on-review",
+            "--summary-file",
+            str(summary_file),
+        ],
+    ):
+        code = main()
+        assert code == 1
+        summary_text = summary_file.read_text(encoding="utf-8")
+        assert "`REVIEW` (Manual Approval Required)" in summary_text

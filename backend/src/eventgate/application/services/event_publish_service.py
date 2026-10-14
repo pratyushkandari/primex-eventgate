@@ -164,7 +164,6 @@ class EventPublishService:
             event_bridge_event_id,
         )
 
-
         return PublishResult(
             event_id=event_id,
             published=published,

@@ -78,9 +78,7 @@ class DynamoReleaseReviewRepository:
 
         return ReleaseRecord.from_dict(item)
 
-    def list_reviews(
-        self, event_type: str | None = None, limit: int = 50
-    ) -> list[ReleaseRecord]:
+    def list_reviews(self, event_type: str | None = None, limit: int = 50) -> list[ReleaseRecord]:
         """Return recent release reviews using targeted GSI Query (zero table scans)."""
         results: list[ReleaseRecord] = []
 

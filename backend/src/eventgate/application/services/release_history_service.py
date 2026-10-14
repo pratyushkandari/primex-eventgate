@@ -143,9 +143,7 @@ class ReleaseHistoryService:
             raise InvalidAnalysisRequestError("Record ID must not be empty.")
         return self._repo.get_review(record_id.strip())
 
-    def list_reviews(
-        self, event_type: str | None = None, limit: int = 50
-    ) -> list[ReleaseRecord]:
+    def list_reviews(self, event_type: str | None = None, limit: int = 50) -> list[ReleaseRecord]:
         """List historical release reviews."""
         clean_event = event_type.strip() if event_type else None
         return self._repo.list_reviews(event_type=clean_event, limit=limit)

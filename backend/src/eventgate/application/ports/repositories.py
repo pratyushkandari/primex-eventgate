@@ -55,8 +55,6 @@ class IReleaseReviewRepository(Protocol):
         """Load a single release review record by ID."""
         ...
 
-    def list_reviews(
-        self, event_type: str | None = None, limit: int = 50
-    ) -> list[ReleaseRecord]:
+    def list_reviews(self, event_type: str | None = None, limit: int = 50) -> list[ReleaseRecord]:
         """Load recent release reviews, optionally filtered by event type."""
         ...

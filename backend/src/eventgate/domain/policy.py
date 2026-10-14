@@ -270,8 +270,8 @@ def get_policy_engine(provider: str | None = None) -> IPolicyEngine:
     Strictly honors EVENTGATE_POLICY_ENGINE without silent fallback.
     """
     engine_type = (
-        provider or os.environ.get("EVENTGATE_POLICY_ENGINE", "standard")
-    ).strip().lower()
+        (provider or os.environ.get("EVENTGATE_POLICY_ENGINE", "standard")).strip().lower()
+    )
 
     if engine_type == "standard":
         return StandardReleasePolicyEngine()

@@ -161,4 +161,3 @@ class EventAnalysisService:
             timestamp=datetime.now(UTC),
             request_id=request_id,
         )
-

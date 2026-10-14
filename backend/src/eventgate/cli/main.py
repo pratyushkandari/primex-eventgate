@@ -296,9 +296,7 @@ def catalog_command(event_type: str | None):
 
 @main.command(name="history")
 @click.option("--event", "-e", "event_type", help="Filter history by event type.")
-@click.option(
-    "--limit", "-n", default=20, show_default=True, help="Number of records to display."
-)
+@click.option("--limit", "-n", default=20, show_default=True, help="Number of records to display.")
 def history_command(event_type: str | None, limit: int):
     """List recent persistent release review audit records."""
     service = get_history_service()
@@ -310,14 +308,10 @@ def history_command(event_type: str | None, limit: int):
     click.secho(f"Recent Release Reviews ({len(reviews)}):", bold=True)
     for r in reviews:
         dec_color = (
-            "green"
-            if r.decision == "ALLOW"
-            else ("red" if r.decision == "BLOCK" else "yellow")
+            "green" if r.decision == "ALLOW" else ("red" if r.decision == "BLOCK" else "yellow")
         )
         pub_str = (
-            "PUBLISHED"
-            if r.published
-            else ("PREVENTED" if r.attempted_publish else "EVALUATED")
+            "PUBLISHED" if r.published else ("PREVENTED" if r.attempted_publish else "EVALUATED")
         )
         click.echo(
             f"  {r.timestamp.strftime('%Y-%m-%d %H:%M:%S')}  "

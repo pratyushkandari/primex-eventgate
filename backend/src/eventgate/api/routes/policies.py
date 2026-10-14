@@ -71,7 +71,6 @@ def _load_cedar_policy_text() -> str | None:
     return None
 
 
-
 @router.get(
     "/policies",
     response_model=PolicyInspectionResponse,

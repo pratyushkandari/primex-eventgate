@@ -94,9 +94,7 @@ class JsonReleaseReviewRepository:
 
         raise ReleaseRecordNotFoundError(record_id)
 
-    def list_reviews(
-        self, event_type: str | None = None, limit: int = 50
-    ) -> list[ReleaseRecord]:
+    def list_reviews(self, event_type: str | None = None, limit: int = 50) -> list[ReleaseRecord]:
         """Return recent release reviews, optionally filtered by event type."""
         records = self._read_all()
         results: list[ReleaseRecord] = []
@@ -125,10 +123,7 @@ class InMemoryReleaseReviewRepository:
         """Persist or update a release review record in memory."""
         updated = False
         for idx, existing in enumerate(self._records):
-            if (
-                existing.record_id == record.record_id
-                or existing.analysis_id == record.analysis_id
-            ):
+            if existing.record_id == record.record_id or existing.analysis_id == record.analysis_id:
                 self._records[idx] = record
                 updated = True
                 break
@@ -145,13 +140,8 @@ class InMemoryReleaseReviewRepository:
                 return r
         raise ReleaseRecordNotFoundError(record_id)
 
-    def list_reviews(
-        self, event_type: str | None = None, limit: int = 50
-    ) -> list[ReleaseRecord]:
+    def list_reviews(self, event_type: str | None = None, limit: int = 50) -> list[ReleaseRecord]:
         """Return recent release reviews, optionally filtered by event type."""
-        results = [
-            r for r in self._records
-            if not event_type or r.event_type == event_type
-        ]
+        results = [r for r in self._records if not event_type or r.event_type == event_type]
         results.sort(key=lambda x: x.timestamp, reverse=True)
         return results[:limit]
