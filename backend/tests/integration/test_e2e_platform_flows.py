@@ -1,4 +1,4 @@
-"""End-to-end integration tests verifying the 5 mandatory Phase 5 platform release flows.
+"""End-to-end API flows across analyze, publish, history and report export.
 
 FLOW 1: OrderPlaced v1 -> v2 (SAFE -> ALLOW -> Publish Success -> EventBridge Called)
 FLOW 2: OrderPlaced v1 -> v3 (BREAK -> BLOCK -> Publish Prevented 409 -> EventBridge Not Called)

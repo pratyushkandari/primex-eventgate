@@ -1,4 +1,4 @@
-"""AWS live enforcement smoke test script for EventGate Phase 3.
+"""Live enforcement smoke test against a deployed stack (publishes real events).
 
 Verifies:
   1. GET /health
@@ -107,9 +107,9 @@ def run_enforcement_smoke_test(
     stack_name: str,
     region: str,
 ) -> bool:
-    """Run full Phase 3 live enforcement verification."""
+    """Run the live enforcement checks and return True if all pass."""
     print(f"\n{'=' * 70}")
-    print("  PrimeX EventGate — Live Phase 3 Enforcement Smoke Test")
+    print("  PrimeX EventGate - Live Enforcement Smoke Test")
     print(f"  Target API: {api_url}")
     print(f"  Stack:      {stack_name} ({region})")
     print(f"{'=' * 70}\n")
@@ -374,7 +374,7 @@ def run_enforcement_smoke_test(
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Run live Phase 3 enforcement smoke tests against deployed EventGate stack"
+        description="Run live enforcement smoke tests against a deployed EventGate stack"
     )
     parser.add_argument("api_url", nargs="?", help="Base URL of deployed API Gateway")
     parser.add_argument(
