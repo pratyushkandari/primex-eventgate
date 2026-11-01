@@ -1,4 +1,8 @@
+# Runtime dependencies packaged into the API Lambda by `sam build` (CodeUri: backend/src).
+# Keep in sync with [project.dependencies] in pyproject.toml; uvicorn and click are
+# local/CLI-only and are not needed on Lambda.
 fastapi>=0.115
 pydantic>=2.10
 mangum>=0.17
 boto3>=1.34
+cedarpy>=4.0,<5

@@ -1,8 +1,11 @@
-"""DynamoDB seed script for EventGate.
+"""Load the JSON contracts in contracts/ into the DynamoDB contract tables.
 
-Populates DynamoDB tables from the canonical local JSON contract fixtures.
-Idempotent: uses put_item to safely overwrite/update existing records.
-Does not contain or log AWS credentials.
+Writes one item per event contract version and per consumer, plus the two
+catalog items (METADATA#CATALOG) the API reads to list event types and
+consumers without scanning. Idempotent: every write is a PutItem overwrite.
+Uses the default boto3 credential chain.
+
+    python scripts/seed_dynamodb.py --region ap-south-1
 """
 
 from __future__ import annotations
@@ -24,7 +27,14 @@ _BACKEND_SRC = _REPO_ROOT / "backend" / "src"
 if str(_BACKEND_SRC) not in sys.path:
     sys.path.insert(0, str(_BACKEND_SRC))
 
+from eventgate.config.settings import DEFAULT_AWS_REGION  # noqa: E402
 from eventgate.domain.enums import SUPPORTED_FIELD_TYPES  # noqa: E402
+from eventgate.infrastructure.repositories.dynamo_consumer_contract_repository import (  # noqa: E402
+    CATALOG_KEY as CONSUMER_CATALOG_KEY,
+)
+from eventgate.infrastructure.repositories.dynamo_event_contract_repository import (  # noqa: E402
+    CATALOG_KEY as EVENT_CATALOG_KEY,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -101,10 +111,9 @@ def seed_dynamodb(
     dynamodb_resource: Any = None,
     region_name: str | None = None,
 ) -> dict[str, int]:
-    """Seed event and consumer contracts into DynamoDB from JSON files.
+    """Seed contracts and catalog items; returns {'event_contracts': N, 'consumer_contracts': M}.
 
-    Returns a dict with counts of seeded items:
-    {'event_contracts': N, 'consumer_contracts': M}
+    Raises on the first invalid fixture or failed write.
     """
     if dynamodb_resource is None:
         dynamodb_resource = boto3.resource("dynamodb", region_name=region_name)
@@ -119,12 +128,14 @@ def seed_dynamodb(
         logger.warning("No event contract files found under %s", events_dir)
 
     events_seeded = 0
+    event_types: set[str] = set()
     for file_path in event_files:
         try:
             with open(file_path, encoding="utf-8") as f:
                 data = json.load(f)
             item = validate_event_contract_data(data, file_path)
             event_table.put_item(Item=item)
+            event_types.add(item["eventType"])
             logger.info(
                 "Seeded event contract: %s v%s from %s",
                 item["eventType"],
@@ -143,12 +154,14 @@ def seed_dynamodb(
         logger.warning("No consumer contract files found under %s", consumers_dir)
 
     consumers_seeded = 0
+    consumer_ids: set[str] = set()
     for file_path in consumer_files:
         try:
             with open(file_path, encoding="utf-8") as f:
                 data = json.load(f)
             item = validate_consumer_contract_data(data, file_path)
             consumer_table.put_item(Item=item)
+            consumer_ids.add(item["consumerId"])
             logger.info(
                 "Seeded consumer contract: %s (%s) from %s",
                 item["consumerId"],
@@ -159,6 +172,12 @@ def seed_dynamodb(
         except Exception as exc:
             logger.error("Failed to seed consumer contract from %s: %s", file_path, exc)
             raise
+
+    event_table.put_item(Item={**EVENT_CATALOG_KEY, "eventTypes": sorted(event_types)})
+    consumer_table.put_item(Item={**CONSUMER_CATALOG_KEY, "consumerIds": sorted(consumer_ids)})
+    logger.info(
+        "Wrote catalog items: %d event types, %d consumers", len(event_types), len(consumer_ids)
+    )
 
     logger.info(
         "Seeding complete: %d event contracts, %d consumer contracts seeded successfully.",
@@ -190,7 +209,9 @@ def main() -> int:
     )
     parser.add_argument(
         "--region",
-        default=os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-east-1",
+        default=os.environ.get("AWS_REGION")
+        or os.environ.get("AWS_DEFAULT_REGION")
+        or DEFAULT_AWS_REGION,
         help="AWS region name",
     )
     parser.add_argument(

@@ -1,4 +1,4 @@
-"""Unit tests verifying SAM template configuration for Phase 3 EventBridge resources."""
+"""Static checks on template.yaml: resources, IAM scoping, routing and throttling."""
 
 from pathlib import Path
 
@@ -8,7 +8,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _TEMPLATE_PATH = _REPO_ROOT / "template.yaml"
 
 
-def test_sam_template_phase3_resources():
+def test_sam_template_eventbridge_resources():
     assert _TEMPLATE_PATH.exists()
 
     # Load YAML ignoring CloudFormation tags like !Sub, !Ref, !GetAtt
@@ -79,7 +79,7 @@ def test_sam_template_phase3_resources():
     assert "AnalyticsConsumerFunctionName" in outputs
 
 
-def test_sam_template_phase5_release_history_infrastructure():
+def test_sam_template_release_history_infrastructure():
     """Verify SAM template declares ReleaseHistoryTable, Lambda env var, and IAM policies."""
     assert _TEMPLATE_PATH.exists()
 
@@ -153,3 +153,33 @@ def test_sam_template_phase5_release_history_infrastructure():
     # 4. Outputs
     outputs = template.get("Outputs", {})
     assert "ReleaseHistoryTableName" in outputs
+
+
+def _load_template() -> dict:
+    class Loader(yaml.SafeLoader):
+        pass
+
+    def any_tag(loader, tag_suffix, node):
+        if isinstance(node, yaml.ScalarNode):
+            return loader.construct_scalar(node)
+        if isinstance(node, yaml.SequenceNode):
+            return loader.construct_sequence(node)
+        return loader.construct_mapping(node)
+
+    Loader.add_multi_constructor("!", any_tag)
+    return yaml.load(_TEMPLATE_PATH.read_text(encoding="utf-8"), Loader=Loader)
+
+
+def test_http_api_is_throttled():
+    api = _load_template()["Resources"]["EventGateHttpApi"]["Properties"]
+    settings = api["DefaultRouteSettings"]
+    assert 0 < settings["ThrottlingRateLimit"] <= settings["ThrottlingBurstLimit"]
+
+
+def test_lambda_package_contains_cedar_policy_and_dependency():
+    """CodeUri is backend/src, so the policy and cedarpy must both live there."""
+    function = _load_template()["Resources"]["EventGateFunction"]["Properties"]
+    code_root = _REPO_ROOT / function["CodeUri"]
+    assert (code_root / "eventgate" / "policies" / "release_policy.cedar").is_file()
+    requirements = (code_root / "requirements.txt").read_text(encoding="utf-8")
+    assert "cedarpy" in requirements

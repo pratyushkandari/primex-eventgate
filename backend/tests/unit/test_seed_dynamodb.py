@@ -104,8 +104,18 @@ class TestSeedDynamoDBExecution:
 
         assert result["event_contracts"] == expected_events
         assert result["consumer_contracts"] == expected_consumers
-        assert mock_event_table.put_item.call_count == expected_events
-        assert mock_consumer_table.put_item.call_count == expected_consumers
+        # One item per contract plus one catalog item per table.
+        assert mock_event_table.put_item.call_count == expected_events + 1
+        assert mock_consumer_table.put_item.call_count == expected_consumers + 1
+
+        event_catalog = mock_event_table.put_item.call_args_list[-1].kwargs["Item"]
+        assert event_catalog["eventType"] == "METADATA#CATALOG"
+        assert event_catalog["version"] == Decimal(0)
+        assert event_catalog["eventTypes"] == ["OrderPlaced", "PaymentCompleted", "UserCreated"]
+        consumer_catalog = mock_consumer_table.put_item.call_args_list[-1].kwargs["Item"]
+        assert consumer_catalog["consumerId"] == "METADATA#CATALOG"
+        assert "eventType" not in consumer_catalog
+        assert len(consumer_catalog["consumerIds"]) == expected_consumers
 
     def test_seed_idempotency(self):
         """Executing seed_dynamodb multiple times safely overwrites without error."""
@@ -140,5 +150,5 @@ class TestSeedDynamoDBExecution:
         expected_consumers = len(list((_CONTRACTS_DIR / "consumers").glob("*.json")))
 
         assert res1 == res2
-        assert mock_event_table.put_item.call_count == expected_events * 2
-        assert mock_consumer_table.put_item.call_count == expected_consumers * 2
+        assert mock_event_table.put_item.call_count == (expected_events + 1) * 2
+        assert mock_consumer_table.put_item.call_count == (expected_consumers + 1) * 2
