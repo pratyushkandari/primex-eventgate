@@ -1,18 +1,10 @@
-"""Event analysis service — the main application use case.
+"""Event analysis use case.
 
-Orchestrates the full analysis workflow:
-1. Validate request
-2. Load current event contract
-3. Load proposed event contract
-4. Compute ChangeSet
-5. Load consumers for the event type
-6. Evaluate each consumer
-7. Collect findings
-8. Aggregate decision
-9. Build AnalysisResult
-
-This layer coordinates domain and infrastructure. It must NOT contain
-compatibility rules, decision logic, or HTTP concepts.
+Loads the current and proposed contracts plus every consumer registered for the
+event type, runs the compatibility engine per consumer, aggregates the findings
+into SAFE / RISK / BREAK, and asks the policy engine for the release decision in
+the target environment. Compatibility rules and policy live in the domain layer;
+this module only coordinates them.
 """
 
 from __future__ import annotations
@@ -28,7 +20,7 @@ from eventgate.application.ports.repositories import (
 from eventgate.domain.changes import compute_change_set
 from eventgate.domain.compatibility import CompatibilityEngine
 from eventgate.domain.decision import aggregate_decision, generate_summary
-from eventgate.domain.enums import Decision, Severity
+from eventgate.domain.enums import Environment, Severity
 from eventgate.domain.errors import InvalidAnalysisRequestError
 from eventgate.domain.models import AnalysisResult, Finding
 from eventgate.domain.policy import IPolicyEngine, get_policy_engine
@@ -61,8 +53,13 @@ class EventAnalysisService:
     ) -> AnalysisResult:
         """Run a full consumer impact analysis.
 
-        Raises domain errors for invalid input, missing contracts, etc.
+        Raises:
+            InvalidAnalysisRequestError: empty event type, non-positive or equal
+                versions, or an unknown environment name.
+            ContractNotFoundError / UnsupportedEventVersionError: a requested
+                contract version does not exist.
         """
+        env = Environment.parse(environment)
         if not event_type or not event_type.strip():
             raise InvalidAnalysisRequestError("Event type must not be empty.")
 
@@ -106,13 +103,8 @@ class EventAnalysisService:
         # Sort all findings for determinism.
         all_findings.sort(key=lambda f: (f.consumer_id, f.field, f.rule_id))
 
-        # 5. Determine deterministic compatibility findings status.
-        _, severity = aggregate_decision(all_findings)
-        compat_decision = (
-            Decision.ALLOW
-            if severity == Severity.LOW
-            else (Decision.BLOCK if severity == Severity.HIGH else Decision.REVIEW)
-        )
+        # 5. Aggregate findings into one compatibility verdict.
+        compat_decision, severity = aggregate_decision(all_findings)
         summary = generate_summary(decision=compat_decision, findings=all_findings)
 
         compat_result = (
@@ -125,7 +117,7 @@ class EventAnalysisService:
         policy_eval = self._policy_engine.evaluate(
             compatibility_result=compat_result,
             severity=severity,
-            environment=environment,
+            environment=env.value,
             findings=all_findings,
             context={"event_type": event_type},
         )
@@ -138,7 +130,7 @@ class EventAnalysisService:
             severity.value,
             policy_eval.policy_name,
             policy_eval.decision.value,
-            environment,
+            env.value,
             len(consumers),
             len(all_findings),
         )
@@ -154,7 +146,7 @@ class EventAnalysisService:
             severity=severity,
             summary=summary,
             compatibility_result=compat_result,
-            environment=environment,
+            environment=env.value,
             policy_name=policy_eval.policy_name,
             policy_reason=policy_eval.reason,
             warnings=policy_eval.warnings,

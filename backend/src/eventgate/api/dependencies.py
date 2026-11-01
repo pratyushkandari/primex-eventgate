@@ -1,12 +1,17 @@
-"""API dependencies — constructs application services and handles request IDs."""
+"""Composition root: builds repositories, publishers and services from settings.
+
+The factories are plain functions so both FastAPI (as dependencies) and the CLI
+can call them. Adapters are cached per configuration, so a Lambda container
+reuses its boto3 clients and loaded contracts across invocations; tests reset
+the caches with ``cache_clear`` after changing environment variables.
+"""
 
 from __future__ import annotations
 
-import uuid
 from functools import lru_cache
+from pathlib import Path
 
-from fastapi import Depends, Request
-from fastapi.params import Depends as DependsType
+from fastapi import Depends
 
 from eventgate.application.ports.publisher import IEventPublisher
 from eventgate.application.ports.repositories import (
@@ -57,61 +62,51 @@ from eventgate.infrastructure.repositories.release_review_repository import (
 
 @lru_cache(maxsize=4)
 def _build_event_repo(
-    backend: str, contracts_dir_str: str, event_table: str, region: str
+    backend: str, contracts_dir: str, event_table: str, region: str
 ) -> IEventContractRepository:
     if backend == STORAGE_BACKEND_DYNAMODB:
         return DynamoEventContractRepository(table_name=event_table, region_name=region)
-    from pathlib import Path
-
-    return JsonEventContractRepository(Path(contracts_dir_str))
+    return JsonEventContractRepository(Path(contracts_dir))
 
 
 @lru_cache(maxsize=4)
 def _build_consumer_repo(
-    backend: str, contracts_dir_str: str, consumer_table: str, region: str
+    backend: str, contracts_dir: str, consumer_table: str, region: str
 ) -> IConsumerContractRepository:
     if backend == STORAGE_BACKEND_DYNAMODB:
         return DynamoConsumerContractRepository(table_name=consumer_table, region_name=region)
-    from pathlib import Path
-
-    return JsonConsumerContractRepository(Path(contracts_dir_str))
+    return JsonConsumerContractRepository(Path(contracts_dir))
 
 
 @lru_cache(maxsize=4)
 def _build_history_repo(
-    backend: str,
-    contracts_dir_str: str,
-    history_table: str,
-    region: str,
-    history_file_str: str | None = None,
+    backend: str, history_file: str, history_table: str, region: str
 ) -> IReleaseReviewRepository:
     if backend == STORAGE_BACKEND_DYNAMODB:
-        return DynamoReleaseReviewRepository(table_name=history_table, region_name=region)
-    from pathlib import Path
-
-    history_file = Path(history_file_str) if history_file_str else None
-    return JsonReleaseReviewRepository(Path(contracts_dir_str), history_file=history_file)
+        # History has no scan-free way to enumerate event types, so it borrows
+        # the event contract catalog for unfiltered listings.
+        return DynamoReleaseReviewRepository(
+            table_name=history_table,
+            region_name=region,
+            event_types_provider=lambda: get_event_repo().list_event_types(),
+        )
+    return JsonReleaseReviewRepository(Path(history_file))
 
 
 @lru_cache(maxsize=4)
 def _build_analysis_service(
-    backend: str,
-    contracts_dir_str: str,
-    event_table: str,
-    consumer_table: str,
-    region: str,
+    backend: str, contracts_dir: str, event_table: str, consumer_table: str, region: str
 ) -> EventAnalysisService:
-    """Instantiate and cache the analysis service for the configured storage backend."""
-    engine = CompatibilityEngine()
-    policy_engine = get_policy_engine()
-    event_repo = _build_event_repo(backend, contracts_dir_str, event_table, region)
-    consumer_repo = _build_consumer_repo(backend, contracts_dir_str, consumer_table, region)
-    return EventAnalysisService(event_repo, consumer_repo, engine, policy_engine=policy_engine)
+    return EventAnalysisService(
+        _build_event_repo(backend, contracts_dir, event_table, region),
+        _build_consumer_repo(backend, contracts_dir, consumer_table, region),
+        CompatibilityEngine(),
+        policy_engine=get_policy_engine(),
+    )
 
 
 @lru_cache(maxsize=4)
 def _build_publisher(publisher_backend: str, bus_name: str, region: str) -> IEventPublisher:
-    """Instantiate and cache the event publisher."""
     if publisher_backend == PUBLISHER_BACKEND_EVENTBRIDGE:
         return EventBridgeEventPublisher(bus_name=bus_name, region_name=region)
     return LocalEventPublisher()
@@ -120,114 +115,88 @@ def _build_publisher(publisher_backend: str, bus_name: str, region: str) -> IEve
 def get_event_repo() -> IEventContractRepository:
     """Return the configured event contract repository."""
     return _build_event_repo(
-        backend=get_storage_backend(),
-        contracts_dir_str=str(get_contracts_dir()),
-        event_table=get_event_contracts_table_name(),
-        region=get_aws_region(),
-    )
-
-
-def get_analysis_service() -> EventAnalysisService:
-    """Create and return the analysis service with its configured dependencies."""
-    return _build_analysis_service(
-        backend=get_storage_backend(),
-        contracts_dir_str=str(get_contracts_dir()),
-        event_table=get_event_contracts_table_name(),
-        consumer_table=get_consumer_contracts_table_name(),
-        region=get_aws_region(),
-    )
-
-
-def get_history_repo() -> IReleaseReviewRepository:
-    """Return the configured release history repository."""
-    history_file = get_history_file()
-    return _build_history_repo(
-        backend=get_storage_backend(),
-        contracts_dir_str=str(get_contracts_dir()),
-        history_table=get_release_history_table_name(),
-        region=get_aws_region(),
-        history_file_str=str(history_file) if history_file else None,
-    )
-
-
-def get_event_publisher() -> IEventPublisher:
-    """Return the configured event publisher."""
-    return _build_publisher(
-        publisher_backend=get_event_publisher_backend(),
-        bus_name=get_eventbridge_bus_name(),
-        region=get_aws_region(),
+        get_storage_backend(),
+        str(get_contracts_dir()),
+        get_event_contracts_table_name(),
+        get_aws_region(),
     )
 
 
 def get_consumer_repo() -> IConsumerContractRepository:
     """Return the configured consumer contract repository."""
     return _build_consumer_repo(
-        backend=get_storage_backend(),
-        contracts_dir_str=str(get_contracts_dir()),
-        consumer_table=get_consumer_contracts_table_name(),
-        region=get_aws_region(),
+        get_storage_backend(),
+        str(get_contracts_dir()),
+        get_consumer_contracts_table_name(),
+        get_aws_region(),
     )
 
 
-def _is_injected(arg: object) -> bool:
-    """Return True if argument was explicitly passed or injected by FastAPI."""
-    return arg is not None and not isinstance(arg, DependsType)
+def get_history_repo() -> IReleaseReviewRepository:
+    """Return the configured release history repository."""
+    return _build_history_repo(
+        get_storage_backend(),
+        str(get_history_file()),
+        get_release_history_table_name(),
+        get_aws_region(),
+    )
 
 
-def get_history_service(
-    history_repo: IReleaseReviewRepository | None = Depends(get_history_repo),
-) -> ReleaseHistoryService:
-    """Create and return the release history application service."""
-    repo = history_repo if _is_injected(history_repo) else get_history_repo()
-    return ReleaseHistoryService(review_repo=repo)
+def get_analysis_service() -> EventAnalysisService:
+    """Return the analysis service wired to the configured repositories and policy engine."""
+    return _build_analysis_service(
+        get_storage_backend(),
+        str(get_contracts_dir()),
+        get_event_contracts_table_name(),
+        get_consumer_contracts_table_name(),
+        get_aws_region(),
+    )
 
 
-def get_catalog_service(
-    event_repo: IEventContractRepository | None = Depends(get_event_repo),
-    consumer_repo: IConsumerContractRepository | None = Depends(get_consumer_repo),
-) -> ContractCatalogService:
-    """Create and return the contract catalog service."""
-    e_repo = event_repo if _is_injected(event_repo) else get_event_repo()
-    c_repo = consumer_repo if _is_injected(consumer_repo) else get_consumer_repo()
-    return ContractCatalogService(event_repo=e_repo, consumer_repo=c_repo)
+def get_event_publisher() -> IEventPublisher:
+    """Return the configured event publisher."""
+    return _build_publisher(
+        get_event_publisher_backend(), get_eventbridge_bus_name(), get_aws_region()
+    )
+
+
+def get_history_service() -> ReleaseHistoryService:
+    """Return the release history service."""
+    return ReleaseHistoryService(review_repo=get_history_repo())
+
+
+def get_catalog_service() -> ContractCatalogService:
+    """Return the contract catalog service."""
+    return ContractCatalogService(event_repo=get_event_repo(), consumer_repo=get_consumer_repo())
 
 
 def get_publish_service(
-    event_repo: IEventContractRepository | None = Depends(get_event_repo),
-    analysis_service: EventAnalysisService | None = Depends(get_analysis_service),
-    publisher: IEventPublisher | None = Depends(get_event_publisher),
-    history_service: ReleaseHistoryService | None = Depends(get_history_service),
+    publisher: IEventPublisher = Depends(get_event_publisher),
 ) -> EventPublishService:
-    """Create and return the event publish service with its configured dependencies."""
-    e_repo = event_repo if _is_injected(event_repo) else get_event_repo()
-    a_svc = analysis_service if _is_injected(analysis_service) else get_analysis_service()
-    pub = publisher if _is_injected(publisher) else get_event_publisher()
-    h_svc = history_service if _is_injected(history_service) else get_history_service()
+    """Return the gated publish service; the publisher is a dependency so tests can swap it."""
     return EventPublishService(
-        event_repo=e_repo,
-        analysis_service=a_svc,
-        publisher=pub,
-        history_service=h_svc,
+        event_repo=get_event_repo(),
+        analysis_service=get_analysis_service(),
+        publisher=publisher,
+        history_service=get_history_service(),
     )
 
 
-# Expose cache_clear on factories for testing
+def clear_caches() -> None:
+    """Drop cached adapters so the next call re-reads configuration."""
+    for factory in (
+        _build_event_repo,
+        _build_consumer_repo,
+        _build_history_repo,
+        _build_analysis_service,
+        _build_publisher,
+    ):
+        factory.cache_clear()
+
+
+# Kept for tests that clear a single factory after changing env vars.
 get_analysis_service.cache_clear = _build_analysis_service.cache_clear  # type: ignore[attr-defined]
 get_event_repo.cache_clear = _build_event_repo.cache_clear  # type: ignore[attr-defined]
+get_consumer_repo.cache_clear = _build_consumer_repo.cache_clear  # type: ignore[attr-defined]
 get_event_publisher.cache_clear = _build_publisher.cache_clear  # type: ignore[attr-defined]
 get_history_repo.cache_clear = _build_history_repo.cache_clear  # type: ignore[attr-defined]
-
-
-def get_request_id(request: Request) -> str:
-    """Extract or generate a request ID.
-
-    If the client sends X-Request-ID, use a sanitized version.
-    Otherwise generate a new UUID.
-    """
-    client_id = request.headers.get("X-Request-ID", "")
-    # Sanitize: keep only alphanumeric, hyphens, and underscores, max 128 chars.
-    sanitized = "".join(c for c in client_id if c.isalnum() or c in "-_")[:128]
-    request_id = sanitized if sanitized else str(uuid.uuid4())
-    # Store on request state for error handlers.
-    request.state.request_id = request_id
-    return request_id

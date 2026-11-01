@@ -1,7 +1,9 @@
-"""Publish endpoint — POST /api/v1/events/publish.
+"""POST /api/v1/events/publish: gated publication.
 
-Validates the proposed event payload, executes consumer impact analysis,
-and publishes the event to downstream transport if and only if the decision is ALLOW.
+Returns 200 with published=true when the decision is ALLOW and the transport
+accepted the event, and 409 with the same body shape (published=false) when the
+decision is BLOCK or REVIEW. Payload/contract mismatches are 422, a mismatched
+analysisId is 400, and a transport failure is 503 EVENT_PUBLISH_FAILED.
 """
 
 from __future__ import annotations
@@ -11,32 +13,25 @@ from typing import Any
 from fastapi import APIRouter, Depends, Response, status
 from pydantic import BaseModel, Field
 
-from eventgate.api.dependencies import get_publish_service, get_request_id
-from eventgate.api.routes.analysis import AnalysisResponse, _to_response
+from eventgate.api.dependencies import get_publish_service
+from eventgate.api.request_id import get_request_id
+from eventgate.api.routes.analysis import AnalysisResponse, ChangeRequest, _to_response
 from eventgate.application.services.event_publish_service import EventPublishService
 from eventgate.domain.enums import Decision
 
 router = APIRouter(prefix="/api/v1")
 
 
-class PublishRequest(BaseModel):
-    """Request body for event publication evaluation."""
+class PublishRequest(ChangeRequest):
+    """Request body for gated publication."""
 
-    model_config = {"populate_by_name": True}
-
-    event_type: str = Field(..., alias="eventType", min_length=1, description="Event type name")
-    current_version: int = Field(
-        ..., alias="currentVersion", ge=1, description="Current event version"
-    )
-    proposed_version: int = Field(
-        ..., alias="proposedVersion", ge=1, description="Proposed event version"
-    )
     payload: dict[str, Any] = Field(
         ..., description="Event payload conforming to the proposed version contract"
     )
-    environment: str = Field("production", description="Deployment environment")
     analysis_id: str | None = Field(
-        None, alias="analysisId", description="Optional correlated analysis ID"
+        None,
+        alias="analysisId",
+        description="ID from a prior /analyze call; the outcome is recorded on that record",
     )
 
 
@@ -53,31 +48,31 @@ class PublishResponse(BaseModel):
     analysis: AnalysisResponse
 
 
-@router.post("/events/publish", response_model=PublishResponse)
+@router.post(
+    "/events/publish",
+    response_model=PublishResponse,
+    response_model_by_alias=True,
+    responses={409: {"model": PublishResponse, "description": "Decision was BLOCK or REVIEW"}},
+)
 def publish_event(
     req: PublishRequest,
     response: Response,
     service: EventPublishService = Depends(get_publish_service),
     request_id: str = Depends(get_request_id),
 ) -> PublishResponse:
-    """Evaluate consumer impact and publish event only when decision is ALLOW."""
+    """Evaluate consumer impact and publish the event only when the decision is ALLOW."""
     result = service.publish_event(
         event_type=req.event_type,
         current_version=req.current_version,
         proposed_version=req.proposed_version,
         payload=req.payload,
-        environment=req.environment,
+        environment=req.environment.value,
         analysis_id=req.analysis_id,
         request_id=request_id,
     )
 
-    response.headers["X-Request-ID"] = request_id
-
-    # BLOCK and REVIEW are rejected with HTTP 409 Conflict
     if result.decision in (Decision.BLOCK, Decision.REVIEW):
         response.status_code = status.HTTP_409_CONFLICT
-    else:
-        response.status_code = status.HTTP_200_OK
 
     return PublishResponse(
         event_id=result.event_id,

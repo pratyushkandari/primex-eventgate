@@ -124,28 +124,28 @@ class TestDynamoEventContractRepository:
                 "fields": {"id": {"type": "string", "required": True}},
             }
         }
-        with pytest.raises(InvalidContractError, match="Missing 'version'"):
+        with pytest.raises(InvalidContractError, match="invalid 'version'"):
             self.repo.get_event_contract("OrderPlaced", 1)
 
     def test_malformed_invalid_version_type(self):
         self.mock_table.get_item.return_value = {
             "Item": {"eventType": "OrderPlaced", "version": "invalid", "fields": {}}
         }
-        with pytest.raises(InvalidContractError, match="Invalid 'version'"):
+        with pytest.raises(InvalidContractError, match="invalid 'version'"):
             self.repo.get_event_contract("OrderPlaced", 1)
 
     def test_malformed_version_zero(self):
         self.mock_table.get_item.return_value = {
             "Item": {"eventType": "OrderPlaced", "version": Decimal("0"), "fields": {}}
         }
-        with pytest.raises(InvalidContractError, match="Version must be >= 1"):
+        with pytest.raises(InvalidContractError, match="Version must be a positive integer"):
             self.repo.get_event_contract("OrderPlaced", 1)
 
     def test_malformed_missing_fields_dict(self):
         self.mock_table.get_item.return_value = {
             "Item": {"eventType": "OrderPlaced", "version": Decimal("1"), "fields": "not-a-dict"}
         }
-        with pytest.raises(InvalidContractError, match="Missing or invalid 'fields' dict"):
+        with pytest.raises(InvalidContractError, match="Missing or invalid 'fields'"):
             self.repo.get_event_contract("OrderPlaced", 1)
 
     def test_malformed_invalid_field_spec(self):

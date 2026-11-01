@@ -1,4 +1,4 @@
-"""Domain errors for EventGate."""
+"""Domain errors. Each carries a stable code that the API returns in its error envelope."""
 
 
 class EventGateError(Exception):
@@ -22,16 +22,6 @@ class InvalidContractError(EventGateError):
 
     def __init__(self, message: str):
         super().__init__(message, code="INVALID_CONTRACT")
-
-
-class UnsupportedEventTypeError(EventGateError):
-    """Raised when the requested event type is not registered."""
-
-    def __init__(self, event_type: str):
-        super().__init__(
-            f"Event type '{event_type}' is not registered.",
-            code="UNSUPPORTED_EVENT_TYPE",
-        )
 
 
 class UnsupportedEventVersionError(EventGateError):

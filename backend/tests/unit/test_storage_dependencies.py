@@ -58,10 +58,10 @@ class TestStorageConfiguration:
 
     def test_aws_region_resolution(self):
         with patch.dict(os.environ, {}, clear=True):
-            assert get_aws_region() == "us-east-1"
-
-        with patch.dict(os.environ, {"AWS_REGION": "ap-south-1"}, clear=True):
             assert get_aws_region() == "ap-south-1"
+
+        with patch.dict(os.environ, {"AWS_REGION": "us-west-2"}, clear=True):
+            assert get_aws_region() == "us-west-2"
 
         with patch.dict(os.environ, {"AWS_DEFAULT_REGION": "eu-west-1"}, clear=True):
             assert get_aws_region() == "eu-west-1"

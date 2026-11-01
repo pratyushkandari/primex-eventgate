@@ -1,4 +1,4 @@
-"""Health endpoint."""
+"""GET /health: liveness probe. Does not touch storage or the event bus."""
 
 from fastapi import APIRouter
 
@@ -10,7 +10,7 @@ router = APIRouter()
 @router.get(
     "/health",
     summary="Health check",
-    description="Returns the service status. Phase 1 has no external dependencies.",
+    description="Returns the service name and version. Does not check downstream dependencies.",
 )
 async def health():
     return {

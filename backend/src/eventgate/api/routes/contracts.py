@@ -1,24 +1,24 @@
-"""Contracts catalog endpoints:
+"""Read-only catalog of event contracts and consumer contracts.
 
-GET /api/v1/contracts/events
-GET /api/v1/contracts/events/{eventType}
-GET /api/v1/contracts/consumers
-GET /api/v1/contracts/consumers/{consumerId}
+GET /api/v1/contracts/events                   event types with versions and consumer counts
+GET /api/v1/contracts/events/{eventType}       every version's schema plus subscribed consumers
+GET /api/v1/contracts/consumers                registered consumers
+GET /api/v1/contracts/consumers/{consumerId}   one consumer's expected fields
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from eventgate.api.dependencies import get_catalog_service, get_request_id
+from eventgate.api.dependencies import get_catalog_service
 from eventgate.application.services.contract_catalog_service import ContractCatalogService
 
 router = APIRouter(prefix="/api/v1/contracts", tags=["contracts"])
 
 
 # ---------------------------------------------------------------------------
-# Response Models (camelCase for frontend)
+# Response models
 # ---------------------------------------------------------------------------
 
 
@@ -100,11 +100,8 @@ class ConsumerDetailResponse(BaseModel):
     description="Returns all registered event types with versions and consumer counts.",
 )
 def list_event_catalog(
-    response: Response,
     service: ContractCatalogService = Depends(get_catalog_service),
-    request_id: str = Depends(get_request_id),
 ) -> list[EventCatalogSummaryResponse]:
-    response.headers["X-Request-ID"] = request_id
     catalog = service.get_event_catalog()
     return [
         EventCatalogSummaryResponse(
@@ -127,11 +124,8 @@ def list_event_catalog(
 )
 def get_event_detail(
     event_type: str,
-    response: Response,
     service: ContractCatalogService = Depends(get_catalog_service),
-    request_id: str = Depends(get_request_id),
 ) -> EventDetailResponse:
-    response.headers["X-Request-ID"] = request_id
     detail = service.get_event_detail(event_type)
     return EventDetailResponse(
         event_type=detail.event_type,
@@ -179,11 +173,8 @@ def get_event_detail(
     description="Returns all registered downstream consumers with subscription metadata.",
 )
 def list_consumer_catalog(
-    response: Response,
     service: ContractCatalogService = Depends(get_catalog_service),
-    request_id: str = Depends(get_request_id),
 ) -> list[ConsumerSummaryResponse]:
-    response.headers["X-Request-ID"] = request_id
     consumers = service.get_consumer_catalog()
     return [
         ConsumerSummaryResponse(
@@ -204,11 +195,8 @@ def list_consumer_catalog(
 )
 def get_consumer_detail(
     consumer_id: str,
-    response: Response,
     service: ContractCatalogService = Depends(get_catalog_service),
-    request_id: str = Depends(get_request_id),
 ) -> ConsumerDetailResponse:
-    response.headers["X-Request-ID"] = request_id
     consumer = service.get_consumer_detail(consumer_id)
     return ConsumerDetailResponse(
         consumer_id=consumer.consumer_id,

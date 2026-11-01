@@ -1,8 +1,16 @@
 """Deterministic compatibility engine — the core of EventGate.
 
 Evaluates a proposed event contract against a consumer contract to produce
-consumer-specific findings. Framework-independent, filesystem-independent,
-network-independent, AI-independent.
+consumer-specific findings. Pure Python with no I/O, so the same inputs always
+give the same findings.
+
+Rules emitted (lower precedence number wins when several apply to one field):
+  1 EVT001_FIELD_TYPE_CHANGED              BREAK  consumed field's type is incompatible
+  2 EVT003_CONSUMER_REQUIRED_FIELD_MISSING BREAK  field the consumer requires is gone
+  3 EVT004_REQUIREDNESS_CHANGED            BREAK  consumed field changed required <-> optional
+  4 EVT006_OPTIONAL_FIELD_REMOVED          RISK   field the consumer reads optionally is gone
+  5 EVT005_OPTIONAL_FIELD_ADDED            SAFE   only optional additions affect this consumer
+  6 EVT008_CONSUMER_UNAFFECTED             SAFE   no change touches this consumer's fields
 
 CONSUMER SCOPING POLICY:
 A change only produces a consumer-specific finding when the consumer's
@@ -62,25 +70,21 @@ def is_type_compatible(from_type: str, to_type: str) -> bool:
 # ---------------------------------------------------------------------------
 
 RULE_FIELD_TYPE_CHANGED = "EVT001_FIELD_TYPE_CHANGED"
-RULE_REQUIRED_FIELD_REMOVED = "EVT002_REQUIRED_FIELD_REMOVED"
 RULE_CONSUMER_REQUIRED_FIELD_MISSING = "EVT003_CONSUMER_REQUIRED_FIELD_MISSING"
 RULE_REQUIREDNESS_CHANGED = "EVT004_REQUIREDNESS_CHANGED"
 RULE_OPTIONAL_FIELD_ADDED = "EVT005_OPTIONAL_FIELD_ADDED"
 RULE_OPTIONAL_FIELD_REMOVED = "EVT006_OPTIONAL_FIELD_REMOVED"
-RULE_UNSUPPORTED_CHANGE = "EVT007_UNSUPPORTED_CHANGE"
 RULE_CONSUMER_UNAFFECTED = "EVT008_CONSUMER_UNAFFECTED"
 
 # Explicit deterministic rule precedence when multiple rules apply to the same field.
 # Lower integer indicates higher priority.
 RULE_PRECEDENCE: dict[str, int] = {
-    RULE_FIELD_TYPE_CHANGED: 1,  # Incompatible type is fatal
-    RULE_CONSUMER_REQUIRED_FIELD_MISSING: 2,  # Consumer explicitly required missing field
-    RULE_REQUIRED_FIELD_REMOVED: 3,  # Producer removed a required field
-    RULE_REQUIREDNESS_CHANGED: 4,  # Requiredness changed
-    RULE_UNSUPPORTED_CHANGE: 5,  # Unsupported schema change
-    RULE_OPTIONAL_FIELD_REMOVED: 6,  # Optional field removed (RISK)
-    RULE_OPTIONAL_FIELD_ADDED: 7,  # Optional field added (SAFE)
-    RULE_CONSUMER_UNAFFECTED: 8,  # Unaffected by changes (SAFE)
+    RULE_FIELD_TYPE_CHANGED: 1,
+    RULE_CONSUMER_REQUIRED_FIELD_MISSING: 2,
+    RULE_REQUIREDNESS_CHANGED: 3,
+    RULE_OPTIONAL_FIELD_REMOVED: 4,
+    RULE_OPTIONAL_FIELD_ADDED: 5,
+    RULE_CONSUMER_UNAFFECTED: 6,
 }
 
 

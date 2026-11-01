@@ -6,10 +6,11 @@ Stores consumer contracts in a DynamoDB table:
     Partition Key (HASH): eventType  (String)
     Sort Key (RANGE):      consumerId (String)
 
-Access patterns:
+Access patterns (no table scans):
   - get_consumer: GetItem(consumerId)
   - list_consumers: Query(EventTypeIndex, eventType)
-  NO full-table scans.
+  - list_all_consumers: GetItem on the catalog item (consumerId="METADATA#CATALOG"),
+    then GetItem per listed consumer.
 """
 
 from __future__ import annotations
@@ -21,51 +22,15 @@ import boto3
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 
-from eventgate.domain.enums import SUPPORTED_FIELD_TYPES
-from eventgate.domain.errors import ContractNotFoundError, InvalidContractError
-from eventgate.domain.models import ConsumerContract, ConsumerField
+from eventgate.domain.errors import ContractNotFoundError
+from eventgate.domain.models import ConsumerContract
+from eventgate.infrastructure.repositories.contract_parsing import parse_consumer_contract
 
 logger = logging.getLogger(__name__)
 
-
-def _parse_dynamo_consumer_contract(item: dict[str, Any], source: str) -> ConsumerContract:
-    """Parse and validate a DynamoDB item into a ConsumerContract."""
-    consumer_id = item.get("consumerId")
-    if not consumer_id or not isinstance(consumer_id, str):
-        raise InvalidContractError(f"Missing or invalid 'consumerId' in {source}.")
-
-    event_type = item.get("eventType")
-    if not event_type or not isinstance(event_type, str):
-        raise InvalidContractError(f"Missing or invalid 'eventType' in {source}.")
-
-    raw_fields = item.get("expectedFields")
-    if not isinstance(raw_fields, dict):
-        raise InvalidContractError(f"Missing or invalid 'expectedFields' dict in {source}.")
-
-    expected_fields: dict[str, ConsumerField] = {}
-    for name, spec in raw_fields.items():
-        if not isinstance(spec, dict):
-            raise InvalidContractError(f"Invalid field spec for '{name}' in {source}.")
-
-        field_type = spec.get("type")
-        if field_type not in SUPPORTED_FIELD_TYPES:
-            raise InvalidContractError(
-                f"Unsupported type '{field_type}' for field '{name}' in {source}."
-            )
-
-        required = spec.get("required")
-        if not isinstance(required, bool):
-            raise InvalidContractError(
-                f"Missing or invalid 'required' for field '{name}' in {source}."
-            )
-
-        expected_fields[name] = ConsumerField(name=name, type=field_type, required=required)
-
-    return ConsumerContract(
-        consumer_id=consumer_id,
-        event_type=event_type,
-        expected_fields=expected_fields,
-    )
+# Item holding the list of registered consumer IDs, written by scripts/seed_dynamodb.py.
+# It has no eventType attribute, so it never appears in EventTypeIndex.
+CATALOG_KEY = {"consumerId": "METADATA#CATALOG"}
 
 
 class DynamoConsumerContractRepository:
@@ -96,7 +61,7 @@ class DynamoConsumerContractRepository:
         if not item:
             raise ContractNotFoundError(f"Consumer '{consumer_id}' was not found.")
 
-        return _parse_dynamo_consumer_contract(item, source=f"DynamoDB consumer {consumer_id}")
+        return parse_consumer_contract(item, source=f"DynamoDB consumer {consumer_id}")
 
     def list_consumers(self, event_type: str) -> list[ConsumerContract]:
         """Load all consumers subscribed to an event type using Query on EventTypeIndex."""
@@ -114,7 +79,7 @@ class DynamoConsumerContractRepository:
         items = response.get("Items", [])
         consumers: list[ConsumerContract] = []
         for item in items:
-            contract = _parse_dynamo_consumer_contract(
+            contract = parse_consumer_contract(
                 item, source=f"DynamoDB consumer {item.get('consumerId')}"
             )
             consumers.append(contract)
@@ -123,32 +88,24 @@ class DynamoConsumerContractRepository:
         return consumers
 
     def list_all_consumers(self) -> list[ConsumerContract]:
-        """Load all registered consumer contracts without table scans using catalog item."""
-        try:
-            response = self._table.get_item(Key={"consumerId": "METADATA#CATALOG"})
-            item = response.get("Item")
-            if item and "consumerIds" in item:
-                consumers: list[ConsumerContract] = []
-                for cid in item["consumerIds"]:
-                    try:
-                        c = self.get_consumer(cid)
-                        consumers.append(c)
-                    except ContractNotFoundError:
-                        pass
-                consumers.sort(key=lambda c: c.consumer_id)
-                return consumers
-        except ClientError as exc:
-            logger.warning("Failed to fetch consumer catalog metadata item: %s", exc)
+        """Return every consumer listed in the catalog item, sorted by ID.
 
-        # Fallback to query known consumers by querying known event types via GSI
-        known_events = ["OrderPlaced", "PaymentCompleted", "UserCreated"]
-        consumers_dict: dict[str, ConsumerContract] = {}
-        for et in known_events:
+        Returns an empty list, with a warning, if the catalog item has not been seeded.
+        """
+        response = self._table.get_item(Key=CATALOG_KEY)
+        item = response.get("Item")
+        if not item or "consumerIds" not in item:
+            logger.warning(
+                "Consumer catalog item missing from %s; run scripts/seed_dynamodb.py",
+                self._table_name,
+            )
+            return []
+
+        consumers: list[ConsumerContract] = []
+        for consumer_id in item["consumerIds"]:
             try:
-                for c in self.list_consumers(et):
-                    consumers_dict[c.consumer_id] = c
-            except Exception:
-                pass
-        consumers_list = list(consumers_dict.values())
-        consumers_list.sort(key=lambda c: c.consumer_id)
-        return consumers_list
+                consumers.append(self.get_consumer(str(consumer_id)))
+            except ContractNotFoundError:
+                logger.warning("Catalog lists consumer '%s' but it has no item", consumer_id)
+        consumers.sort(key=lambda c: c.consumer_id)
+        return consumers

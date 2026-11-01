@@ -1,7 +1,7 @@
-"""JSON-based consumer contract repository for local development.
+"""Consumer contracts read from JSON files (local storage backend).
 
-Reads consumer contracts from the filesystem:
-  contracts/consumers/{consumer-id}.json
+Layout: contracts/consumers/{consumer-id}.json. All files are loaded once and
+cached for the life of the repository instance.
 """
 
 from __future__ import annotations
@@ -10,51 +10,11 @@ import json
 import logging
 from pathlib import Path
 
-from eventgate.domain.enums import SUPPORTED_FIELD_TYPES
 from eventgate.domain.errors import ContractNotFoundError, InvalidContractError
-from eventgate.domain.models import ConsumerContract, ConsumerField
+from eventgate.domain.models import ConsumerContract
+from eventgate.infrastructure.repositories.contract_parsing import parse_consumer_contract
 
 logger = logging.getLogger(__name__)
-
-
-def _parse_consumer_contract(data: dict, source: str) -> ConsumerContract:
-    """Parse and validate a raw JSON dict into a ConsumerContract."""
-    consumer_id = data.get("consumerId")
-    if not consumer_id or not isinstance(consumer_id, str):
-        raise InvalidContractError(f"Missing or invalid 'consumerId' in {source}.")
-
-    event_type = data.get("eventType")
-    if not event_type or not isinstance(event_type, str):
-        raise InvalidContractError(f"Missing or invalid 'eventType' in {source}.")
-
-    raw_fields = data.get("expectedFields")
-    if not isinstance(raw_fields, dict):
-        raise InvalidContractError(f"Missing or invalid 'expectedFields' in {source}.")
-
-    expected_fields: dict[str, ConsumerField] = {}
-    for name, spec in raw_fields.items():
-        if not isinstance(spec, dict):
-            raise InvalidContractError(f"Invalid field spec for '{name}' in {source}.")
-
-        field_type = spec.get("type")
-        if field_type not in SUPPORTED_FIELD_TYPES:
-            raise InvalidContractError(
-                f"Unsupported type '{field_type}' for field '{name}' in {source}."
-            )
-
-        required = spec.get("required")
-        if not isinstance(required, bool):
-            raise InvalidContractError(
-                f"Missing or invalid 'required' for field '{name}' in {source}."
-            )
-
-        expected_fields[name] = ConsumerField(name=name, type=field_type, required=required)
-
-    return ConsumerContract(
-        consumer_id=consumer_id,
-        event_type=event_type,
-        expected_fields=expected_fields,
-    )
 
 
 class JsonConsumerContractRepository:
@@ -80,7 +40,7 @@ class JsonConsumerContractRepository:
                 continue
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
-                contract = _parse_consumer_contract(data, source=path.name)
+                contract = parse_consumer_contract(data, source=path.name)
                 if contract.consumer_id in consumers:
                     logger.warning(
                         "Duplicate consumer ID '%s' in %s — skipping.",

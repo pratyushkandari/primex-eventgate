@@ -37,11 +37,15 @@ def test_get_runtime_configuration(client):
     response = client.get("/api/v1/config/runtime")
     assert response.status_code == 200
     data = response.json()
-    assert "environment" in data
-    assert "storageBackend" in data
-    assert "storageBackendType" in data
-    assert "publisherBackend" in data
+    assert data["storageBackendType"] == "local"
+    assert data["publisherBackendType"] == "local"
+    assert data["eventBridgeBus"] is None
+    assert data["policyEngineType"] == "standard"
+    assert data["serviceVersion"]
     assert "awsRegion" in data
-    assert "eventBridgeBus" in data
-    assert "policyEngine" in data
-    assert "contractsDirectory" in data
+
+
+def test_runtime_configuration_does_not_expose_server_paths(client):
+    data = client.get("/api/v1/config/runtime").json()
+    assert "contractsDirectory" not in data
+    assert ":\\" not in str(data) and "/home/" not in str(data)

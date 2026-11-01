@@ -1,24 +1,23 @@
-"""Release policy inspection and runtime configuration routes."""
+"""Read-only inspection endpoints for the active release policy and runtime adapters."""
 
 from __future__ import annotations
-
-import os
-from pathlib import Path
-from typing import Any
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from eventgate.config.settings import (
     PUBLISHER_BACKEND_EVENTBRIDGE,
+    SERVICE_VERSION,
     STORAGE_BACKEND_DYNAMODB,
     get_aws_region,
-    get_contracts_dir,
+    get_event_contracts_table_name,
     get_event_publisher_backend,
     get_eventbridge_bus_name,
+    get_release_history_table_name,
     get_storage_backend,
 )
-from eventgate.domain.policy import get_policy_engine_type
+from eventgate.domain.errors import ConfigurationError
+from eventgate.domain.policy import get_policy_engine_type, load_cedar_policy_text, policy_matrix
 
 router = APIRouter(prefix="/api/v1", tags=["Policies & Configuration"])
 
@@ -32,120 +31,79 @@ class PolicyMatrixRow(BaseModel):
 
 class PolicyInspectionResponse(BaseModel):
     activeEngine: str = Field(..., description="Active policy provider key ('standard' or 'cedar')")
-    engineName: str = Field(..., description="Display title for policy engine")
-    description: str = Field(..., description="Explanation of the engine behavior")
-    matrix: list[PolicyMatrixRow] = Field(..., description="Authoritative release policy matrix")
-    cedarPolicyAvailable: bool = Field(
-        ..., description="Whether Cedar policy definition is present"
-    )
-    cedarPolicyText: str | None = Field(None, description="Cedar policy specification source")
+    engineName: str = Field(..., description="Display name of the active engine")
+    description: str = Field(..., description="What the active engine evaluates")
+    matrix: list[PolicyMatrixRow] = Field(..., description="Decision per environment and severity")
+    cedarPolicyAvailable: bool = Field(..., description="Whether the Cedar policy file is readable")
+    cedarPolicyText: str | None = Field(None, description="Cedar policy source")
 
 
 class RuntimeConfigResponse(BaseModel):
-    environment: str
+    serviceVersion: str
     storageBackend: str
     storageBackendType: str
+    contractsSource: str
+    historyStore: str
     publisherBackend: str
     publisherBackendType: str
+    eventBridgeBus: str | None
     awsRegion: str
-    eventBridgeBus: str
     policyEngine: str
     policyEngineType: str
-    contractsDirectory: str
-
-
-def _load_cedar_policy_text() -> str | None:
-    from eventgate.config.settings import _PROJECT_ROOT
-
-    candidates = [
-        Path("policies/release_policy.cedar"),
-        _PROJECT_ROOT / "policies" / "release_policy.cedar",
-        _PROJECT_ROOT / "contracts" / "policies" / "release_policy.cedar",
-    ]
-    for p in candidates:
-        if p.exists():
-            try:
-                return p.read_text(encoding="utf-8")
-            except Exception:
-                pass
-    return None
 
 
 @router.get(
     "/policies",
     response_model=PolicyInspectionResponse,
-    summary="Inspect release policy matrix and active engine definition",
+    summary="Active release policy engine, decision matrix and Cedar source",
 )
-def get_policies() -> dict[str, Any]:
+def get_policies() -> PolicyInspectionResponse:
     engine_key = get_policy_engine_type()
-    engine_name = (
-        "Cedar Policy Engine" if engine_key == "cedar" else "Standard Deterministic Engine"
-    )
-    description = (
-        "Formal AWS Cedar policy evaluator executing Cedar language rules."
-        if engine_key == "cedar"
-        else "Deterministic pure policy engine evaluating the 3x3 environment/severity matrix."
-    )
-    matrix = [
-        {"environment": "production", "low": "ALLOW", "medium": "REVIEW", "high": "BLOCK"},
-        {"environment": "staging", "low": "ALLOW", "medium": "REVIEW", "high": "BLOCK"},
-        {
-            "environment": "development",
-            "low": "ALLOW",
-            "medium": "ALLOW with warning",
-            "high": "BLOCK",
-        },
-    ]
-    cedar_text = _load_cedar_policy_text()
+    try:
+        cedar_text: str | None = load_cedar_policy_text()
+    except ConfigurationError:
+        cedar_text = None
 
-    return {
-        "activeEngine": engine_key,
-        "engineName": engine_name,
-        "description": description,
-        "matrix": matrix,
-        "cedarPolicyAvailable": cedar_text is not None,
-        "cedarPolicyText": cedar_text,
-    }
+    if engine_key == "cedar":
+        name, description = "Cedar policy engine", "Evaluates the Cedar policy below with cedarpy."
+    else:
+        name, description = (
+            "Standard policy engine",
+            "Applies the environment and severity matrix in Python.",
+        )
+
+    return PolicyInspectionResponse(
+        activeEngine=engine_key,
+        engineName=name,
+        description=description,
+        matrix=[PolicyMatrixRow(**row) for row in policy_matrix()],
+        cedarPolicyAvailable=cedar_text is not None,
+        cedarPolicyText=cedar_text,
+    )
 
 
 @router.get(
     "/config/runtime",
     response_model=RuntimeConfigResponse,
-    summary="Inspect authoritative runtime platform configuration",
+    summary="Adapters and settings the running service was started with",
 )
-def get_runtime_configuration() -> dict[str, Any]:
-    storage_raw = get_storage_backend()
-    storage_display = (
-        "Amazon DynamoDB (Single-Table Indexed Access)"
-        if storage_raw == STORAGE_BACKEND_DYNAMODB
-        else "Local JSON Filesystem (Isolated Local Mode)"
-    )
-
-    pub_raw = get_event_publisher_backend()
-    pub_display = (
-        "Amazon EventBridge (Production Bus Ingestion)"
-        if pub_raw == PUBLISHER_BACKEND_EVENTBRIDGE
-        else "Local In-Memory Publisher (Zero-Cloud Mode)"
-    )
-
+def get_runtime_configuration() -> RuntimeConfigResponse:
+    storage = get_storage_backend()
+    publisher = get_event_publisher_backend()
     engine_key = get_policy_engine_type()
-    engine_display = (
-        "Cedar Policy Engine (cedarpy)"
-        if engine_key == "cedar"
-        else "Standard Deterministic Engine"
+    on_dynamo = storage == STORAGE_BACKEND_DYNAMODB
+    on_eventbridge = publisher == PUBLISHER_BACKEND_EVENTBRIDGE
+
+    return RuntimeConfigResponse(
+        serviceVersion=SERVICE_VERSION,
+        storageBackend="Amazon DynamoDB" if on_dynamo else "Local JSON files",
+        storageBackendType=storage,
+        contractsSource=get_event_contracts_table_name() if on_dynamo else "contracts/ directory",
+        historyStore=get_release_history_table_name() if on_dynamo else "Local JSON file",
+        publisherBackend="Amazon EventBridge" if on_eventbridge else "In-memory (local)",
+        publisherBackendType=publisher,
+        eventBridgeBus=get_eventbridge_bus_name() if on_eventbridge else None,
+        awsRegion=get_aws_region(),
+        policyEngine="Cedar (cedarpy)" if engine_key == "cedar" else "Standard",
+        policyEngineType=engine_key,
     )
-
-    env_name = os.environ.get("EVENTGATE_ENVIRONMENT", "production")
-
-    return {
-        "environment": env_name,
-        "storageBackend": storage_display,
-        "storageBackendType": storage_raw,
-        "publisherBackend": pub_display,
-        "publisherBackendType": pub_raw,
-        "awsRegion": get_aws_region(),
-        "eventBridgeBus": get_eventbridge_bus_name(),
-        "policyEngine": engine_display,
-        "policyEngineType": engine_key,
-        "contractsDirectory": str(get_contracts_dir()),
-    }
