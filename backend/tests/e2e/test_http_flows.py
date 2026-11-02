@@ -289,3 +289,22 @@ class TestHistory:
             record = client.get(f"/api/v1/history/{analysis['analysisId']}")
         assert record.status_code == 200
         assert record.json()["decision"] == analysis["decision"]
+
+
+class TestEventBusOutage:
+    def test_allowed_publish_fails_with_503_and_is_recorded(self, bus_down_api: httpx.Client):
+        analysis = _analyze(bus_down_api, "OrderPlaced", 1, 2, "production")
+        resp = bus_down_api.post(
+            "/api/v1/events/publish",
+            json={
+                **_change("OrderPlaced", 1, 2, "production"),
+                "analysisId": analysis["analysisId"],
+                "payload": ORDER_V2,
+            },
+        )
+        assert resp.status_code == 503, resp.text
+        assert _error_code(resp) == "EVENT_PUBLISH_FAILED"
+
+        record = bus_down_api.get(f"/api/v1/history/{analysis['analysisId']}").json()
+        assert (record["published"], record["attemptedPublish"]) == (False, True)
+        assert record["error"].startswith("Publication failed")

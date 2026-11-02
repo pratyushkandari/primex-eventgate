@@ -10,9 +10,10 @@ Two storage modes, each a separate server process:
   deleted afterwards. Skipped when the variable is not set; the runner
   ``python scripts/run_backend_e2e.py`` starts DynamoDB Local in Docker and sets it.
 
-The publisher is always the in-memory one: no EventBridge emulator is used, and
-real delivery is a manual check (docs/TESTING.md). Dummy AWS credentials and an
-empty AWS config keep every boto3 call on the local endpoint.
+Both use the in-memory publisher: no EventBridge emulator is used, and real
+delivery is a manual check (docs/TESTING.md). ``bus_down_api`` is a third server
+whose EventBridge publisher points at a closed local port, for the 503 path.
+Dummy AWS credentials and an empty AWS config keep every boto3 call local.
 """
 
 from __future__ import annotations
@@ -227,3 +228,21 @@ def api_server(
 def api(api_server: ApiServer) -> Iterator[httpx.Client]:
     with httpx.Client(base_url=api_server.base_url, timeout=15) as client:
         yield client
+
+
+@pytest.fixture(scope="module")
+def bus_down_api(tmp_path_factory: pytest.TempPathFactory) -> Iterator[httpx.Client]:
+    """Local storage, EventBridge publisher, every AWS endpoint on a closed local port."""
+    tmp = tmp_path_factory.mktemp("e2e-bus-down")
+    env = _base_env(tmp)
+    env["EVENTGATE_STORAGE_BACKEND"] = "local"
+    env["EVENTGATE_EVENT_PUBLISHER"] = "eventbridge"
+    env["AWS_ENDPOINT_URL"] = f"http://127.0.0.1:{_free_port()}"
+    env["AWS_MAX_ATTEMPTS"] = "1"
+    server = ApiServer(mode="local", env=env, log_path=tmp / "server.log")
+    server.start()
+    try:
+        with httpx.Client(base_url=server.base_url, timeout=30) as client:
+            yield client
+    finally:
+        server.stop()

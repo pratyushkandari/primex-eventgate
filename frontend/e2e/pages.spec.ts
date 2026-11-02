@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright'
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixtures.ts'
 
 test.describe('Other pages', () => {
   test('contracts: browse an event and open a change in Review', async ({ page }) => {
@@ -55,7 +55,8 @@ test.describe('Other pages', () => {
     await expect(page.getByText('In-memory (local)')).toBeVisible()
   })
 
-  test('an unreachable API shows actionable errors', async ({ page }) => {
+  test('an unreachable API shows actionable errors', async ({ page, consoleGuard }) => {
+    consoleGuard.allow(/net::ERR_FAILED/)
     await page.route('**/127.0.0.1:8017/**', (route) => route.abort())
     await page.goto('/#/history')
     await expect(page.getByText('Could not load release history')).toBeVisible()
@@ -64,7 +65,25 @@ test.describe('Other pages', () => {
   })
 })
 
-const PAGES = ['review', 'contracts', 'history', 'devtools', 'policies', 'settings']
+const HEADINGS: Record<string, string> = {
+  review: 'Review a contract change',
+  contracts: 'Contracts',
+  history: 'Release history',
+  devtools: 'Developer tools',
+  policies: 'Release policy',
+  settings: 'Runtime configuration',
+}
+const PAGES = Object.keys(HEADINGS)
+
+test.describe('Every page loads without console errors', () => {
+  for (const name of PAGES) {
+    test(name, async ({ page }) => {
+      await page.goto(`/#/${name}`)
+      await expect(page.getByRole('heading', { level: 1, name: HEADINGS[name] })).toBeVisible()
+      await page.waitForLoadState('networkidle')
+    })
+  }
+})
 
 test.describe('Accessibility (axe, WCAG 2.1 AA)', () => {
   for (const name of PAGES) {
