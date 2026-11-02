@@ -1,6 +1,7 @@
 /**
- * Zod runtime schemas for structural validation of EventGate API responses.
- * Enforces backend schema compliance without duplicating business logic.
+ * Zod schemas for every API response. The client validates responses so a
+ * backend contract change fails loudly at the boundary instead of rendering
+ * undefined values deep inside a component.
  */
 
 import { z } from 'zod'
@@ -16,19 +17,15 @@ export const HealthResponseSchema = z.object({
   version: z.string(),
 })
 
-export const TypeChangeSchema = z.object({
-  field: z.string(),
-  fromType: z.string(),
-  toType: z.string(),
-})
+const TypeChangeSchema = z.object({ field: z.string(), fromType: z.string(), toType: z.string() })
 
-export const RequirednessChangeSchema = z.object({
+const RequirednessChangeSchema = z.object({
   field: z.string(),
   fromRequired: z.boolean(),
   toRequired: z.boolean(),
 })
 
-export const ChangeSetSchema = z.object({
+const ChangeSetSchema = z.object({
   addedFields: z.array(z.string()),
   removedFields: z.array(z.string()),
   typeChanges: z.array(TypeChangeSchema),
@@ -40,8 +37,8 @@ export const ConsumerFindingSchema = z.object({
   status: ConsumerStatusSchema,
   ruleId: z.string(),
   field: z.string(),
-  expectedType: z.union([z.string(), z.null()]).or(z.undefined().transform(() => null)),
-  proposedType: z.union([z.string(), z.null()]).or(z.undefined().transform(() => null)),
+  expectedType: z.string().nullable().default(null),
+  proposedType: z.string().nullable().default(null),
   severity: SeveritySchema,
   reason: z.string(),
 })
@@ -51,18 +48,18 @@ export const AnalysisResponseSchema = z.object({
   eventType: z.string(),
   currentVersion: z.number(),
   proposedVersion: z.number(),
-  environment: EnvironmentSchema.optional(),
-  compatibilityResult: z.string().optional(),
-  policyName: z.string().optional(),
-  policyReason: z.string().optional(),
-  warnings: z.array(z.string()).optional(),
+  environment: EnvironmentSchema,
+  compatibilityResult: ConsumerStatusSchema,
+  policyName: z.string(),
+  policyReason: z.string(),
+  warnings: z.array(z.string()),
   changeSet: ChangeSetSchema,
   findings: z.array(ConsumerFindingSchema),
   decision: DecisionSchema,
   severity: SeveritySchema,
   summary: z.string(),
   timestamp: z.string(),
-  requestId: z.string().optional(),
+  requestId: z.string().nullable().optional(),
 })
 
 export const PublishResponseSchema = z.object({
@@ -82,22 +79,18 @@ export const EventCatalogSummarySchema = z.object({
   consumerCount: z.number(),
 })
 
-export const EventFieldSchema = z.object({
-  name: z.string(),
-  type: z.string(),
-  required: z.boolean(),
-})
+const FieldSpecSchema = z.object({ name: z.string(), type: z.string(), required: z.boolean() })
 
-export const EventContractVersionSchema = z.object({
+const EventContractVersionSchema = z.object({
   eventType: z.string(),
   version: z.number(),
-  fields: z.record(z.string(), EventFieldSchema),
+  fields: z.record(z.string(), FieldSpecSchema),
 })
 
-export const SubscribedConsumerSchema = z.object({
+export const ConsumerDetailSchema = z.object({
   consumerId: z.string(),
   eventType: z.string(),
-  expectedFields: z.record(z.string(), EventFieldSchema),
+  expectedFields: z.record(z.string(), FieldSpecSchema),
 })
 
 export const EventDetailSchema = z.object({
@@ -106,7 +99,7 @@ export const EventDetailSchema = z.object({
   versions: z.array(z.number()),
   latestVersion: z.number(),
   contracts: z.array(EventContractVersionSchema),
-  consumers: z.array(SubscribedConsumerSchema),
+  consumers: z.array(ConsumerDetailSchema),
 })
 
 export const ConsumerSummarySchema = z.object({
@@ -115,19 +108,15 @@ export const ConsumerSummarySchema = z.object({
   expectedFieldsCount: z.number(),
 })
 
-export const ConsumerDetailSchema = z.object({
-  consumerId: z.string(),
-  eventType: z.string(),
-  expectedFields: z.record(z.string(), EventFieldSchema),
-})
-
 export const ReleaseRecordSchema = z.object({
   recordId: z.string(),
   analysisId: z.string(),
   eventType: z.string(),
   currentVersion: z.number(),
   proposedVersion: z.number(),
-  environment: EnvironmentSchema,
+  // Records written before the API validated environments may hold any string;
+  // accepting it keeps one legacy record from hiding the whole history.
+  environment: z.string(),
   compatibilityResult: z.string(),
   severity: SeveritySchema,
   policyName: z.string(),
@@ -147,50 +136,50 @@ export const ReleaseRecordSchema = z.object({
 
 export const ReportExportResponseSchema = z.object({
   recordId: z.string(),
-  format: z.string(),
+  format: z.enum(['markdown', 'json']),
   content: z.string(),
-})
-
-export const PolicyMatrixRowSchema = z.object({
-  environment: z.string(),
-  low: z.string(),
-  medium: z.string(),
-  high: z.string(),
 })
 
 export const PolicyInspectionResponseSchema = z.object({
   activeEngine: z.string(),
   engineName: z.string(),
   description: z.string(),
-  matrix: z.array(PolicyMatrixRowSchema),
+  matrix: z.array(
+    z.object({ environment: z.string(), low: z.string(), medium: z.string(), high: z.string() })
+  ),
   cedarPolicyAvailable: z.boolean(),
   cedarPolicyText: z.string().nullable().optional(),
 })
 
 export const RuntimeConfigResponseSchema = z.object({
-  environment: z.string(),
+  serviceVersion: z.string(),
   storageBackend: z.string(),
   storageBackendType: z.string(),
+  contractsSource: z.string(),
+  historyStore: z.string(),
   publisherBackend: z.string(),
   publisherBackendType: z.string(),
+  eventBridgeBus: z.string().nullable(),
   awsRegion: z.string(),
-  eventBridgeBus: z.string(),
   policyEngine: z.string(),
   policyEngineType: z.string(),
-  contractsDirectory: z.string(),
 })
 
 /**
- * Utility to safely validate an API response with a Zod schema.
- * Throws a formatted Error if validation fails.
+ * Parse `data` with `schema`, throwing an Error that names the response and the
+ * offending fields when it does not match.
  */
-export function validateResponse<T>(schema: z.ZodType<T>, data: unknown, contextName: string): T {
+export function validateResponse<T>(
+  schema: z.ZodType<T, unknown>,
+  data: unknown,
+  contextName: string
+): T {
   const result = schema.safeParse(data)
   if (!result.success) {
-    const errorIssues = result.error.issues
+    const issues = result.error.issues
       .map((issue) => `${issue.path.join('.') || 'root'}: ${issue.message}`)
       .join(', ')
-    throw new Error(`Invalid ${contextName} response structure from EventGate API: ${errorIssues}`)
+    throw new Error(`Unexpected ${contextName} response from the EventGate API (${issues}).`)
   }
   return result.data
 }

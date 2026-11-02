@@ -1,14 +1,14 @@
-"""Policy abstraction and evaluation engines for EventGate releases.
+"""Release policy: turns a compatibility verdict into ALLOW / REVIEW / BLOCK.
 
-Strictly decouples compatibility analysis (SAFE / RISK / BREAK) from release
-policy decisions (ALLOW / REVIEW / BLOCK) across deployment environments:
-- development
-- staging
-- production
+Compatibility (SAFE / RISK / BREAK) says what a change does to consumers; the
+policy decides what to do about it in a given environment. Two engines
+implement the same matrix:
 
-Supported policy engines:
-1. 'standard' — Deterministic pure Python engine.
-2. 'cedar'    — Evaluates formal AWS Cedar policy specifications via cedarpy.
+- 'standard': plain Python, the default.
+- 'cedar': evaluates the Cedar policy shipped in eventgate/policies/ via cedarpy.
+
+EVENTGATE_POLICY_ENGINE selects the engine; an unknown value is a configuration
+error rather than a silent fallback.
 """
 
 from __future__ import annotations
@@ -17,12 +17,30 @@ import logging
 import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from importlib import resources
 from pathlib import Path
 from typing import Any
 
-from eventgate.domain.enums import Decision, Severity
+from eventgate.domain.enums import Decision, Environment, Severity
 from eventgate.domain.errors import ConfigurationError
 from eventgate.domain.models import Finding
+
+CEDAR_POLICY_RESOURCE = "policies/release_policy.cedar"
+
+
+def load_cedar_policy_text(policy_path: Path | None = None) -> str:
+    """Return the Cedar policy source (the packaged file unless a path is given).
+
+    Raises ConfigurationError if the file is missing or unreadable.
+    """
+    try:
+        if policy_path is not None:
+            return policy_path.read_text(encoding="utf-8")
+        return resources.files("eventgate").joinpath(CEDAR_POLICY_RESOURCE).read_text("utf-8")
+    except OSError as exc:
+        location = policy_path or f"eventgate/{CEDAR_POLICY_RESOURCE}"
+        raise ConfigurationError(f"Cannot read Cedar policy '{location}': {exc}") from exc
+
 
 logger = logging.getLogger(__name__)
 
@@ -145,36 +163,7 @@ class CedarReleasePolicyEngine(IPolicyEngine):
     PROVIDER_NAME = "cedar"
 
     def __init__(self, policy_path: Path | None = None):
-        if policy_path is None:
-            curr = Path(__file__).resolve().parent
-            found_path = None
-            for _ in range(6):
-                candidate = curr / "policies" / "release_policy.cedar"
-                if candidate.exists():
-                    found_path = candidate
-                    break
-                curr = curr.parent
-            root_fallback = (
-                Path(__file__).resolve().parents[4] / "policies" / "release_policy.cedar"
-            )
-            policy_path = found_path or root_fallback
-
-        self._policy_path = policy_path
-        self._policy_text = self._load_policy()
-
-    def _load_policy(self) -> str:
-        """Load Cedar policy text from disk; raise ConfigurationError if missing."""
-        if not self._policy_path.exists():
-            raise ConfigurationError(
-                f"Cedar policy file not found at '{self._policy_path}'. "
-                "Ensure policies/release_policy.cedar exists when EVENTGATE_POLICY_ENGINE=cedar."
-            )
-        try:
-            return self._policy_path.read_text(encoding="utf-8")
-        except Exception as exc:
-            raise ConfigurationError(
-                f"Failed to read Cedar policy file '{self._policy_path}': {exc}"
-            ) from exc
+        self._policy_text = load_cedar_policy_text(policy_path)
 
     def evaluate(
         self,
@@ -265,19 +254,36 @@ def get_policy_engine_type() -> str:
 
 
 def get_policy_engine(provider: str | None = None) -> IPolicyEngine:
-    """Instantiate and return the configured policy engine.
+    """Instantiate the configured policy engine.
 
-    Strictly honors EVENTGATE_POLICY_ENGINE without silent fallback.
+    Raises ConfigurationError for an unknown engine name instead of falling back.
     """
-    engine_type = (
-        (provider or os.environ.get("EVENTGATE_POLICY_ENGINE", "standard")).strip().lower()
-    )
-
+    engine_type = (provider or get_policy_engine_type()).strip().lower()
     if engine_type == "standard":
         return StandardReleasePolicyEngine()
-    elif engine_type == "cedar":
+    if engine_type == "cedar":
         return CedarReleasePolicyEngine()
-    else:
-        raise ConfigurationError(
-            f"Unknown policy engine '{engine_type}'. Supported engines: 'standard', 'cedar'."
-        )
+    raise ConfigurationError(
+        f"Unknown policy engine '{engine_type}'. Supported engines: 'standard', 'cedar'."
+    )
+
+
+def policy_matrix() -> list[dict[str, str]]:
+    """Decision per environment and severity, derived from the standard engine.
+
+    Used by the policy inspection endpoint so the published matrix cannot drift
+    from the rules that are actually enforced.
+    """
+    engine = StandardReleasePolicyEngine()
+    compat_for = {Severity.LOW: "SAFE", Severity.MEDIUM: "RISK", Severity.HIGH: "BREAK"}
+    rows = []
+    for env in (Environment.PRODUCTION, Environment.STAGING, Environment.DEVELOPMENT):
+        row = {"environment": env.value}
+        for severity in Severity:
+            result = engine.evaluate(compat_for[severity], severity, env.value, findings=[])
+            label = result.decision.value
+            if result.warnings:
+                label += " with warning"
+            row[severity.value.lower()] = label
+        rows.append(row)
+    return rows

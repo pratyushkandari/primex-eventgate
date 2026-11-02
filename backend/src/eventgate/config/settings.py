@@ -1,105 +1,88 @@
-"""Application settings for EventGate.
+"""Runtime configuration read from environment variables.
 
-Resolves the contracts directory relative to the project root. Does not
-hard-code developer-specific paths.
+Every variable is optional; the defaults run the whole stack locally with JSON
+contracts, a JSON history file and an in-memory publisher. Values are read on
+each call so tests can change them with monkeypatch (then call
+``eventgate.api.dependencies.clear_caches``). See .env.example for the list.
 """
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
-# Resolve project root: pyproject.toml lives at the repo root, and this
-# module lives at backend/src/eventgate/config/settings.py — so the repo
-# root is 4 levels up.
-_THIS_DIR = Path(__file__).resolve().parent
-_PROJECT_ROOT = _THIS_DIR.parent.parent.parent.parent
+from eventgate import __version__
+
+# backend/src/eventgate/config/settings.py -> repository root is four levels up.
+_PROJECT_ROOT = Path(__file__).resolve().parents[4]
 
 SERVICE_NAME = "eventgate"
-SERVICE_VERSION = "0.1.0"
+SERVICE_VERSION = __version__
 
-# Default contracts directory (can be overridden via environment variable).
-CONTRACTS_DIR = _PROJECT_ROOT / "contracts"
+DEFAULT_AWS_REGION = "ap-south-1"
 
 STORAGE_BACKEND_LOCAL = "local"
 STORAGE_BACKEND_DYNAMODB = "dynamodb"
 
+PUBLISHER_BACKEND_LOCAL = "local"
+PUBLISHER_BACKEND_EVENTBRIDGE = "eventbridge"
+
+
+def _choice(name: str, default: str, allowed: tuple[str, ...]) -> str:
+    value = os.environ.get(name, default).strip().lower()
+    return value if value in allowed else default
+
 
 def get_contracts_dir() -> Path:
-    """Return the contracts directory, falling back to the default."""
-    import os
-
+    """Directory holding contracts/events and contracts/consumers (local storage)."""
     override = os.environ.get("EVENTGATE_CONTRACTS_DIR")
-    if override:
-        return Path(override)
-    return CONTRACTS_DIR
+    return Path(override) if override else _PROJECT_ROOT / "contracts"
 
 
-def get_history_file() -> Path | None:
-    """Return an explicit file path for release history reviews.json, if set."""
-    import os
-
+def get_history_file() -> Path:
+    """JSON file for release history in local storage mode (gitignored by default)."""
     override = os.environ.get("EVENTGATE_HISTORY_FILE")
-    if override:
-        return Path(override)
-    return None
+    return Path(override) if override else _PROJECT_ROOT / ".eventgate" / "history.json"
 
 
 def get_storage_backend() -> str:
-    """Return the storage backend ('local' or 'dynamodb'), defaulting to 'local'."""
-    import os
+    """'local' (JSON files) or 'dynamodb'; anything else falls back to 'local'."""
+    return _choice(
+        "EVENTGATE_STORAGE_BACKEND",
+        STORAGE_BACKEND_LOCAL,
+        (STORAGE_BACKEND_LOCAL, STORAGE_BACKEND_DYNAMODB),
+    )
 
-    backend = os.environ.get("EVENTGATE_STORAGE_BACKEND", STORAGE_BACKEND_LOCAL).strip().lower()
-    if backend not in (STORAGE_BACKEND_LOCAL, STORAGE_BACKEND_DYNAMODB):
-        return STORAGE_BACKEND_LOCAL
-    return backend
+
+def get_event_publisher_backend() -> str:
+    """'local' (in-memory) or 'eventbridge'; anything else falls back to 'local'."""
+    return _choice(
+        "EVENTGATE_EVENT_PUBLISHER",
+        PUBLISHER_BACKEND_LOCAL,
+        (PUBLISHER_BACKEND_LOCAL, PUBLISHER_BACKEND_EVENTBRIDGE),
+    )
 
 
 def get_event_contracts_table_name() -> str:
-    """Return the DynamoDB table name for event contracts."""
-    import os
-
     return os.environ.get("EVENT_CONTRACTS_TABLE_NAME", "primex-eventgate-dev-event-contracts")
 
 
 def get_consumer_contracts_table_name() -> str:
-    """Return the DynamoDB table name for consumer contracts."""
-    import os
-
     return os.environ.get(
         "CONSUMER_CONTRACTS_TABLE_NAME", "primex-eventgate-dev-consumer-contracts"
     )
 
 
 def get_release_history_table_name() -> str:
-    """Return the DynamoDB table name for release history."""
-    import os
-
     return os.environ.get("RELEASE_HISTORY_TABLE_NAME", "primex-eventgate-dev-release-history")
 
 
-def get_aws_region() -> str:
-    """Return the configured AWS region, falling back to us-east-1."""
-    import os
-
-    return os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-east-1"
-
-
-PUBLISHER_BACKEND_LOCAL = "local"
-PUBLISHER_BACKEND_EVENTBRIDGE = "eventbridge"
-
-
-def get_event_publisher_backend() -> str:
-    """Return the publisher backend ('local' or 'eventbridge'), defaulting to 'local'."""
-    import os
-
-    backend = os.environ.get("EVENTGATE_EVENT_PUBLISHER", PUBLISHER_BACKEND_LOCAL).strip().lower()
-    if backend not in (PUBLISHER_BACKEND_LOCAL, PUBLISHER_BACKEND_EVENTBRIDGE):
-        return PUBLISHER_BACKEND_LOCAL
-    return backend
-
-
 def get_eventbridge_bus_name() -> str:
-    """Return the configured EventBridge bus name, falling back to dev default."""
-    import os
-
     return os.environ.get("EVENTBRIDGE_BUS_NAME", "primex-eventgate-dev-bus")
+
+
+def get_aws_region() -> str:
+    """AWS region; Lambda sets AWS_REGION itself."""
+    return (
+        os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or DEFAULT_AWS_REGION
+    )

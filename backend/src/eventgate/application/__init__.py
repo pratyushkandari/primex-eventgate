@@ -1,1 +1,1 @@
-# Application layer
+"""Use cases and the ports (interfaces) they depend on."""

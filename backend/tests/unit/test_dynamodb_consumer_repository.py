@@ -121,7 +121,7 @@ class TestDynamoConsumerContractRepository:
                 "expectedFields": None,
             }
         }
-        with pytest.raises(InvalidContractError, match="Missing or invalid 'expectedFields' dict"):
+        with pytest.raises(InvalidContractError, match="Missing or invalid 'expectedFields'"):
             self.repo.get_consumer("billing-service")
 
     def test_malformed_invalid_field_spec(self):

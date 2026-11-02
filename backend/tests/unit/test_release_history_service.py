@@ -23,7 +23,7 @@ def temp_contracts_dir(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def history_repo(temp_contracts_dir: Path) -> JsonReleaseReviewRepository:
-    return JsonReleaseReviewRepository(temp_contracts_dir)
+    return JsonReleaseReviewRepository(temp_contracts_dir / "reviews.json")
 
 
 @pytest.fixture

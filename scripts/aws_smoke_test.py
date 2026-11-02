@@ -57,7 +57,7 @@ def run_smoke_tests(base_url: str, verbose: bool = True) -> bool:
 
     all_passed = True
 
-    # 1. Health Check
+    # Health Check
     health_url = f"{base_url}/health"
     print("[1/4] Checking GET /health ...", end=" ")
     try:
@@ -73,7 +73,7 @@ def run_smoke_tests(base_url: str, verbose: bool = True) -> bool:
         print(f"ERROR: {exc}")
         all_passed = False
 
-    # 2. Golden Scenario A: v1 -> v2 (Safe / Optional field added)
+    # Scenario A: v1 -> v2 (Safe / Optional field added)
     analyze_url = f"{base_url}/api/v1/analyze"
     print("[2/4] Checking Scenario A (v1 -> v2: ALLOW / LOW) ...", end=" ")
     try:
@@ -97,7 +97,7 @@ def run_smoke_tests(base_url: str, verbose: bool = True) -> bool:
         print(f"ERROR: {exc}")
         all_passed = False
 
-    # 3. Golden Scenario B: v1 -> v3 (Breaking / Field type changed)
+    # Scenario B: v1 -> v3 (Breaking / Field type changed)
     print("[3/4] Checking Scenario B (v1 -> v3: BLOCK / HIGH) ...", end=" ")
     try:
         status, body = http_request(
@@ -126,7 +126,7 @@ def run_smoke_tests(base_url: str, verbose: bool = True) -> bool:
         print(f"ERROR: {exc}")
         all_passed = False
 
-    # 4. Golden Scenario C: v1 -> v4 (Risk / Optional field removed)
+    # Scenario C: v1 -> v4 (Risk / Optional field removed)
     print("[4/4] Checking Scenario C (v1 -> v4: REVIEW / MEDIUM) ...", end=" ")
     try:
         status, body = http_request(

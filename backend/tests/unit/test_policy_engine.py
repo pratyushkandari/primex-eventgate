@@ -134,3 +134,45 @@ def test_get_policy_engine_factory(monkeypatch):
     monkeypatch.setenv("EVENTGATE_POLICY_ENGINE", "unknown_engine")
     with pytest.raises(ConfigurationError):
         get_policy_engine()
+
+
+def test_policy_matrix_matches_documented_rules():
+    from eventgate.domain.policy import policy_matrix
+
+    assert policy_matrix() == [
+        {"environment": "production", "low": "ALLOW", "medium": "REVIEW", "high": "BLOCK"},
+        {"environment": "staging", "low": "ALLOW", "medium": "REVIEW", "high": "BLOCK"},
+        {
+            "environment": "development",
+            "low": "ALLOW",
+            "medium": "ALLOW with warning",
+            "high": "BLOCK",
+        },
+    ]
+
+
+def test_cedar_policy_ships_inside_the_package():
+    """Lambda deploys only backend/src, so the policy must load from the package."""
+    from importlib import resources
+
+    from eventgate.domain.policy import load_cedar_policy_text
+
+    packaged = resources.files("eventgate").joinpath("policies/release_policy.cedar")
+    assert packaged.is_file()
+    assert "PROD_BLOCK_BREAK" in load_cedar_policy_text()
+
+
+def test_cedar_missing_policy_file_is_configuration_error(tmp_path):
+    with pytest.raises(ConfigurationError, match="Cannot read Cedar policy"):
+        CedarReleasePolicyEngine(policy_path=tmp_path / "missing.cedar")
+
+
+@pytest.mark.parametrize("environment", ["production", "staging", "development"])
+@pytest.mark.parametrize("severity", list(Severity))
+def test_cedar_and_standard_engines_agree(environment, severity):
+    compat = {Severity.LOW: "SAFE", Severity.MEDIUM: "RISK", Severity.HIGH: "BREAK"}[severity]
+    findings = _make_findings(severity)
+    standard = StandardReleasePolicyEngine().evaluate(compat, severity, environment, findings)
+    cedar = CedarReleasePolicyEngine().evaluate(compat, severity, environment, findings)
+    assert standard.decision == cedar.decision
+    assert bool(standard.warnings) == bool(cedar.warnings)

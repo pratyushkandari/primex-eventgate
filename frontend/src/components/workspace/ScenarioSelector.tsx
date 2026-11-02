@@ -1,66 +1,48 @@
-import { DEMO_SCENARIOS, type DemoScenario } from '@/data/scenarios'
-import { Badge } from '@/components/ui/Badge'
-import { GitCompare } from 'lucide-react'
+import { SCENARIO_LIST, type ScenarioId } from '@/data/scenarios'
+import { StatusBadge } from '@/components/ui/Badge'
+import { cn } from '@/lib/utils'
 
 interface ScenarioSelectorProps {
-  selectedScenario: DemoScenario['id'] | null
-  onSelectScenario: (scenario: DemoScenario) => void
+  selectedScenario: ScenarioId | null
+  onSelectScenario: (id: ScenarioId) => void
   disabled?: boolean
 }
 
-export function ScenarioSelector({
-  selectedScenario,
-  onSelectScenario,
-  disabled = false,
-}: ScenarioSelectorProps) {
+/** Shortcut buttons that load one of the sample OrderPlaced changes. */
+export function ScenarioSelector({ selectedScenario, onSelectScenario, disabled = false }: ScenarioSelectorProps) {
   return (
-    <section className="bg-slate-900/80 border border-slate-800/80 rounded-lg p-2.5 px-3 flex flex-col md:flex-row items-start md:items-center justify-between gap-2.5">
-      <div className="flex items-center space-x-2">
-        <GitCompare className="h-4 w-4 text-slate-400 flex-shrink-0" />
-        <div className="flex items-center space-x-2">
-          <span className="text-xs font-semibold text-slate-200 uppercase font-mono tracking-wider">
-            Try a change
-          </span>
-          <span className="text-slate-600 hidden sm:inline">•</span>
-          <span className="text-[11px] text-slate-400 hidden sm:inline">
-            Pre-configured contract transitions
-          </span>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-        {(Object.keys(DEMO_SCENARIOS) as Array<DemoScenario['id']>).map((key) => {
-          const scenario = DEMO_SCENARIOS[key]
-          const isSelected = selectedScenario === key
-
-          const badgeVariant =
-            key === 'safe' ? 'safe' : key === 'breaking' ? 'break' : 'risk'
-
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+      <span id="samples-label" className="text-xs font-medium text-fg-subtle">
+        Sample changes
+      </span>
+      <div role="group" aria-labelledby="samples-label" className="flex flex-wrap gap-2">
+        {SCENARIO_LIST.map((s) => {
+          const selected = selectedScenario === s.id
           return (
             <button
-              key={scenario.id}
+              key={s.id}
               type="button"
               disabled={disabled}
-              onClick={() => onSelectScenario(scenario)}
-              className={`flex items-center space-x-2 px-2.5 py-1.5 rounded border text-xs transition-all cursor-pointer select-none font-mono ${
-                isSelected
-                  ? 'bg-slate-800 border-slate-600 text-slate-100 shadow-sm'
-                  : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
-              } ${disabled ? 'opacity-40 pointer-events-none' : ''}`}
+              aria-pressed={selected}
+              onClick={() => onSelectScenario(s.id)}
+              title={s.description}
+              className={cn(
+                'inline-flex items-center gap-2 rounded-[var(--radius-control)] border px-2.5 py-1.5 text-xs transition-colors duration-150',
+                'disabled:cursor-not-allowed disabled:opacity-50',
+                selected
+                  ? 'border-accent bg-accent-tint text-fg'
+                  : 'border-line bg-surface text-fg-muted hover:border-line-strong hover:text-fg'
+              )}
             >
-              <Badge variant={badgeVariant} size="sm">
-                {scenario.label}
-              </Badge>
-              <span className="text-[11px] text-slate-300 font-sans">
-                {scenario.action}
-              </span>
-              <span className="text-[10px] text-slate-500 font-mono">
-                {scenario.transition}
+              <StatusBadge value={s.compatibility} />{' '}
+              <span>{s.action}</span>{' '}
+              <span className="font-mono text-fg-subtle">
+                v{s.currentVersion}→v{s.proposedVersion}
               </span>
             </button>
           )
         })}
       </div>
-    </section>
+    </div>
   )
 }

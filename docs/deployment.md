@@ -1,187 +1,56 @@
-# EventGate Deployment Guide (Phase 2)
+# Deployment
 
-This guide documents the end-to-end steps to build, validate, deploy, and seed EventGate on AWS Serverless infrastructure using AWS SAM and Amazon DynamoDB.
+The AWS stack is defined in `template.yaml` (AWS SAM) and deployed as `primex-eventgate-dev` in `ap-south-1` using the defaults in `samconfig.toml`. The console is hosted on AWS Amplify and built from `frontend/` by `amplify.yml`.
 
-All commands use Windows PowerShell-compatible syntax.
+## Resources
 
----
+| Resource | Name | Notes |
+| --- | --- | --- |
+| HTTP API | `EventGateHttpApi` | Routes `/health` and `/{proxy+}` to the API Lambda; CORS for any origin; default throttling 20 req/s, burst 40 |
+| Lambda | `primex-eventgate-dev-api` | Python 3.14, 256 MB, 10 s; code from `backend/src` (includes the Cedar policy and `requirements.txt`) |
+| DynamoDB | `…-event-contracts`, `…-consumer-contracts`, `…-release-history` | On-demand billing; keys and indexes in [architecture.md](architecture.md#dynamodb) |
+| EventBridge | `primex-eventgate-dev-bus` and rule `…-order-placed-rule` | Routes `OrderPlaced` events to three demo consumer Lambdas |
+| IAM | Function policies | GetItem/Query on the contract tables, GetItem/PutItem/Query on history, PutEvents on the bus only |
 
-## 1. Prerequisites
+The Lambda environment sets `EVENTGATE_STORAGE_BACKEND=dynamodb`, `EVENTGATE_EVENT_PUBLISHER=eventbridge` and the table and bus names. To use the Cedar engine, add `EVENTGATE_POLICY_ENGINE: cedar` to the function's environment.
 
-Before deploying to AWS, verify that the following tools are installed and configured:
+## Deploy the backend
 
-```powershell
-# Verify Python version (3.14 recommended)
-python --version
+Prerequisites: AWS CLI with credentials for the target account (`aws sts get-caller-identity`), SAM CLI, Python 3.14 (or Docker for `sam build --use-container`).
 
-# Verify AWS CLI installation & credential identity
-aws --version
-aws sts get-caller-identity
-aws configure get region
-
-# Verify AWS SAM CLI installation
-sam --version
-
-# Verify Docker daemon is running (for SAM local testing)
-docker --version
-```
-
-> [!CAUTION]
-> **Pre-Flight Safety Check:**
-> Never proceed to deployment if `aws sts get-caller-identity` fails or indicates an unknown AWS account. Always confirm your deployment target account and region before running `sam deploy`.
-
----
-
-## 2. Infrastructure Build & Validation
-
-### 2.1 Validate the SAM Template
-Validate `template.yaml` for syntax, specification conformance, and resource definitions:
-
-```powershell
+```bash
 sam validate --lint
-```
-
-### 2.2 Build the Serverless Artifacts
-Package dependencies from `backend/src/requirements.txt` into the deployment directory `.aws-sam/`:
-
-```powershell
 sam build
+sam deploy                      # first time: sam deploy --guided
+aws cloudformation describe-stacks --stack-name primex-eventgate-dev --query "Stacks[0].Outputs"
 ```
 
----
+Then load the contracts and the catalog items the API uses to list event types and consumers:
 
-## 3. Local SAM Emulation (Optional)
-
-You can invoke the Lambda function locally with simulated API Gateway events:
-
-```powershell
-# Health check test
-sam local invoke EventGateFunction -e events/health.json
-
-# Analysis scenario A (v1 -> v2)
-sam local invoke EventGateFunction -e events/analyze-v2.json
-
-# Run local API Gateway HTTP server on port 3000
-sam local start-api --port 3000
+```bash
+python scripts/seed_dynamodb.py --region ap-south-1
 ```
 
----
+The script reads `contracts/`, validates each file, and overwrites items with PutItem, so it is safe to re-run after changing contracts. Table names default to the dev stack; override them with `--event-table` and `--consumer-table`.
 
-## 4. Deployment to AWS
+## Verify
 
-### 4.1 First-Time Guided Deployment
-Run guided deployment to review configuration parameters:
-
-```powershell
-sam deploy --guided `
-  --stack-name primex-eventgate-dev `
-  --capabilities CAPABILITY_IAM `
-  --parameter-overrides ProjectName="primex-eventgate" Environment="dev"
+```bash
+python scripts/aws_smoke_test.py <ApiUrl>
 ```
 
-### 4.2 Subsequent Automated Deployments
-Use the committed, non-secret `samconfig.toml`:
+Checks `/health` and the three sample analyses (ALLOW, BLOCK, REVIEW). It writes three history records.
 
-```powershell
-sam deploy
+```bash
+python scripts/aws_enforcement_smoke_test.py <ApiUrl> --stack-name primex-eventgate-dev --region ap-south-1
 ```
 
-### 4.3 Retrieve Stack Outputs
-Capture the deployed API Gateway endpoint URL and generated DynamoDB table names:
+Publishes one ALLOWed event to the real bus, confirms the blocked and held changes return 409, and reads the consumer Lambdas' CloudWatch logs to confirm which consumers received an event. Needs credentials that can read the stack outputs and CloudWatch Logs.
 
-```powershell
-aws cloudformation describe-stacks `
-  --stack-name primex-eventgate-dev `
-  --query "Stacks[0].Outputs" `
-  --output table
-```
+## Local Lambda emulation
 
-Expected output keys:
-- `ApiUrl` (e.g. `https://ux8bwi3i8l.execute-api.ap-south-1.amazonaws.com`)
-- `EventContractsTableName` (`primex-eventgate-dev-event-contracts`)
-- `ConsumerContractsTableName` (`primex-eventgate-dev-consumer-contracts`)
-- `LambdaFunctionName` (`primex-eventgate-dev-api`)
+With Docker running, `sam local invoke EventGateFunction -e events/analyze-v2.json` runs the Lambda handler on a sample API Gateway event (`events/` also has `health.json`, `analyze-v3.json` and `analyze-v4.json`), and `sam local start-api` serves the API on port 3000. Without Docker, `uvicorn eventgate.main:app` runs the same application code.
 
----
+## Console (Amplify)
 
-## 5. DynamoDB Seeding
-
-After the CloudFormation stack completes, populate the DynamoDB tables from the canonical local contract fixtures:
-
-```powershell
-python scripts/seed_dynamodb.py `
-  --event-table primex-eventgate-dev-event-contracts `
-  --consumer-table primex-eventgate-dev-consumer-contracts `
-  --region ap-south-1 `
-  --contracts-dir contracts
-```
-
-### Seeding Idempotency
-The seed script uses `put_item`, allowing it to be safely rerun at any time without creating duplicate records or modifying unaffected versions.
-
----
-
-## 6. Smoke Testing Deployed AWS Endpoints
-
-### 6.1 Automated Smoke Test Script
-Run the comprehensive smoke test against your live API Gateway URL:
-
-```powershell
-python scripts/aws_smoke_test.py https://ux8bwi3i8l.execute-api.ap-south-1.amazonaws.com
-```
-
-### 6.2 Manual Verification with curl / Invoke-RestMethod
-
-```powershell
-$API_URL = "https://ux8bwi3i8l.execute-api.ap-south-1.amazonaws.com"
-```
-
-#### Health Check:
-```powershell
-Invoke-RestMethod -Uri "$API_URL/health" -Method GET
-```
-Expected response:
-```json
-{
-  "status": "ok",
-  "service": "eventgate",
-  "version": "0.1.0"
-}
-```
-
-#### Scenario A: v1 -> v2 (Safe / Optional Field Added)
-```powershell
-Invoke-RestMethod -Uri "$API_URL/api/v1/analyze" `
-  -Method POST `
-  -ContentType "application/json" `
-  -Body '{"eventType": "OrderPlaced", "currentVersion": 1, "proposedVersion": 2, "environment": "production"}'
-```
-Expected: `decision: "ALLOW"`, `severity: "LOW"`.
-
-#### Scenario B: v1 -> v3 (Breaking / Field Type Changed)
-```powershell
-Invoke-RestMethod -Uri "$API_URL/api/v1/analyze" `
-  -Method POST `
-  -ContentType "application/json" `
-  -Body '{"eventType": "OrderPlaced", "currentVersion": 1, "proposedVersion": 3, "environment": "production"}'
-```
-Expected: `decision: "BLOCK"`, `severity: "HIGH"`, inventory-service `BREAK`.
-
-#### Scenario C: v1 -> v4 (Risk / Optional Field Removed)
-```powershell
-Invoke-RestMethod -Uri "$API_URL/api/v1/analyze" `
-  -Method POST `
-  -ContentType "application/json" `
-  -Body '{"eventType": "OrderPlaced", "currentVersion": 1, "proposedVersion": 4, "environment": "production"}'
-```
-Expected: `decision: "REVIEW"`, `severity: "MEDIUM"`, analytics-service `RISK`.
-
----
-
-## 7. CloudWatch Logs Inspection
-
-To stream Lambda execution logs and verify correlation IDs:
-
-```powershell
-aws logs tail "/aws/lambda/primex-eventgate-dev-api" --follow
-```
+The Amplify app builds on every push to `main`: `npm ci` and `npm run build` in `frontend/`, publishing `frontend/dist` with `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` and `Referrer-Policy: strict-origin-when-cross-origin`. Production builds call the deployed API URL in `frontend/src/config/env.ts` unless `VITE_EVENTGATE_API_URL` is set in the Amplify environment. Pages use hash URLs (`#/history`), so no rewrite rules are needed.

@@ -1,4 +1,9 @@
-"""Event publishing application service — enforces safety decisions via event transport."""
+"""Gated publish use case: validate the payload, re-run the analysis, and hand the
+event to the publisher only when the release decision is ALLOW.
+
+Every attempt, including blocked, held and failed ones, is written to release
+history so the audit trail shows what the gate actually did.
+"""
 
 from __future__ import annotations
 
@@ -12,7 +17,9 @@ from eventgate.application.ports.publisher import IEventPublisher
 from eventgate.application.ports.repositories import IEventContractRepository
 from eventgate.application.services.event_analysis_service import EventAnalysisService
 from eventgate.application.services.release_history_service import ReleaseHistoryService
-from eventgate.domain.enums import CompatibilityStatus, Decision, Severity
+from eventgate.domain.enums import Decision, Environment, Severity
+from eventgate.domain.errors import EventPublishFailedError
+from eventgate.domain.history import affected_consumer_ids, summarize_findings
 from eventgate.domain.models import AnalysisResult
 from eventgate.domain.payload_validator import validate_event_payload
 
@@ -57,100 +64,71 @@ class EventPublishService:
         analysis_id: str | None = None,
         request_id: str | None = None,
     ) -> PublishResult:
-        """Evaluate consumer compatibility and publish the event only if decision is ALLOW.
+        """Evaluate consumer compatibility and publish the event only if the decision is ALLOW.
 
-        Order of execution:
-        1. Generate unique event_id
-        2. Load proposed contract
-        3. Validate actual payload against proposed contract (raises InvalidEventPayloadError)
-        4. Run consumer compatibility analysis via EventAnalysisService
-        5. If ALLOW: publish to event transport and persist success audit record
-        6. If BLOCK or REVIEW: prevent publication and persist prevention audit record
-        7. Log structured execution record
-        8. Return PublishResult
+        Raises:
+            InvalidEventPayloadError: the payload does not match the proposed contract.
+            InvalidAnalysisRequestError: bad versions or environment, or analysis_id
+                refers to a different change.
+            EventPublishFailedError: the decision was ALLOW but the transport failed.
+                The failed attempt is still recorded in history.
         """
+        env = Environment.parse(environment).value
         event_id = str(uuid.uuid4())
 
-        # 1. Load proposed contract for payload validation
         proposed_contract = self._event_repo.get_event_contract(event_type, proposed_version)
-
-        # 2. Validate payload before running analysis
         validate_event_payload(payload, proposed_contract)
 
-        # 3. Analyze consumer impact for the target environment
+        # Reject a mismatched analysisId before anything is published.
+        if analysis_id and self._history_service:
+            self._history_service.find_correlated_review(
+                analysis_id, event_type, current_version, proposed_version, env
+            )
+
         analysis_result = self._analysis_service.analyze(
             event_type=event_type,
             current_version=current_version,
             proposed_version=proposed_version,
-            environment=environment,
+            environment=env,
             request_id=request_id,
         )
 
-        findings_summary = [
-            {
-                "consumerId": f.consumer_id,
-                "status": f.status.value,
-                "ruleId": f.rule_id,
-                "field": f.field,
-                "expectedType": f.expected_type,
-                "proposedType": f.proposed_type,
-                "severity": f.severity.value,
-                "reason": f.reason,
-            }
-            for f in analysis_result.findings
-        ]
-        affected_consumers = sorted(
-            {
-                f.consumer_id
-                for f in analysis_result.findings
-                if f.status != CompatibilityStatus.SAFE
-            }
-        )
+        published = False
+        event_bridge_event_id: str | None = None
+        error: str | None = None
+        publish_failure: EventPublishFailedError | None = None
 
-        # 4. Gated publication invariant
         if analysis_result.decision == Decision.ALLOW:
-            pub_res = self._publisher.publish(
-                event_id=event_id,
-                event_type=event_type,
-                version=proposed_version,
-                decision=analysis_result.decision.value,
-                analysis_id=analysis_result.analysis_id,
-                request_id=request_id,
-                payload=payload,
-            )
-            published = True
-            event_bridge_event_id = pub_res.event_bridge_event_id
-            error = None
+            try:
+                pub_res = self._publisher.publish(
+                    event_id=event_id,
+                    event_type=event_type,
+                    version=proposed_version,
+                    decision=analysis_result.decision.value,
+                    analysis_id=analysis_result.analysis_id,
+                    request_id=request_id,
+                    payload=payload,
+                )
+                published = True
+                event_bridge_event_id = pub_res.event_bridge_event_id
+            except EventPublishFailedError as exc:
+                publish_failure = exc
+                error = f"Publication failed: {exc.message}"
         else:
-            published = False
-            event_bridge_event_id = None
             error = (
                 f"Publication prevented by {analysis_result.policy_name}: "
-                f"{analysis_result.policy_reason or 'Gate enforced hard interception.'}"
+                f"{analysis_result.policy_reason or 'release decision was not ALLOW.'}"
             )
 
-        # 5. Correlate with persistent release audit trail
-        if self._history_service:
-            try:
-                self._history_service.record_publish(
-                    analysis_id=analysis_id or analysis_result.analysis_id,
-                    event_type=event_type,
-                    current_version=current_version,
-                    proposed_version=proposed_version,
-                    environment=environment,
-                    decision=analysis_result.decision.value,
-                    severity=analysis_result.severity.value,
-                    compatibility_result=analysis_result.compatibility_result,
-                    published=published,
-                    event_id=event_id,
-                    event_bridge_event_id=event_bridge_event_id,
-                    request_id=request_id,
-                    error=error,
-                    affected_consumers=affected_consumers,
-                    findings_summary=findings_summary,
-                )
-            except Exception as exc:
-                logger.warning("Failed to record publication audit history: %s", exc)
+        self._record_attempt(
+            analysis_id=analysis_id or analysis_result.analysis_id,
+            result=analysis_result,
+            published=published,
+            event_id=event_id,
+            event_bridge_event_id=event_bridge_event_id,
+            request_id=request_id,
+            error=error,
+        )
 
         logger.info(
             "EventGate publish evaluated: requestId=%s eventId=%s eventType=%s "
@@ -164,6 +142,9 @@ class EventPublishService:
             event_bridge_event_id,
         )
 
+        if publish_failure is not None:
+            raise publish_failure
+
         return PublishResult(
             event_id=event_id,
             published=published,
@@ -172,3 +153,39 @@ class EventPublishService:
             analysis_result=analysis_result,
             event_bridge_event_id=event_bridge_event_id,
         )
+
+    def _record_attempt(
+        self,
+        analysis_id: str,
+        result: AnalysisResult,
+        published: bool,
+        event_id: str,
+        event_bridge_event_id: str | None,
+        request_id: str | None,
+        error: str | None,
+    ) -> None:
+        """Persist the attempt; a history outage must not undo a publish that happened."""
+        if not self._history_service:
+            return
+        try:
+            self._history_service.record_publish(
+                analysis_id=analysis_id,
+                event_type=result.event_type,
+                current_version=result.current_version,
+                proposed_version=result.proposed_version,
+                environment=result.environment,
+                decision=result.decision.value,
+                severity=result.severity.value,
+                compatibility_result=result.compatibility_result,
+                published=published,
+                event_id=event_id,
+                event_bridge_event_id=event_bridge_event_id,
+                request_id=request_id,
+                error=error,
+                affected_consumers=affected_consumer_ids(result.findings),
+                findings_summary=summarize_findings(result.findings),
+                policy_name=result.policy_name,
+                policy_reason=result.policy_reason,
+            )
+        except Exception as exc:
+            logger.warning("Failed to record publication audit history: %s", exc)

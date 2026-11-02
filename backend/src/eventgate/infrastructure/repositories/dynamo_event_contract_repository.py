@@ -4,10 +4,11 @@ Stores event contracts in a DynamoDB table:
   Partition Key (HASH): eventType (String)
   Sort Key (RANGE):      version   (Number)
 
-Access patterns:
+Access patterns (no table scans):
   - get_event_contract: GetItem(eventType, version)
   - list_event_contracts: Query(eventType)
-  NO full-table scans.
+  - list_event_types: GetItem on the catalog item (eventType="METADATA#CATALOG",
+    version=0), which scripts/seed_dynamodb.py maintains.
 """
 
 from __future__ import annotations
@@ -20,58 +21,14 @@ import boto3
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 
-from eventgate.domain.enums import SUPPORTED_FIELD_TYPES
-from eventgate.domain.errors import (
-    ContractNotFoundError,
-    InvalidContractError,
-    UnsupportedEventVersionError,
-)
-from eventgate.domain.models import EventContract, EventField
+from eventgate.domain.errors import ContractNotFoundError, UnsupportedEventVersionError
+from eventgate.domain.models import EventContract
+from eventgate.infrastructure.repositories.contract_parsing import parse_event_contract
 
 logger = logging.getLogger(__name__)
 
-
-def _parse_dynamo_event_contract(item: dict[str, Any], source: str) -> EventContract:
-    """Parse and validate a DynamoDB item into an EventContract."""
-    event_type = item.get("eventType")
-    if not event_type or not isinstance(event_type, str):
-        raise InvalidContractError(f"Missing or invalid 'eventType' in {source}.")
-
-    raw_version = item.get("version")
-    if raw_version is None:
-        raise InvalidContractError(f"Missing 'version' in {source}.")
-    try:
-        version = int(raw_version)
-    except (ValueError, TypeError):
-        raise InvalidContractError(f"Invalid 'version' {raw_version} in {source}.") from None
-
-    if version < 1:
-        raise InvalidContractError(f"Version must be >= 1 in {source}.")
-
-    raw_fields = item.get("fields")
-    if not isinstance(raw_fields, dict):
-        raise InvalidContractError(f"Missing or invalid 'fields' dict in {source}.")
-
-    fields: dict[str, EventField] = {}
-    for name, spec in raw_fields.items():
-        if not isinstance(spec, dict):
-            raise InvalidContractError(f"Invalid field spec for '{name}' in {source}.")
-
-        field_type = spec.get("type")
-        if field_type not in SUPPORTED_FIELD_TYPES:
-            raise InvalidContractError(
-                f"Unsupported type '{field_type}' for field '{name}' in {source}."
-            )
-
-        required = spec.get("required")
-        if not isinstance(required, bool):
-            raise InvalidContractError(
-                f"Missing or invalid 'required' for field '{name}' in {source}."
-            )
-
-        fields[name] = EventField(name=name, type=field_type, required=required)
-
-    return EventContract(event_type=event_type, version=version, fields=fields)
+# Item holding the list of registered event types, written by scripts/seed_dynamodb.py.
+CATALOG_KEY = {"eventType": "METADATA#CATALOG", "version": Decimal(0)}
 
 
 class DynamoEventContractRepository:
@@ -102,19 +59,16 @@ class DynamoEventContractRepository:
 
         item = response.get("Item")
         if not item:
-            # Check if the event type exists at all to return precise domain error
-            try:
-                check_query = self._table.query(
-                    KeyConditionExpression=Key("eventType").eq(event_type),
-                    Limit=1,
-                )
-                if check_query.get("Items"):
-                    raise UnsupportedEventVersionError(event_type, version)
-            except ClientError:
-                pass
+            # Distinguish "unknown version" from "unknown event type" for a precise 404.
+            check_query = self._table.query(
+                KeyConditionExpression=Key("eventType").eq(event_type),
+                Limit=1,
+            )
+            if check_query.get("Items"):
+                raise UnsupportedEventVersionError(event_type, version)
             raise ContractNotFoundError(f"No contracts found for event type '{event_type}'.")
 
-        return _parse_dynamo_event_contract(item, source=f"DynamoDB {event_type}#v{version}")
+        return parse_event_contract(item, source=f"DynamoDB {event_type}#v{version}")
 
     def list_event_contracts(self, event_type: str) -> list[EventContract]:
         """Load all versions of an event contract using a Query on eventType."""
@@ -130,7 +84,7 @@ class DynamoEventContractRepository:
 
         contracts: list[EventContract] = []
         for item in items:
-            contract = _parse_dynamo_event_contract(
+            contract = parse_event_contract(
                 item, source=f"DynamoDB {event_type}#v{item.get('version')}"
             )
             contracts.append(contract)
@@ -139,28 +93,19 @@ class DynamoEventContractRepository:
         return contracts
 
     def list_event_types(self) -> list[str]:
-        """Return distinct registered event types via catalog metadata item (zero scans)."""
-        try:
-            response = self._table.get_item(
-                Key={"eventType": "METADATA#CATALOG", "version": Decimal(0)}
-            )
-            item = response.get("Item")
-            if item and "eventTypes" in item:
-                return sorted(list(item["eventTypes"]))
-        except ClientError as exc:
-            logger.warning("Failed to fetch catalog metadata item: %s", exc)
+        """Return registered event types from the catalog item (one GetItem, no scan).
 
-        # Fallback to query known established domain event types without scan
-        known = ["OrderPlaced", "PaymentCompleted", "UserCreated"]
-        existing: list[str] = []
-        for et in known:
-            try:
-                res = self._table.query(KeyConditionExpression=Key("eventType").eq(et), Limit=1)
-                if res.get("Items"):
-                    existing.append(et)
-            except ClientError:
-                pass
-        return sorted(existing) if existing else ["OrderPlaced"]
+        Returns an empty list, with a warning, if the catalog item has not been seeded.
+        """
+        response = self._table.get_item(Key=CATALOG_KEY)
+        item = response.get("Item")
+        if not item or "eventTypes" not in item:
+            logger.warning(
+                "Event catalog item missing from %s; run scripts/seed_dynamodb.py",
+                self._table_name,
+            )
+            return []
+        return sorted(str(et) for et in item["eventTypes"])
 
     def get_event_versions(self, event_type: str) -> list[int]:
         """Return all available version numbers for an event type via targeted Query."""

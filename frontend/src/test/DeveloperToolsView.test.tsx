@@ -1,319 +1,95 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { fireEvent, screen, within } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { DeveloperToolsView } from '@/components/devtools/DeveloperToolsView'
 import { eventGateApi } from '@/services/api'
-import type { AnalysisResponse } from '@/types/api'
+import { analysis, finding, mockApi } from './fixtures'
+import { renderWithProviders } from './render'
 
-vi.mock('@/services/api', () => ({
-  eventGateApi: {
-    analyzeCompatibility: vi.fn(),
-  },
-}))
+vi.mock('@/services/api', async (importOriginal) => {
+  const { mockApi } = await import('./fixtures')
+  return { ...(await importOriginal<object>()), eventGateApi: mockApi() }
+})
 
-describe('DeveloperToolsView component', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
+const run = () => fireEvent.click(screen.getByRole('button', { name: 'Run assertion' }))
+
+describe('Developer tools', () => {
+  beforeEach(() => Object.assign(eventGateApi, mockApi()))
+
+  it('pre-fills the expected decision for samples and generates matching CLI commands', async () => {
+    renderWithProviders(<DeveloperToolsView environment="production" />)
+    expect(screen.getByLabelText('Expected decision')).toHaveValue('ALLOW')
+    expect(screen.getByText('Filled in from the sample change.')).toBeInTheDocument()
+    expect(
+      screen.getByText('eventgate check --event OrderPlaced --current 1 --proposed 2 --env production')
+    ).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /OrderPlaced v1→v4/ }))
+    expect(screen.getByLabelText('Expected decision')).toHaveValue('REVIEW')
+    fireEvent.change(screen.getByLabelText('Environment'), { target: { value: 'development' } })
+    expect(screen.getByLabelText('Expected decision')).toHaveValue('ALLOW')
+    expect(await screen.findByText(/--expected ALLOW --env development/)).toBeInTheDocument()
   })
 
-  it('renders test runner controls and CLI generator commands', () => {
-    render(<DeveloperToolsView />)
-
-    expect(screen.getByText('Developer Tools')).toBeInTheDocument()
-    expect(screen.getByText('Contract Test Runner')).toBeInTheDocument()
-    expect(screen.getByText('CLI Generator')).toBeInTheDocument()
-    expect(screen.getByText('Execute Contract Assertion')).toBeInTheDocument()
-
-    // Verifies generated CLI commands contain active inputs
-    expect(screen.getAllByText(/eventgate check --event OrderPlaced/).length).toBeGreaterThan(0)
-  })
-
-  it('runs live assertion check and renders PASS banner when outcome matches expected', async () => {
-    const mockAnalysis: AnalysisResponse = {
-      analysisId: 'test-analysis-123',
-      eventType: 'OrderPlaced',
-      currentVersion: 1,
-      proposedVersion: 2,
-      environment: 'production',
-      compatibilityResult: 'SAFE',
-      severity: 'LOW',
-      policyName: 'StandardReleasePolicy',
-      policyReason: 'Release policy for production permits safe changes',
-      decision: 'ALLOW',
-      summary: 'All consumers safe',
-      timestamp: new Date().toISOString(),
-      changeSet: { addedFields: [], removedFields: [], typeChanges: [], requirednessChanges: [] },
-      findings: [
-        {
-          consumerId: 'billing-service',
-          status: 'SAFE',
-          ruleId: 'ALL_FIELDS_COMPATIBLE',
-          field: null,
-          expectedType: null,
-          proposedType: null,
-          severity: 'LOW',
-          reason: 'Consumer contract is fully satisfied',
-        },
-      ],
-    }
-
-    vi.mocked(eventGateApi.analyzeCompatibility).mockResolvedValue(mockAnalysis)
-
-    render(<DeveloperToolsView />)
-
-    const runBtn = screen.getByText('Execute Contract Assertion')
-    fireEvent.click(runBtn)
-
-    await waitFor(() => {
-      expect(screen.getByText('ASSERTION PASSED')).toBeInTheDocument()
-    })
-
-    expect(screen.getByText(/Actual: ALLOW/)).toBeInTheDocument()
-    expect(screen.getByText('billing-service')).toBeInTheDocument()
-  })
-
-  it('renders FAIL banner when gate outcome diverges from expected', async () => {
-    const mockAnalysis: AnalysisResponse = {
-      analysisId: 'test-analysis-456',
+  it('passes when the decision matches and lists consumers from the response', async () => {
+    vi.mocked(eventGateApi.analyzeCompatibility).mockResolvedValue(analysis('BLOCK'))
+    renderWithProviders(<DeveloperToolsView environment="production" />)
+    fireEvent.click(screen.getByRole('button', { name: /OrderPlaced v1→v3/ }))
+    run()
+    expect(await screen.findByText('Pass: expected BLOCK, got BLOCK')).toBeInTheDocument()
+    const consumers = screen.getByRole('list', { name: 'Consumer results' })
+    expect(within(consumers).getByText('inventory-service')).toBeInTheDocument()
+    expect(eventGateApi.analyzeCompatibility).toHaveBeenCalledWith({
       eventType: 'OrderPlaced',
       currentVersion: 1,
       proposedVersion: 3,
       environment: 'production',
-      compatibilityResult: 'BREAK',
-      severity: 'HIGH',
-      policyName: 'StandardReleasePolicy',
-      policyReason: 'Breaking changes blocked in production',
-      decision: 'BLOCK',
-      summary: 'Breaking change detected',
-      timestamp: new Date().toISOString(),
-      changeSet: { addedFields: [], removedFields: [], typeChanges: [], requirednessChanges: [] },
-      findings: [
-        {
-          consumerId: 'inventory-service',
-          status: 'BREAK',
-          ruleId: 'EVT001_FIELD_TYPE_CHANGED',
-          field: 'shippingMethod',
-          expectedType: 'string',
-          proposedType: 'object',
-          severity: 'HIGH',
-          reason: 'Field type changed',
-        },
-      ],
-    }
-
-    vi.mocked(eventGateApi.analyzeCompatibility).mockResolvedValue(mockAnalysis)
-
-    render(<DeveloperToolsView />)
-
-    // Default expected is ALLOW, but actual will be BLOCK -> FAIL
-    const runBtn = screen.getByText('Execute Contract Assertion')
-    fireEvent.click(runBtn)
-
-    await waitFor(() => {
-      expect(screen.getByText('ASSERTION FAILED')).toBeInTheDocument()
-    })
-
-    expect(screen.getByText(/Actual: BLOCK/)).toBeInTheDocument()
-    expect(screen.getByText('inventory-service')).toBeInTheDocument()
-  })
-
-  it('displays compact execution trace matching actual request parameters', async () => {
-    const mockAnalysis: AnalysisResponse = {
-      analysisId: 'test-trace-1',
-      eventType: 'OrderPlaced',
-      currentVersion: 1,
-      proposedVersion: 3,
-      environment: 'production',
-      compatibilityResult: 'BREAK',
-      severity: 'HIGH',
-      policyName: 'StandardReleasePolicy',
-      policyReason: 'Breaking changes blocked in production',
-      decision: 'BLOCK',
-      summary: 'Breaking change detected',
-      timestamp: new Date().toISOString(),
-      changeSet: { addedFields: [], removedFields: [], typeChanges: [], requirednessChanges: [] },
-      findings: [],
-    }
-
-    vi.mocked(eventGateApi.analyzeCompatibility).mockResolvedValue(mockAnalysis)
-
-    render(<DeveloperToolsView />)
-
-    // Switch to v1 -> v3
-    fireEvent.click(screen.getByText('OrderPlaced v1 → v3 (BREAK)'))
-    fireEvent.click(screen.getByText('Execute Contract Assertion'))
-
-    await waitFor(() => {
-      expect(screen.getByText('ASSERTION PASSED')).toBeInTheDocument()
-    })
-
-    // Expect compact execution trace
-    expect(screen.getByText(/Executed:/)).toBeInTheDocument()
-    expect(screen.getByText(/OrderPlaced · v1 → v3 · production/)).toBeInTheDocument()
-  })
-
-  it('handles scenario transitions cleanly: v1->v2 to v1->v3 to v1->v4 to v1->v2', async () => {
-    const makeAnalysis = (propVer: number, dec: 'ALLOW' | 'BLOCK' | 'REVIEW'): AnalysisResponse => ({
-      analysisId: `an-${propVer}`,
-      eventType: 'OrderPlaced',
-      currentVersion: 1,
-      proposedVersion: propVer,
-      environment: 'production',
-      compatibilityResult: dec === 'BLOCK' ? 'BREAK' : dec === 'REVIEW' ? 'RISK' : 'SAFE',
-      severity: dec === 'BLOCK' ? 'HIGH' : dec === 'REVIEW' ? 'MEDIUM' : 'LOW',
-      policyName: 'StandardReleasePolicy',
-      policyReason: 'Policy evaluation',
-      decision: dec,
-      summary: `Outcome for v${propVer}`,
-      timestamp: new Date().toISOString(),
-      changeSet: { addedFields: [], removedFields: [], typeChanges: [], requirednessChanges: [] },
-      findings: [],
-    })
-
-    render(<DeveloperToolsView />)
-
-    // 1. v1 -> v2 (SAFE)
-    vi.mocked(eventGateApi.analyzeCompatibility).mockResolvedValue(makeAnalysis(2, 'ALLOW'))
-    fireEvent.click(screen.getByText('OrderPlaced v1 → v2 (SAFE)'))
-    fireEvent.click(screen.getByText('Execute Contract Assertion'))
-    await waitFor(() => {
-      expect(screen.getByText(/OrderPlaced · v1 → v2 · production/)).toBeInTheDocument()
-    })
-
-    // 2. Transition v1 -> v2 to v1 -> v3 (BREAK)
-    // Changing preset must clear stale result immediately
-    vi.mocked(eventGateApi.analyzeCompatibility).mockResolvedValue(makeAnalysis(3, 'BLOCK'))
-    fireEvent.click(screen.getByText('OrderPlaced v1 → v3 (BREAK)'))
-    expect(screen.queryByText(/OrderPlaced · v1 → v2 · production/)).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByText('Execute Contract Assertion'))
-    await waitFor(() => {
-      expect(screen.getByText(/OrderPlaced · v1 → v3 · production/)).toBeInTheDocument()
-    })
-
-    // 3. Transition v1 -> v3 to v1 -> v4 (RISK)
-    vi.mocked(eventGateApi.analyzeCompatibility).mockResolvedValue(makeAnalysis(4, 'REVIEW'))
-    fireEvent.click(screen.getByText('OrderPlaced v1 → v4 (RISK)'))
-    expect(screen.queryByText(/OrderPlaced · v1 → v3 · production/)).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByText('Execute Contract Assertion'))
-    await waitFor(() => {
-      expect(screen.getByText(/OrderPlaced · v1 → v4 · production/)).toBeInTheDocument()
-    })
-
-    // 4. Transition v1 -> v4 back to v1 -> v2 (SAFE)
-    vi.mocked(eventGateApi.analyzeCompatibility).mockResolvedValue(makeAnalysis(2, 'ALLOW'))
-    fireEvent.click(screen.getByText('OrderPlaced v1 → v2 (SAFE)'))
-    expect(screen.queryByText(/OrderPlaced · v1 → v4 · production/)).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByText('Execute Contract Assertion'))
-    await waitFor(() => {
-      expect(screen.getByText(/OrderPlaced · v1 → v2 · production/)).toBeInTheDocument()
     })
   })
 
-  it('supports changing environment and scenario simultaneously without stale state', async () => {
-    const mockAnalysisStaging: AnalysisResponse = {
-      analysisId: 'an-staging-3',
-      eventType: 'OrderPlaced',
-      currentVersion: 1,
-      proposedVersion: 3,
-      environment: 'staging',
-      compatibilityResult: 'BREAK',
-      severity: 'HIGH',
-      policyName: 'StandardReleasePolicy',
-      policyReason: 'Staging break',
-      decision: 'BLOCK',
-      summary: 'Staging breaking change',
-      timestamp: new Date().toISOString(),
-      changeSet: { addedFields: [], removedFields: [], typeChanges: [], requirednessChanges: [] },
-      findings: [],
-    }
+  it('fails when the decision differs from an overridden expectation', async () => {
+    renderWithProviders(<DeveloperToolsView environment="production" />)
+    fireEvent.change(screen.getByLabelText('Expected decision'), { target: { value: 'BLOCK' } })
+    expect(screen.getByText("Overriding the sample's expected ALLOW.")).toBeInTheDocument()
+    run()
+    expect(await screen.findByText('Fail: expected BLOCK, got ALLOW')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Use ALLOW' }))
+    expect(screen.getByLabelText('Expected decision')).toHaveValue('ALLOW')
+  })
 
-    vi.mocked(eventGateApi.analyzeCompatibility).mockResolvedValue(mockAnalysisStaging)
-    render(<DeveloperToolsView />)
-
-    // Select v1 -> v3
-    fireEvent.click(screen.getByText('OrderPlaced v1 → v3 (BREAK)'))
-
-    // Change environment to staging
-    const envSelect = screen.getByDisplayValue('production')
-    fireEvent.change(envSelect, { target: { value: 'staging' } })
-
-    fireEvent.click(screen.getByText('Execute Contract Assertion'))
-
-    await waitFor(() => {
-      expect(screen.getByText(/OrderPlaced · v1 → v3 · staging/)).toBeInTheDocument()
-    })
-
-    expect(eventGateApi.analyzeCompatibility).toHaveBeenCalledWith(
-      expect.objectContaining({
-        eventType: 'OrderPlaced',
-        currentVersion: 1,
-        proposedVersion: 3,
-        environment: 'staging',
-      })
+  it('shows the real consumers for non-sample events and requires an expectation', async () => {
+    vi.mocked(eventGateApi.analyzeCompatibility).mockResolvedValue(
+      analysis('ALLOW', { eventType: 'PaymentCompleted', findings: [finding({ consumerId: 'fraud-detection-service' })] })
     )
+    renderWithProviders(<DeveloperToolsView environment="production" />)
+    await screen.findByRole('option', { name: 'PaymentCompleted' })
+    fireEvent.change(screen.getByLabelText('Event type'), { target: { value: 'PaymentCompleted' } })
+    expect(screen.getByRole('button', { name: 'Run assertion' })).toBeDisabled()
+    expect(screen.getByText(/No sample covers this change/)).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Expected decision'), { target: { value: 'ALLOW' } })
+    run()
+    const consumers = await screen.findByRole('list', { name: 'Consumer results' })
+    // Regression: results used to list the three OrderPlaced consumers for every event.
+    expect(within(consumers).getAllByRole('listitem')).toHaveLength(1)
+    expect(within(consumers).getByText('fraud-detection-service')).toBeInTheDocument()
   })
 
-  it('supports manual expected decision override and reset to suggested decision', async () => {
-    render(<DeveloperToolsView />)
-
-    // Initially suggested is ALLOW
-    expect(screen.getByText('Suggested from scenario')).toBeInTheDocument()
-
-    // Override expectation to BLOCK
-    const expectedSelect = screen.getByDisplayValue('ALLOW')
-    fireEvent.change(expectedSelect, { target: { value: 'BLOCK' } })
-
-    expect(screen.getByText('Manual expectation')).toBeInTheDocument()
-    expect(screen.getByText(/Reset to suggested/)).toBeInTheDocument()
-
-    // Click Reset
-    fireEvent.click(screen.getByText(/Reset to suggested/))
-    expect(screen.getByText('Suggested from scenario')).toBeInTheDocument()
+  it('rejects identical versions and reports API errors', async () => {
+    vi.mocked(eventGateApi.analyzeCompatibility).mockRejectedValue(new Error('UNSUPPORTED_EVENT_VERSION'))
+    renderWithProviders(<DeveloperToolsView environment="production" />)
+    fireEvent.change(screen.getByLabelText('Proposed version'), { target: { value: '1' } })
+    expect(screen.getByText('Choose two different versions.')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Proposed version'), { target: { value: '3' } })
+    fireEvent.change(screen.getByLabelText('Expected decision'), { target: { value: 'BLOCK' } })
+    run()
+    expect(await screen.findByText('The assertion could not run')).toBeInTheDocument()
   })
 
-  it('handles rapid repeated scenario switching and immediate assertion execution', async () => {
-    const mockFinalAnalysis: AnalysisResponse = {
-      analysisId: 'an-final-break',
-      eventType: 'OrderPlaced',
-      currentVersion: 1,
-      proposedVersion: 3,
-      environment: 'production',
-      compatibilityResult: 'BREAK',
-      severity: 'HIGH',
-      policyName: 'StandardReleasePolicy',
-      policyReason: 'Breaking changes blocked in production',
-      decision: 'BLOCK',
-      summary: 'Final assertion outcome',
-      timestamp: new Date().toISOString(),
-      changeSet: { addedFields: [], removedFields: [], typeChanges: [], requirednessChanges: [] },
-      findings: [],
-    }
-
-    vi.mocked(eventGateApi.analyzeCompatibility).mockResolvedValue(mockFinalAnalysis)
-    render(<DeveloperToolsView />)
-
-    // Rapid switching
-    fireEvent.click(screen.getByText('OrderPlaced v1 → v2 (SAFE)'))
-    fireEvent.click(screen.getByText('OrderPlaced v1 → v4 (RISK)'))
-    fireEvent.click(screen.getByText('OrderPlaced v1 → v3 (BREAK)'))
-
-    // Immediate execution
-    fireEvent.click(screen.getByText('Execute Contract Assertion'))
-
-    await waitFor(() => {
-      expect(screen.getByText('ASSERTION PASSED')).toBeInTheDocument()
-      expect(screen.getByText(/OrderPlaced · v1 → v3 · production/)).toBeInTheDocument()
-    })
-
-    expect(eventGateApi.analyzeCompatibility).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        eventType: 'OrderPlaced',
-        currentVersion: 1,
-        proposedVersion: 3,
-        environment: 'production',
-      })
+  it('opens the asserted change in Review', async () => {
+    const onOpenReview = vi.fn()
+    renderWithProviders(<DeveloperToolsView environment="staging" onOpenReview={onOpenReview} />)
+    run()
+    fireEvent.click(await screen.findByRole('button', { name: 'Open this change in Review' }))
+    expect(onOpenReview).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: 'OrderPlaced', currentVersion: 1, proposedVersion: 2, environment: 'staging' })
     )
   })
 })

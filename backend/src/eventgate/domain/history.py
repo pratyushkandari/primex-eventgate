@@ -1,17 +1,41 @@
-"""Domain models for release history and audit trails."""
+"""Release history records: the audit trail of analyses and publication attempts."""
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from collections.abc import Iterable
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from eventgate.domain.enums import Decision, Severity
+from eventgate.domain.enums import CompatibilityStatus, Decision, Severity
+from eventgate.domain.models import Finding
+
+
+def summarize_findings(findings: Iterable[Finding]) -> list[dict[str, Any]]:
+    """Serialize findings into the camelCase shape stored on release records."""
+    return [
+        {
+            "consumerId": f.consumer_id,
+            "status": f.status.value,
+            "ruleId": f.rule_id,
+            "field": f.field,
+            "expectedType": f.expected_type,
+            "proposedType": f.proposed_type,
+            "severity": f.severity.value,
+            "reason": f.reason,
+        }
+        for f in findings
+    ]
+
+
+def affected_consumer_ids(findings: Iterable[Finding]) -> list[str]:
+    """Sorted IDs of consumers with at least one RISK or BREAK finding."""
+    return sorted({f.consumer_id for f in findings if f.status != CompatibilityStatus.SAFE})
 
 
 @dataclass(frozen=True)
 class ReleaseRecord:
-    """Authoritative audit record of an event release evaluation."""
+    """One analysis of a contract change and, if attempted, its publication outcome."""
 
     record_id: str
     analysis_id: str
@@ -31,7 +55,7 @@ class ReleaseRecord:
     event_id: str | None = None
     event_bridge_event_id: str | None = None
     request_id: str | None = None
-    timestamp: datetime = datetime.now(UTC)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     published_at: datetime | None = None
     error: str | None = None
 

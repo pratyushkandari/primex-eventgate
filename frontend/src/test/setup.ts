@@ -1,16 +1,33 @@
 import '@testing-library/jest-dom/vitest'
+import { afterEach, vi } from 'vitest'
+import { cleanup } from '@testing-library/react'
 
-// ResizeObserver mock for jsdom environment (required by @xyflow/react)
+// jsdom has no ResizeObserver; @xyflow/react needs one.
 class ResizeObserverMock {
   observe = vi.fn()
   unobserve = vi.fn()
   disconnect = vi.fn()
 }
+globalThis.ResizeObserver ??= ResizeObserverMock as unknown as typeof ResizeObserver
 
-if (typeof window !== 'undefined') {
-  window.ResizeObserver = window.ResizeObserver || ResizeObserverMock
+// jsdom has no matchMedia. Tests run at a desktop width unless they override it.
+export function setViewportWide(wide: boolean) {
+  window.matchMedia = (query: string) =>
+    ({
+      matches: wide && /min-width/.test(query),
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }) as MediaQueryList
 }
-if (typeof global !== 'undefined') {
-  ;(global as unknown as { ResizeObserver: unknown }).ResizeObserver =
-    (global as unknown as { ResizeObserver: unknown }).ResizeObserver || ResizeObserverMock
-}
+setViewportWide(true)
+
+afterEach(() => {
+  setViewportWide(true)
+  cleanup()
+  window.location.hash = ''
+})

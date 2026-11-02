@@ -1,309 +1,149 @@
-import * as React from 'react'
-import { RefreshCw, Cloud, HelpCircle, Command, ChevronDown } from 'lucide-react'
+import { Command, HelpCircle, RefreshCw } from 'lucide-react'
 import { EventGateLogo } from '@/components/ui/EventGateLogo'
-import { API_CONFIG } from '@/config/env'
-import { eventGateApi } from '@/services/api'
-import type { Environment } from '@/types/api'
-
-export type NavTab = 'review' | 'contracts' | 'history' | 'devtools' | 'policies' | 'settings'
+import { cn } from '@/lib/utils'
+import { ROUTE_LABELS, ROUTES, type Route } from '@/lib/route'
+import { useHealth } from '@/services/queries'
+import { ENVIRONMENTS, type Environment } from '@/types/api'
 
 interface HeaderProps {
-  activeTab?: NavTab
-  onSelectTab?: (tab: NavTab) => void
-  onOpenCommandPalette?: () => void
-  onOpenHelp?: () => void
-  environment?: Environment
-  onEnvironmentChange?: (env: Environment) => void
+  route: Route
+  onNavigate: (route: Route) => void
+  environment: Environment
+  onEnvironmentChange: (env: Environment) => void
+  onOpenCommandPalette: () => void
+  onOpenHelp: () => void
+}
+
+function NavTabs({
+  route,
+  onNavigate,
+  className,
+}: Pick<HeaderProps, 'route' | 'onNavigate'> & { className?: string }) {
+  return (
+    <nav aria-label="Primary" className={className}>
+      <ul className="flex items-center gap-1">
+        {ROUTES.map((r) => {
+          const active = r === route
+          return (
+            <li key={r}>
+              <a
+                href={`#/${r}`}
+                aria-current={active ? 'page' : undefined}
+                onClick={(e) => {
+                  e.preventDefault()
+                  onNavigate(r)
+                }}
+                className={cn(
+                  'block rounded-[var(--radius-control)] px-3 py-1.5 text-sm whitespace-nowrap transition-colors duration-150',
+                  active ? 'bg-raised font-medium text-fg' : 'text-fg-subtle hover:bg-raised/60 hover:text-fg'
+                )}
+              >
+                {ROUTE_LABELS[r]}
+              </a>
+            </li>
+          )
+        })}
+      </ul>
+    </nav>
+  )
+}
+
+function ApiStatus() {
+  const health = useHealth()
+  const online = health.isSuccess && health.data.status === 'ok'
+  const label = health.isPending ? 'Checking API' : online ? 'API online' : 'API unreachable'
+  return (
+    <button
+      type="button"
+      onClick={() => health.refetch()}
+      title={online ? `EventGate ${health.data?.version}. Click to re-check.` : 'Click to retry'}
+      className="inline-flex h-8 items-center gap-2 rounded-[var(--radius-control)] border border-line px-2.5 text-xs text-fg-muted transition-colors hover:border-line-strong hover:text-fg"
+    >
+      {health.isFetching ? (
+        <RefreshCw className="h-3 w-3 animate-spin" aria-hidden="true" />
+      ) : (
+        <span
+          aria-hidden="true"
+          className={cn('h-2 w-2 rounded-full', online ? 'bg-success' : 'bg-danger')}
+        />
+      )}
+      <span>{label}</span>
+      {!online && !health.isFetching && <span className="text-accent-fg">Retry</span>}
+    </button>
+  )
 }
 
 export function Header({
-  activeTab = 'review',
-  onSelectTab,
+  route,
+  onNavigate,
+  environment,
+  onEnvironmentChange,
   onOpenCommandPalette,
   onOpenHelp,
-  environment = 'production',
-  onEnvironmentChange,
 }: HeaderProps) {
-  const [healthStatus, setHealthStatus] = React.useState<'checking' | 'healthy' | 'unreachable'>('checking')
-  const [lastChecked, setLastChecked] = React.useState<string | null>(null)
-  const [isEnvMenuOpen, setIsEnvMenuOpen] = React.useState(false)
-  const envMenuRef = React.useRef<HTMLDivElement>(null)
-
-  React.useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (envMenuRef.current && !envMenuRef.current.contains(event.target as Node)) {
-        setIsEnvMenuOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
-
-  const performHealthCheck = React.useCallback(async () => {
-    try {
-      const res = await eventGateApi.checkHealth()
-      if (res.status === 'ok') {
-        setHealthStatus('healthy')
-        setLastChecked(new Date().toLocaleTimeString())
-      } else {
-        setHealthStatus('unreachable')
-      }
-    } catch {
-      setHealthStatus('unreachable')
-    }
-  }, [])
-
-  const handleManualRefresh = React.useCallback(async () => {
-    setHealthStatus('checking')
-    await performHealthCheck()
-  }, [performHealthCheck])
-
-  React.useEffect(() => {
-    let ignore = false
-    async function check() {
-      try {
-        const res = await eventGateApi.checkHealth()
-        if (ignore) return
-        if (res.status === 'ok') {
-          setHealthStatus('healthy')
-          setLastChecked(new Date().toLocaleTimeString())
-        } else {
-          setHealthStatus('unreachable')
-        }
-      } catch {
-        if (!ignore) {
-          setHealthStatus('unreachable')
-        }
-      }
-    }
-    check()
-    return () => {
-      ignore = true
-    }
-  }, [])
-
   return (
-    <header className="border-b border-slate-800 bg-[#0b0f19] sticky top-0 z-40">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
-        {/* Left: Brand & Product Purpose */}
-        <div className="flex items-center space-x-3">
-          <div className="h-7 w-7 rounded bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400">
-            <EventGateLogo className="h-4 w-4 text-blue-400" />
-          </div>
-          <div>
-            <div className="flex items-center space-x-2">
-              <span className="font-semibold text-sm tracking-tight text-slate-100">
-                EventGate
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-400 font-mono hidden sm:block">
-              Event compatibility and release gating
-            </p>
-          </div>
-        </div>
+    <header className="sticky top-0 z-40 border-b border-line bg-canvas/95 backdrop-blur-sm">
+      <div className="mx-auto flex h-14 max-w-screen-2xl items-center gap-4 px-4 sm:px-6">
+        <a
+          href="#/review"
+          onClick={(e) => {
+            e.preventDefault()
+            onNavigate('review')
+          }}
+          className="flex shrink-0 items-center gap-2 rounded text-fg"
+        >
+          <span className="flex h-7 w-7 items-center justify-center rounded-md border border-accent-strong/50 bg-accent-tint text-accent-fg">
+            <EventGateLogo className="h-4 w-4" />
+          </span>
+          <span className="text-sm font-semibold">EventGate</span>
+        </a>
 
-        {/* Center: Primary Navigation Tabs */}
-        <nav className="hidden md:flex items-center space-x-1" aria-label="Primary Navigation">
-          {[
-            { id: 'review' as NavTab, label: 'Review' },
-            { id: 'contracts' as NavTab, label: 'Contracts' },
-            { id: 'history' as NavTab, label: 'History' },
-            { id: 'devtools' as NavTab, label: 'Developer Tools' },
-            { id: 'policies' as NavTab, label: 'Policies' },
-            { id: 'settings' as NavTab, label: 'Settings' },
-          ].map((tab) => {
-            const isActive = activeTab === tab.id
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => onSelectTab?.(tab.id)}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer ${
-                  isActive
-                    ? 'bg-slate-800 text-slate-100 font-semibold shadow-xs border border-slate-700/80'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
-                }`}
-              >
-                {tab.label}
-              </button>
-            )
-          })}
-        </nav>
+        <NavTabs route={route} onNavigate={onNavigate} className="hidden lg:block" />
 
-        {/* Command Palette Trigger Button */}
-        {onOpenCommandPalette && (
+        <div className="ml-auto flex items-center gap-2">
+          <label className="sr-only" htmlFor="env-selector">
+            Release target environment
+          </label>
+          <select
+            id="env-selector"
+            value={environment}
+            onChange={(e) => onEnvironmentChange(e.target.value as Environment)}
+            title="Release target environment"
+            className="h-8 cursor-pointer rounded-[var(--radius-control)] border border-line bg-surface px-2 text-xs text-fg transition-colors hover:border-line-strong"
+          >
+            {ENVIRONMENTS.map((env) => (
+              <option key={env} value={env}>
+                {env}
+              </option>
+            ))}
+          </select>
+          <div className="hidden sm:block">
+            <ApiStatus />
+          </div>
           <button
             type="button"
             onClick={onOpenCommandPalette}
-            className="hidden xl:flex items-center space-x-2 bg-slate-900/90 hover:bg-slate-800/80 border border-slate-700/70 hover:border-slate-600 px-3 py-1 rounded-md text-xs font-mono text-slate-400 hover:text-slate-200 transition-all shadow-xs cursor-pointer"
-            title="Open command palette (Ctrl+K / ⌘K)"
+            className="hidden h-8 items-center gap-2 rounded-[var(--radius-control)] border border-line px-2.5 text-xs text-fg-subtle transition-colors hover:border-line-strong hover:text-fg md:inline-flex"
           >
-            <Command className="h-3.5 w-3.5 text-slate-400" />
-            <span>Command...</span>
-            <kbd className="bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800 text-[10px] text-slate-400">
-              ⌘K
-            </kbd>
+            <Command className="h-3.5 w-3.5" aria-hidden="true" />
+            <span>Commands</span>
+            <kbd className="rounded border border-line px-1 text-[11px]">Ctrl K</kbd>
           </button>
-        )}
-
-        {/* Right: Technical Metadata & Live Status */}
-        <div className="flex items-center space-x-2 text-xs font-mono">
-          {/* AWS Region */}
-          <div className="hidden md:flex items-center space-x-1 bg-slate-900 border border-slate-800/80 px-2 py-1 rounded text-slate-400">
-            <Cloud className="h-3 w-3 text-slate-500" />
-            <span>{API_CONFIG.region}</span>
-          </div>
-
-          {/* Environment Selector Dropdown */}
-          <div ref={envMenuRef} className="relative hidden sm:flex items-center">
-            {onEnvironmentChange ? (
-              <>
-                <button
-                  type="button"
-                  id="env-selector"
-                  onClick={() => setIsEnvMenuOpen((prev) => !prev)}
-                  title={`Active Environment: ${environment}. Click to change.`}
-                  aria-label={`Target Environment: ${environment}`}
-                  aria-haspopup="menu"
-                  aria-expanded={isEnvMenuOpen}
-                  className="flex items-center space-x-1.5 bg-slate-900 border border-slate-800/80 hover:border-slate-700 px-2.5 py-1 rounded text-slate-300 transition-colors cursor-pointer text-xs font-mono"
-                >
-                  <span
-                    className={`h-1.5 w-1.5 rounded-full ${
-                      environment === 'production'
-                        ? 'bg-emerald-400'
-                        : environment === 'staging'
-                        ? 'bg-amber-400'
-                        : 'bg-blue-400'
-                    }`}
-                  />
-                  <span>{environment}</span>
-                  <ChevronDown className="h-3 w-3 text-slate-500" />
-                </button>
-
-                {isEnvMenuOpen && (
-                  <div
-                    role="menu"
-                    aria-label="Target Environment"
-                    className="absolute right-0 top-full mt-1 w-36 bg-[#0c1220] border border-slate-800 rounded-md shadow-xl py-1 z-50 font-mono text-xs"
-                  >
-                    {(['production', 'staging', 'development'] as Environment[]).map((env) => (
-                      <button
-                        key={env}
-                        role="menuitem"
-                        type="button"
-                        onClick={() => {
-                          onEnvironmentChange(env)
-                          setIsEnvMenuOpen(false)
-                        }}
-                        className={`w-full text-left px-3 py-1.5 flex items-center space-x-2 hover:bg-slate-800/70 transition-colors ${
-                          environment === env ? 'text-blue-400 font-semibold bg-slate-800/40' : 'text-slate-300'
-                        }`}
-                      >
-                        <span
-                          className={`h-1.5 w-1.5 rounded-full ${
-                            env === 'production'
-                              ? 'bg-emerald-400'
-                              : env === 'staging'
-                              ? 'bg-amber-400'
-                              : 'bg-blue-400'
-                          }`}
-                        />
-                        <span>{env}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="bg-slate-900 border border-slate-800/80 px-2.5 py-1 rounded text-slate-400 text-xs font-mono">
-                <span>{environment}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Health Status Indicator */}
           <button
             type="button"
-            onClick={handleManualRefresh}
-            title={`Click to re-verify live backend health${lastChecked ? ` (last checked: ${lastChecked})` : ''}`}
-            aria-label={
-              healthStatus === 'unreachable'
-                ? 'API Unavailable - Click to retry connection'
-                : 'API Health Status'
-            }
-            className="flex items-center space-x-1.5 bg-slate-900 border border-slate-800/80 hover:border-slate-700 px-2.5 py-1 rounded text-xs transition-colors cursor-pointer"
+            onClick={onOpenHelp}
+            aria-label="Keyboard shortcuts and help"
+            className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-control)] border border-line text-fg-subtle transition-colors hover:border-line-strong hover:text-fg"
           >
-            {healthStatus === 'checking' && (
-              <>
-                <RefreshCw className="h-3 w-3 text-slate-400 animate-spin" />
-                <span className="text-slate-400">Connecting...</span>
-              </>
-            )}
-            {healthStatus === 'healthy' && (
-              <>
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                <span className="text-emerald-400 font-medium">API ONLINE</span>
-              </>
-            )}
-            {healthStatus === 'unreachable' && (
-              <>
-                <span className="h-1.5 w-1.5 rounded-full bg-rose-400" />
-                <span className="text-rose-400 font-medium">API OFFLINE</span>
-                <span className="text-[10px] text-rose-300/80 underline ml-1">Retry</span>
-              </>
-            )}
+            <HelpCircle className="h-4 w-4" />
           </button>
-
-          {/* Docs / Help link or modal */}
-          {onOpenHelp ? (
-            <button
-              type="button"
-              onClick={onOpenHelp}
-              title="View Keyboard Shortcuts & Guide"
-              className="h-7 w-7 flex items-center justify-center rounded bg-slate-900 border border-slate-800/80 hover:border-slate-700 text-slate-400 hover:text-slate-200 transition-colors"
-              aria-label="Keyboard Shortcuts & Documentation"
-            >
-              <HelpCircle className="h-3.5 w-3.5" />
-            </button>
-          ) : (
-            <a
-              href="#rules"
-              title="Compatibility rules: EVT001 - EVT008"
-              className="h-7 w-7 flex items-center justify-center rounded bg-slate-900 border border-slate-800/80 hover:border-slate-700 text-slate-400 hover:text-slate-200 transition-colors"
-            >
-              <HelpCircle className="h-3.5 w-3.5" />
-            </a>
-          )}
         </div>
       </div>
-
-      {/* Mobile/Tablet Tab Strip */}
-      <div className="md:hidden border-t border-slate-800/80 bg-[#080d17] px-4 py-1.5 overflow-x-auto flex items-center space-x-1 scrollbar-none" aria-label="Mobile Navigation">
-        {[
-          { id: 'review' as NavTab, label: 'Review' },
-          { id: 'contracts' as NavTab, label: 'Contracts' },
-          { id: 'history' as NavTab, label: 'History' },
-          { id: 'devtools' as NavTab, label: 'Dev Tools' },
-          { id: 'policies' as NavTab, label: 'Policies' },
-          { id: 'settings' as NavTab, label: 'Settings' },
-        ].map((tab) => {
-          const isActive = activeTab === tab.id
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => onSelectTab?.(tab.id)}
-              className={`px-2.5 py-1 rounded text-xs whitespace-nowrap transition-all cursor-pointer ${
-                isActive
-                  ? 'bg-slate-800 text-slate-100 font-semibold border border-slate-700'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              {tab.label}
-            </button>
-          )
-        })}
+      <div className="flex items-center gap-2 overflow-x-auto border-t border-line px-4 py-1.5 sm:px-6 lg:hidden">
+        <NavTabs route={route} onNavigate={onNavigate} />
+        <div className="ml-auto shrink-0 sm:hidden">
+          <ApiStatus />
+        </div>
       </div>
     </header>
   )

@@ -1,4 +1,4 @@
-"""AWS live enforcement smoke test script for EventGate Phase 3.
+"""Live enforcement smoke test against a deployed stack (publishes real events).
 
 Verifies:
   1. GET /health
@@ -107,16 +107,16 @@ def run_enforcement_smoke_test(
     stack_name: str,
     region: str,
 ) -> bool:
-    """Run full Phase 3 live enforcement verification."""
+    """Run the live enforcement checks and return True if all pass."""
     print(f"\n{'=' * 70}")
-    print("  PrimeX EventGate — Live Phase 3 Enforcement Smoke Test")
+    print("  PrimeX EventGate - Live Enforcement Smoke Test")
     print(f"  Target API: {api_url}")
     print(f"  Stack:      {stack_name} ({region})")
     print(f"{'=' * 70}\n")
 
     logs_client = boto3.client("logs", region_name=region)
 
-    # 1. Discover consumer log groups dynamically
+    # Discover consumer log groups dynamically
     print("[Discovery] Fetching CloudFormation stack outputs...", end=" ")
     try:
         outputs = get_stack_outputs(stack_name, region)
@@ -139,7 +139,7 @@ def run_enforcement_smoke_test(
     all_passed = True
     base_url = api_url.rstrip("/")
 
-    # 2. Health check
+    # Health check
     print("[1/5] Checking GET /health ...", end=" ")
     try:
         status, body = http_request(f"{base_url}/health")
@@ -152,7 +152,7 @@ def run_enforcement_smoke_test(
         print(f"ERROR: {exc}")
         all_passed = False
 
-    # 3. Scenario A: Safe (v1 -> v2) -> ALLOW -> PutEvents -> 3 Consumers Receive
+    # Scenario A: Safe (v1 -> v2) -> ALLOW -> PutEvents -> 3 Consumers Receive
     print("[2/5] Scenario A (v1 -> v2: ALLOW -> EventBridge Fan-Out) ...")
     start_time_ms = int(time.time() * 1000) - 2000
     payload_a = {
@@ -216,7 +216,7 @@ def run_enforcement_smoke_test(
         print(f"      ERROR: {exc}")
         all_passed = False
 
-    # 4. Scenario B: Breaking (v1 -> v3) -> BLOCK -> NO EventBridge -> 0 Consumers Receive
+    # Scenario B: Breaking (v1 -> v3) -> BLOCK -> NO EventBridge -> 0 Consumers Receive
     print("[3/5] Scenario B (v1 -> v3: BLOCK -> Publication Prevented) ...")
     start_time_ms = int(time.time() * 1000) - 2000
     payload_b = {
@@ -278,7 +278,7 @@ def run_enforcement_smoke_test(
         print(f"      ERROR: {exc}")
         all_passed = False
 
-    # 5. Scenario C: Risk (v1 -> v4) -> REVIEW -> NO EventBridge -> 0 Consumers Receive
+    # Scenario C: Risk (v1 -> v4) -> REVIEW -> NO EventBridge -> 0 Consumers Receive
     print("[4/5] Scenario C (v1 -> v4: REVIEW -> Publication Prevented) ...")
     start_time_ms = int(time.time() * 1000) - 2000
     payload_c = {
@@ -339,7 +339,7 @@ def run_enforcement_smoke_test(
         print(f"      ERROR: {exc}")
         all_passed = False
 
-    # 6. Invalid Payload Validation
+    # Invalid Payload Validation
     print("[5/5] Checking Invalid Payload (422 INVALID_EVENT_PAYLOAD) ...", end=" ")
     try:
         status, body = http_request(
@@ -374,7 +374,7 @@ def run_enforcement_smoke_test(
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Run live Phase 3 enforcement smoke tests against deployed EventGate stack"
+        description="Run live enforcement smoke tests against a deployed EventGate stack"
     )
     parser.add_argument("api_url", nargs="?", help="Base URL of deployed API Gateway")
     parser.add_argument(

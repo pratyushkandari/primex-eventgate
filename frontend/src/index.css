@@ -1,55 +1,122 @@
 @import "tailwindcss";
 
+/*
+ * Design tokens. Components use these names (bg-surface, text-fg-muted,
+ * border-line, text-danger, ...) instead of raw palette values so every page
+ * shares one neutral scale, one accent and three status colors.
+ * The console is dark-only. Text tokens meet WCAG AA (4.5:1) on every surface.
+ */
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+
+  --color-canvas: #0b0f17;
+  --color-surface: #111722;
+  --color-raised: #182031;
+  --color-line: #243044;
+  --color-line-strong: #34425a;
+
+  --color-fg: #e6e9ef;
+  --color-fg-muted: #b3bccb;
+  --color-fg-subtle: #8d98ab;
+
+  --color-accent: #3b82f6;
+  --color-accent-strong: #2563eb;
+  --color-accent-hover: #1d4ed8;
+  --color-accent-fg: #7cb1fb;
+  --color-accent-tint: #13233d;
+
+  --color-success: #3ccf91;
+  --color-success-strong: #13704b;
+  --color-success-strong-hover: #178a5c;
+  --color-success-tint: #0e2a20;
+  --color-success-line: #1d5a41;
+  --color-warning: #f5b544;
+  --color-warning-tint: #2d230d;
+  --color-warning-line: #6a5016;
+  --color-danger: #f77b7b;
+  --color-danger-tint: #301417;
+  --color-danger-line: #6e2a30;
+
+  --radius-control: 6px;
+  --radius-card: 8px;
+
+  --shadow-overlay: 0 12px 32px -8px rgb(0 0 0 / 0.6), 0 2px 6px rgb(0 0 0 / 0.35);
+
+  --animate-fade-in: fade-in 160ms ease-out;
+  --animate-slide-in: slide-in 200ms ease-out;
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes slide-in {
+    from {
+      transform: translateX(16px);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+}
+
 :root {
   color-scheme: dark;
 }
 
 body {
   margin: 0;
-  padding: 0;
-  background-color: #090d16;
-  color: #e2e8f0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto, "Helvetica Neue", Arial, sans-serif;
   min-height: 100vh;
+  background-color: var(--color-canvas);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Dense, subtle code styling */
-code, pre, kbd, samp {
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+code,
+pre,
+kbd,
+samp {
+  font-family: var(--font-mono);
 }
 
-/* Custom developer-tool scrollbars */
+::selection {
+  background: rgb(59 130 246 / 0.35);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent-fg);
+  outline-offset: 2px;
+}
+
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #0d1117;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #1e293b;
-  border-radius: 2px;
+  background: var(--color-line);
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #334155;
+  background: var(--color-line-strong);
 }
 
-/* Subtle elevation and edge lighting for production engineering console */
-.elevation-card {
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.35), 0 1px 2px -1px rgba(0, 0, 0, 0.35);
-  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
-}
-
-.elevation-card:hover {
-  box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.45);
-}
-
-/* Accessibility: Respect user reduced-motion preferences */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -60,4 +127,3 @@ code, pre, kbd, samp {
     scroll-behavior: auto !important;
   }
 }
-

@@ -1,10 +1,14 @@
 /**
- * TypeScript definitions matching PrimeX EventGate backend schemas.
+ * Wire types for the EventGate HTTP API. Field names match the backend's
+ * camelCase JSON; runtime validation lives in src/schemas/api.ts.
  */
 
 export type Decision = 'ALLOW' | 'REVIEW' | 'BLOCK'
 export type Severity = 'LOW' | 'MEDIUM' | 'HIGH'
 export type ConsumerStatus = 'SAFE' | 'RISK' | 'BREAK'
+export type Environment = 'development' | 'staging' | 'production'
+
+export const ENVIRONMENTS: readonly Environment[] = ['production', 'staging', 'development']
 
 export interface HealthResponse {
   status: string
@@ -12,13 +16,18 @@ export interface HealthResponse {
   version: string
 }
 
-export type Environment = 'development' | 'staging' | 'production'
-
-export interface AnalysisRequest {
+export interface ChangeRequest {
   eventType: string
   currentVersion: number
   proposedVersion: number
   environment?: Environment
+}
+
+export type AnalysisRequest = ChangeRequest
+
+export interface PublishRequest extends ChangeRequest {
+  payload: Record<string, unknown>
+  analysisId?: string
 }
 
 export interface EventCatalogSummary {
@@ -29,7 +38,7 @@ export interface EventCatalogSummary {
   consumerCount: number
 }
 
-export interface EventFieldSchema {
+export interface FieldSpec {
   name: string
   type: string
   required: boolean
@@ -38,13 +47,13 @@ export interface EventFieldSchema {
 export interface EventContractVersion {
   eventType: string
   version: number
-  fields: Record<string, EventFieldSchema>
+  fields: Record<string, FieldSpec>
 }
 
 export interface SubscribedConsumer {
   consumerId: string
   eventType: string
-  expectedFields: Record<string, { name: string; type: string; required: boolean }>
+  expectedFields: Record<string, FieldSpec>
 }
 
 export interface EventDetail {
@@ -62,11 +71,7 @@ export interface ConsumerSummary {
   expectedFieldsCount: number
 }
 
-export interface ConsumerDetail {
-  consumerId: string
-  eventType: string
-  expectedFields: Record<string, { name: string; type: string; required: boolean }>
-}
+export type ConsumerDetail = SubscribedConsumer
 
 export interface TypeChange {
   field: string
@@ -103,27 +108,18 @@ export interface AnalysisResponse {
   eventType: string
   currentVersion: number
   proposedVersion: number
-  environment?: Environment
-  compatibilityResult?: string
-  policyName?: string
-  policyReason?: string
-  warnings?: string[]
+  environment: Environment
+  compatibilityResult: ConsumerStatus
+  policyName: string
+  policyReason: string
+  warnings: string[]
   changeSet: ChangeSet
   findings: ConsumerFinding[]
   decision: Decision
   severity: Severity
   summary: string
   timestamp: string
-  requestId?: string
-}
-
-export interface PublishRequest {
-  eventType: string
-  currentVersion: number
-  proposedVersion: number
-  payload: Record<string, unknown>
-  environment?: Environment
-  analysisId?: string
+  requestId?: string | null
 }
 
 export interface PublishResponse {
@@ -141,7 +137,8 @@ export interface ReleaseRecord {
   eventType: string
   currentVersion: number
   proposedVersion: number
-  environment: Environment
+  /** Normally an Environment; older records may hold other strings. */
+  environment: string
   compatibilityResult: string
   severity: Severity
   policyName: string
@@ -159,38 +156,12 @@ export interface ReleaseRecord {
   error?: string | null
 }
 
+export type ReportFormat = 'markdown' | 'json'
+
 export interface ReportExportResponse {
   recordId: string
-  format: string
+  format: ReportFormat
   content: string
-}
-
-export interface ApiErrorDetail {
-  code: string
-  message: string
-  details?: unknown
-  requestId?: string
-}
-
-export interface ApiErrorResponse {
-  error: ApiErrorDetail
-}
-
-export class EventGateApiError extends Error {
-  public readonly code: string
-  public readonly statusCode: number
-  public readonly requestId?: string
-  public readonly details?: unknown
-
-  constructor(statusCode: number, errorDetail: ApiErrorDetail) {
-    super(errorDetail.message)
-    this.name = 'EventGateApiError'
-    this.statusCode = statusCode
-    this.code = errorDetail.code
-    this.requestId = errorDetail.requestId
-    this.details = errorDetail.details
-    Object.setPrototypeOf(this, EventGateApiError.prototype)
-  }
 }
 
 export interface PolicyMatrixRow {
@@ -210,15 +181,40 @@ export interface PolicyInspectionResponse {
 }
 
 export interface RuntimeConfigResponse {
-  environment: string
+  serviceVersion: string
   storageBackend: string
   storageBackendType: string
+  contractsSource: string
+  historyStore: string
   publisherBackend: string
   publisherBackendType: string
+  eventBridgeBus: string | null
   awsRegion: string
-  eventBridgeBus: string
   policyEngine: string
   policyEngineType: string
-  contractsDirectory: string
 }
 
+export interface ApiErrorDetail {
+  code: string
+  message: string
+  requestId?: string
+  details?: Array<{ field: string; message: string }>
+}
+
+/** Error raised by the API client for any non-success response or network failure. */
+export class EventGateApiError extends Error {
+  public readonly code: string
+  public readonly statusCode: number
+  public readonly requestId?: string
+  public readonly details?: ApiErrorDetail['details']
+
+  constructor(statusCode: number, errorDetail: ApiErrorDetail) {
+    super(errorDetail.message)
+    this.name = 'EventGateApiError'
+    this.statusCode = statusCode
+    this.code = errorDetail.code
+    this.requestId = errorDetail.requestId
+    this.details = errorDetail.details
+    Object.setPrototypeOf(this, EventGateApiError.prototype)
+  }
+}

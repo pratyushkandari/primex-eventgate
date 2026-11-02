@@ -1,4 +1,9 @@
-"""AWS EventBridge event publisher implementation."""
+"""Publishes approved events to an EventBridge custom bus.
+
+Each event is sent as Source "primex.eventgate", DetailType "EventGateEvent",
+with the payload wrapped in a detail envelope that also carries the event ID,
+analysis ID and request ID, so consumers can trace an event back to its review.
+"""
 
 from __future__ import annotations
 
@@ -54,15 +59,17 @@ class EventBridgeEventPublisher:
             "payload": payload,
         }
 
-        entry = {
-            "Source": "primex.eventgate",
-            "DetailType": "EventGateEvent",
-            "EventBusName": self._bus_name,
-            "Detail": json.dumps(detail),
-        }
-
         try:
-            response = self._client.put_events(Entries=[entry])
+            response = self._client.put_events(
+                Entries=[
+                    {
+                        "Source": "primex.eventgate",
+                        "DetailType": "EventGateEvent",
+                        "EventBusName": self._bus_name,
+                        "Detail": json.dumps(detail),
+                    }
+                ]
+            )
         except Exception as exc:
             logger.exception("EventBridge PutEvents API call failed: %s", exc)
             raise EventPublishFailedError("The event could not be published.") from exc

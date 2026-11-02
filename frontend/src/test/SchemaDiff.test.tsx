@@ -1,90 +1,61 @@
-import { render, screen, fireEvent } from '@testing-library/react'
-import { describe, it, expect, vi } from 'vitest'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
 import { SchemaDiff } from '@/components/workspace/SchemaDiff'
-import type { ChangeSet } from '@/types/api'
+import { FindingsPanel } from '@/components/workspace/FindingsPanel'
+import { analysis } from './fixtures'
 
-describe('SchemaDiff component', () => {
-  it('renders empty state when there are no changes', () => {
-    const emptyChangeSet: ChangeSet = {
-      addedFields: [],
-      removedFields: [],
-      typeChanges: [],
-      requirednessChanges: [],
-    }
+const changeSet = {
+  addedFields: ['metadata'],
+  removedFields: ['couponCode'],
+  typeChanges: [{ field: 'shippingMethod', fromType: 'string', toType: 'object' }],
+  requirednessChanges: [{ field: 'amount', fromRequired: true, toRequired: false }],
+}
 
-    render(<SchemaDiff changeSet={emptyChangeSet} />)
-
-    expect(screen.getByText('Schema Diff')).toBeInTheDocument()
-    expect(screen.getByText('No schema changes detected between versions.')).toBeInTheDocument()
+describe('SchemaDiff', () => {
+  it('says so when there are no changes', () => {
+    render(<SchemaDiff changeSet={{ addedFields: [], removedFields: [], typeChanges: [], requirednessChanges: [] }} />)
+    expect(screen.getByText('No schema changes')).toBeInTheDocument()
   })
 
-  it('renders additions, removals, type changes, and requiredness updates', () => {
-    const changeSet: ChangeSet = {
-      addedFields: ['loyaltyTier'],
-      removedFields: ['discountCode'],
-      typeChanges: [{ field: 'totalAmount', fromType: 'number', toType: 'string' }],
-      requirednessChanges: [{ field: 'customerEmail', fromRequired: false, toRequired: true }],
-    }
-
+  it('lists every kind of change with its detail', () => {
     render(<SchemaDiff changeSet={changeSet} />)
-
-    expect(screen.getByText('+1 ADDED')).toBeInTheDocument()
-    expect(screen.getByText('−1 REMOVED')).toBeInTheDocument()
-    expect(screen.getByText('1 TYPE CHANGE')).toBeInTheDocument()
-    expect(screen.getByText('1 REQUIREDNESS CHANGE')).toBeInTheDocument()
-
-    expect(screen.getByText('loyaltyTier')).toBeInTheDocument()
-    expect(screen.getByText('discountCode')).toBeInTheDocument()
-    expect(screen.getByText('totalAmount')).toBeInTheDocument()
-    expect(screen.getByText('customerEmail')).toBeInTheDocument()
-
-    expect(screen.getByText(/number/i)).toBeInTheDocument()
-    expect(screen.getByText(/string/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /metadata added/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /couponCode removed/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /shippingMethod string → object/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /amount required → optional/ })).toBeInTheDocument()
   })
 
-  it('calls onSelectField when clicking a field diff row', () => {
-    const changeSet: ChangeSet = {
-      addedFields: ['loyaltyTier'],
-      removedFields: [],
-      typeChanges: [],
-      requirednessChanges: [],
-    }
-    const handleSelectField = vi.fn()
-
-    render(
-      <SchemaDiff
-        changeSet={changeSet}
-        selectedField={null}
-        onSelectField={handleSelectField}
-      />
-    )
-
-    const fieldBtn = screen.getByRole('button', { name: /loyaltyTier/i })
-    fireEvent.click(fieldBtn)
-
-    expect(handleSelectField).toHaveBeenCalledWith('loyaltyTier')
+  it('shows which consumers a changed field affects', () => {
+    const a = analysis('BLOCK')
+    render(<SchemaDiff changeSet={a.changeSet} findings={a.findings} />)
+    expect(screen.getByText('affects inventory-service')).toBeInTheDocument()
   })
 
-  it('toggles field selection off when clicking already selected field', () => {
-    const changeSet: ChangeSet = {
-      addedFields: ['loyaltyTier'],
-      removedFields: [],
-      typeChanges: [],
-      requirednessChanges: [],
-    }
-    const handleSelectField = vi.fn()
+  it('toggles field selection', () => {
+    const onSelect = vi.fn()
+    const { rerender } = render(<SchemaDiff changeSet={changeSet} onSelectField={onSelect} />)
+    fireEvent.click(screen.getByRole('button', { name: /metadata/ }))
+    expect(onSelect).toHaveBeenLastCalledWith('metadata')
+    rerender(<SchemaDiff changeSet={changeSet} onSelectField={onSelect} selectedField="metadata" />)
+    expect(screen.getByRole('button', { name: /metadata/ })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(screen.getByRole('button', { name: /metadata/ }))
+    expect(onSelect).toHaveBeenLastCalledWith(null)
+  })
+})
 
-    render(
-      <SchemaDiff
-        changeSet={changeSet}
-        selectedField="loyaltyTier"
-        onSelectField={handleSelectField}
-      />
-    )
+describe('FindingsPanel', () => {
+  it('renders nothing without an analysis', () => {
+    const { container } = render(<FindingsPanel analysis={null} />)
+    expect(container).toBeEmptyDOMElement()
+  })
 
-    const fieldBtn = screen.getByRole('button', { name: /loyaltyTier/i })
-    fireEvent.click(fieldBtn)
-
-    expect(handleSelectField).toHaveBeenCalledWith(null)
+  it('shows the diff and every finding with its rule', () => {
+    const onSelectConsumer = vi.fn()
+    render(<FindingsPanel analysis={analysis('BLOCK')} onSelectConsumer={onSelectConsumer} />)
+    expect(screen.getByText('3 findings across 3 consumers')).toBeInTheDocument()
+    expect(screen.getByText('EVT001_FIELD_TYPE_CHANGED')).toBeInTheDocument()
+    expect(screen.getByText(/expects 'shippingMethod' to be string/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'inventory-service' }))
+    expect(onSelectConsumer).toHaveBeenCalledWith('inventory-service')
   })
 })

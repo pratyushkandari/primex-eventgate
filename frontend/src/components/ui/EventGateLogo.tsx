@@ -3,11 +3,7 @@ interface EventGateLogoProps {
   size?: number
 }
 
-/**
- * Custom geometric EventGate brand mark.
- * Visually communicates: gate portals, ingress event stream, core verification nexus, and controlled egress vector.
- * Renders crisp SVG vector at 16px, 20px, 24px, and 32px on dark enterprise surfaces.
- */
+/** EventGate mark: two gate posts with an event passing through a checkpoint. Inherits text color. */
 export function EventGateLogo({ className = 'h-4 w-4', size }: EventGateLogoProps) {
   return (
     <svg

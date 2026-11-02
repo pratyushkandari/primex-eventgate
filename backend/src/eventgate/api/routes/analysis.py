@@ -1,34 +1,33 @@
-"""Analysis endpoint — POST /api/v1/analyze.
+"""POST /api/v1/analyze: evaluate a proposed contract version against its consumers.
 
-Evaluates a proposed event contract against registered downstream consumer
-contracts and returns consumer-specific findings with an overall decision.
-
-Pydantic models here handle API serialization (camelCase JSON). Domain
-dataclasses remain internal.
+The result is also written to release history (keyed by analysisId) so a later
+publish can be correlated with it and reports can be exported for it. Pydantic
+models here own the camelCase wire format; domain objects stay internal.
 """
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Response
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field, field_validator
 
-from eventgate.api.dependencies import get_analysis_service, get_history_service, get_request_id
+from eventgate.api.dependencies import get_analysis_service, get_history_service
+from eventgate.api.request_id import get_request_id
 from eventgate.application.services.event_analysis_service import EventAnalysisService
 from eventgate.application.services.release_history_service import ReleaseHistoryService
+from eventgate.domain.enums import Environment
+from eventgate.domain.history import affected_consumer_ids, summarize_findings
 from eventgate.domain.models import AnalysisResult
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1")
 
 
-# ---------------------------------------------------------------------------
-# Request model
-# ---------------------------------------------------------------------------
-
-
-class AnalyzeRequest(BaseModel):
-    """Request body for event compatibility analysis."""
+class ChangeRequest(BaseModel):
+    """Fields shared by analyze and publish requests."""
 
     model_config = {"populate_by_name": True}
 
@@ -39,11 +38,22 @@ class AnalyzeRequest(BaseModel):
     proposed_version: int = Field(
         ..., alias="proposedVersion", ge=1, description="Proposed event version"
     )
-    environment: str = Field("production", description="Deployment environment")
+    environment: Environment = Field(
+        Environment.PRODUCTION, description="Release target: development, staging or production"
+    )
+
+    @field_validator("environment", mode="before")
+    @classmethod
+    def _normalize_environment(cls, value: object) -> object:
+        return value.strip().lower() if isinstance(value, str) else value
+
+
+class AnalyzeRequest(ChangeRequest):
+    """Request body for event compatibility analysis."""
 
 
 # ---------------------------------------------------------------------------
-# Response models (camelCase JSON for future React frontend)
+# Response models
 # ---------------------------------------------------------------------------
 
 
@@ -172,42 +182,24 @@ def _to_response(result: AnalysisResult) -> AnalysisResponse:
         "Evaluate a proposed event contract against the contracts registered "
         "by downstream consumers. Evaluates release policy for the target "
         "environment and returns per-consumer findings, policy reasons, and an "
-        "authoritative ALLOW / REVIEW / BLOCK decision."
+        "ALLOW / REVIEW / BLOCK decision."
     ),
 )
-async def analyze_event(
+def analyze_event(
     body: AnalyzeRequest,
-    response: Response,
     request_id: str = Depends(get_request_id),
     service: EventAnalysisService = Depends(get_analysis_service),
     history_service: ReleaseHistoryService = Depends(get_history_service),
-):
-    response.headers["X-Request-ID"] = request_id
+) -> AnalysisResponse:
     result = service.analyze(
         event_type=body.event_type,
         current_version=body.current_version,
         proposed_version=body.proposed_version,
-        environment=body.environment,
+        environment=body.environment.value,
         request_id=request_id,
     )
 
-    findings_summary = [
-        {
-            "consumerId": f.consumer_id,
-            "status": f.status.value,
-            "ruleId": f.rule_id,
-            "field": f.field,
-            "expectedType": f.expected_type,
-            "proposedType": f.proposed_type,
-            "severity": f.severity.value,
-            "reason": f.reason,
-        }
-        for f in result.findings
-    ]
-    affected_consumers = sorted(
-        {f.consumer_id for f in result.findings if f.status.value != "SAFE"}
-    )
-
+    # History is best effort here: the analysis itself succeeded and is returned.
     try:
         history_service.record_evaluation(
             analysis_id=result.analysis_id,
@@ -220,13 +212,11 @@ async def analyze_event(
             policy_name=result.policy_name,
             policy_reason=result.policy_reason or result.summary,
             decision=result.decision.value,
-            affected_consumers=affected_consumers,
-            findings_summary=findings_summary,
+            affected_consumers=affected_consumer_ids(result.findings),
+            findings_summary=summarize_findings(result.findings),
             request_id=request_id,
         )
     except Exception as exc:
-        import logging
-
-        logging.getLogger(__name__).warning("Failed to record evaluation in history: %s", exc)
+        logger.warning("Failed to record evaluation in history: %s", exc)
 
     return _to_response(result)

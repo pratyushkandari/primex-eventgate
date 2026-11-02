@@ -1,53 +1,34 @@
-/**
- * TopologyFallback — Accessible semantic representation of the dependency topology.
- * Hidden from visual users, visible to screen readers.
- */
-
-import type { AnalysisResponse, ConsumerStatus } from '@/types/api'
+import type { ConsumerImpact } from '@/lib/findings'
 
 interface TopologyFallbackProps {
-  analysis: AnalysisResponse | null
-  consumers: Array<{ id: string; name: string }>
-  onSelectConsumer?: (consumerId: string) => void
+  eventLabel: string
+  decision: string | null
+  impacts: ConsumerImpact[]
+  hasAnalysis: boolean
 }
 
-export function TopologyFallback({ analysis, consumers, onSelectConsumer }: TopologyFallbackProps) {
-  const getStatus = (consumerId: string): ConsumerStatus => {
-    if (!analysis) return 'SAFE'
-    const finding = analysis.findings.find((f) => f.consumerId === consumerId)
-    return finding ? finding.status : 'SAFE'
-  }
-
+/**
+ * Text version of the topology graph for screen readers. The graph itself is
+ * hidden from assistive technology; keyboard users inspect consumers from the
+ * Consumer impact panel, which has the same actions.
+ */
+export function TopologyFallback({ eventLabel, decision, impacts, hasAnalysis }: TopologyFallbackProps) {
   return (
-    <div className="sr-only" aria-label="Dependency topology accessible representation">
-      <div role="list" aria-label="Event processing topology">
-        <div role="listitem">
-          Producer: {analysis?.eventType || 'OrderPlaced'} v{analysis?.currentVersion ?? 1} →
-          v{analysis?.proposedVersion ?? 2}
-        </div>
-        <div role="listitem">
-          EventGate Release Gate — Decision:{' '}
-          {analysis?.decision || 'Awaiting analysis'}
-        </div>
-        <div role="list" aria-label="Downstream consumers">
-          {consumers.map((c) => {
-            const status = getStatus(c.id)
-            const finding = analysis?.findings.find((f) => f.consumerId === c.id)
-            return (
-              <div key={c.id} role="listitem">
-                <button
-                  type="button"
-                  onClick={() => onSelectConsumer?.(c.id)}
-                >
-                  {c.name} ({c.id}): {status}
-                  {finding && finding.field !== '*' && ` — field: ${finding.field}`}
-                  {finding?.reason && ` — ${finding.reason}`}
-                </button>
-              </div>
-            )
-          })}
-        </div>
-      </div>
+    <div className="sr-only">
+      <p>Producer: {eventLabel}.</p>
+      <p>EventGate decision: {decision ?? 'not analyzed yet'}.</p>
+      <ul aria-label="Downstream consumers">
+        {impacts.map((impact) => {
+          const finding = impact.findings.find((f) => f.status !== 'SAFE')
+          return (
+            <li key={impact.consumerId}>
+              {impact.consumerId}: {hasAnalysis ? impact.status : 'not analyzed'}
+              {finding && finding.field !== '*' ? `, field ${finding.field}` : ''}
+              {finding ? `. ${finding.reason}` : ''}
+            </li>
+          )
+        })}
+      </ul>
     </div>
   )
 }

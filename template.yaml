@@ -1,8 +1,8 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  PrimeX EventGate - Phase 2
-  Serverless AWS Runtime + DynamoDB Persistence for Consumer-Aware Event Safety Gate
+  PrimeX EventGate: FastAPI release gate on Lambda behind an HTTP API, with DynamoDB
+  contract and history tables, an EventBridge bus, and three demo consumer Lambdas.
 
 Parameters:
   ProjectName:
@@ -28,7 +28,6 @@ Globals:
     Tags:
       Project: EventGate
       Team: PrimeX
-      Phase: Phase2
       Environment: !Ref Environment
 
 Resources:
@@ -57,8 +56,6 @@ Resources:
           Value: EventGate
         - Key: Team
           Value: PrimeX
-        - Key: Phase
-          Value: Phase2
         - Key: Environment
           Value: !Ref Environment
 
@@ -95,8 +92,6 @@ Resources:
           Value: EventGate
         - Key: Team
           Value: PrimeX
-        - Key: Phase
-          Value: Phase2
         - Key: Environment
           Value: !Ref Environment
 
@@ -135,8 +130,6 @@ Resources:
           Value: EventGate
         - Key: Team
           Value: PrimeX
-        - Key: Phase
-          Value: Phase5
         - Key: Environment
           Value: !Ref Environment
 
@@ -147,6 +140,10 @@ Resources:
     Type: AWS::Serverless::HttpApi
     Properties:
       StageName: $default
+      # The API is public and unauthenticated; throttling caps abuse and cost.
+      DefaultRouteSettings:
+        ThrottlingRateLimit: 20
+        ThrottlingBurstLimit: 40
       CorsConfiguration:
         AllowOrigins:
           - "*"
@@ -157,14 +154,12 @@ Resources:
         AllowHeaders:
           - Content-Type
           - X-Request-ID
-          - Authorization
         ExposeHeaders:
           - X-Request-ID
         MaxAge: 300
       Tags:
         Project: EventGate
         Team: PrimeX
-        Phase: Phase2
         Environment: !Ref Environment
 
   # ---------------------------------------------------------------------------
@@ -248,8 +243,6 @@ Resources:
           Value: EventGate
         - Key: Team
           Value: PrimeX
-        - Key: Phase
-          Value: Phase3
         - Key: Environment
           Value: !Ref Environment
 
@@ -274,7 +267,6 @@ Resources:
       Tags:
         Project: EventGate
         Team: PrimeX
-        Phase: Phase3
         Environment: !Ref Environment
 
   InventoryConsumerFunction:
@@ -295,7 +287,6 @@ Resources:
       Tags:
         Project: EventGate
         Team: PrimeX
-        Phase: Phase3
         Environment: !Ref Environment
 
   AnalyticsConsumerFunction:
@@ -316,7 +307,6 @@ Resources:
       Tags:
         Project: EventGate
         Team: PrimeX
-        Phase: Phase3
         Environment: !Ref Environment
 
   # ---------------------------------------------------------------------------

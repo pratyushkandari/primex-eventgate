@@ -213,3 +213,50 @@ def test_cli_history_command():
     assert result.exit_code == 0
     assert "Recent Release Reviews" in result.output
     assert "OrderPlaced" in result.output
+
+
+def test_cli_rejects_unknown_environment():
+    runner = CliRunner()
+    result = runner.invoke(
+        main, ["check", "-e", "OrderPlaced", "-c", "1", "-p", "2", "--env", "prod"]
+    )
+    assert result.exit_code == 2
+    assert "prod" in result.output
+
+
+def test_cli_test_command_unknown_event_reports_error():
+    runner = CliRunner()
+    result = runner.invoke(
+        main, ["test", "-e", "NoSuchEvent", "-c", "1", "-p", "2", "--expected", "ALLOW"]
+    )
+    assert result.exit_code == 1
+    assert "CONTRACT_NOT_FOUND" in result.output
+    assert result.exception is None or isinstance(result.exception, SystemExit)
+
+
+def test_cli_check_persist_failure_warns_but_keeps_decision(monkeypatch):
+    from eventgate.cli import main as cli_module
+
+    class BrokenHistory:
+        def record_evaluation(self, **kwargs):
+            raise OSError("disk full")
+
+    monkeypatch.setattr(cli_module, "get_history_service", lambda: BrokenHistory())
+    runner = CliRunner()
+    result = runner.invoke(main, ["check", "-e", "OrderPlaced", "-c", "1", "-p", "2", "--persist"])
+    assert result.exit_code == 0
+    assert "could not persist history record: disk full" in result.output
+
+
+def test_cli_check_persist_writes_configured_history(isolate_history_for_tests):
+    runner = CliRunner()
+    result = runner.invoke(main, ["check", "-e", "OrderPlaced", "-c", "1", "-p", "3", "--persist"])
+    assert result.exit_code == 1
+    assert "OrderPlaced" in isolate_history_for_tests.read_text(encoding="utf-8")
+
+
+def test_cli_check_without_persist_leaves_history_untouched(isolate_history_for_tests):
+    before = isolate_history_for_tests.read_text(encoding="utf-8")
+    runner = CliRunner()
+    runner.invoke(main, ["check", "-e", "OrderPlaced", "-c", "1", "-p", "3"])
+    assert isolate_history_for_tests.read_text(encoding="utf-8") == before

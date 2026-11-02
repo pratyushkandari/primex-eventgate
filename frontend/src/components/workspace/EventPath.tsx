@@ -1,214 +1,69 @@
-import { ArrowRight, CheckCircle2, ShieldAlert, ShieldCheck, ShieldQuestion } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
-import { Badge } from '@/components/ui/Badge'
-import type { Decision, Environment } from '@/types/api'
+import { ArrowRight } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import type { Decision } from '@/types/api'
 
 interface EventPathProps {
   decision: Decision | null
   isPublished: boolean
-  environment?: Environment
+  /** Name of the event bus, or "in-memory publisher" when running locally. */
+  busLabel: string
+  consumerCount: number
 }
 
-export function EventPath({ decision, isPublished, environment = 'production' }: EventPathProps) {
-  const isAllowed = decision === 'ALLOW'
+type StepState = 'idle' | 'passed' | 'stopped' | 'skipped'
+
+const STATE_STYLES: Record<StepState, string> = {
+  idle: 'border-line text-fg-muted',
+  passed: 'border-success-line bg-success-tint/40 text-fg',
+  stopped: 'border-danger-line bg-danger-tint/40 text-fg',
+  skipped: 'border-line border-dashed text-fg-subtle',
+}
+
+function Step({ title, detail, state }: { title: string; detail: string; state: StepState }) {
+  return (
+    <li className={cn('flex-1 rounded-[var(--radius-control)] border px-3 py-2', STATE_STYLES[state])}>
+      <p className="text-sm font-medium">{title}</p>
+      <p className="mt-0.5 text-xs text-fg-subtle">{detail}</p>
+    </li>
+  )
+}
+
+/** Where the event got to: producer → gate → bus → consumers. */
+export function EventPath({ decision, isPublished, busLabel, consumerCount }: EventPathProps) {
+  const gate: StepState = !decision ? 'idle' : decision === 'ALLOW' ? 'passed' : 'stopped'
+  const downstream: StepState = isPublished ? 'passed' : decision && decision !== 'ALLOW' ? 'skipped' : 'idle'
+  const gateDetail = !decision
+    ? 'Waiting for analysis'
+    : decision === 'ALLOW'
+      ? 'Decision ALLOW'
+      : `Decision ${decision}: stopped here (HTTP 409)`
 
   return (
-    <Card className="border-slate-800">
-      <CardHeader className="py-3 px-4">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-xs font-mono uppercase tracking-wider text-slate-300">
-            Event path
-          </CardTitle>
-          <div className="flex items-center space-x-2 text-[10px] font-mono text-slate-500">
-            <span>{environment}</span>
-            <span>•</span>
-            <span>Bus: primex-eventgate-dev-bus</span>
-          </div>
-        </div>
-      </CardHeader>
-
-      <CardContent className="p-4">
-        <div className="grid grid-cols-1 md:grid-cols-7 gap-2 items-center text-xs font-mono">
-          {/* Node 1: API Gateway */}
-          <div className="bg-slate-950/80 border border-slate-800/90 rounded p-2.5 space-y-1">
-            <span className="text-[10px] text-slate-500 uppercase block">Producer</span>
-            <span className="font-semibold text-slate-200 block">API Gateway</span>
-            <span className="text-[10px] text-slate-400 block font-mono">
-              POST /events/publish
-            </span>
-          </div>
-
-          {/* Transition 1 */}
-          <div className="hidden md:flex justify-center text-slate-600">
-            <ArrowRight className="h-4 w-4" />
-          </div>
-
-          {/* Node 2: EventGate */}
-          <div
-            className={`border rounded p-2.5 space-y-1 transition-colors ${
-              decision === 'ALLOW'
-                ? 'bg-emerald-950/20 border-emerald-500/40'
-                : decision === 'BLOCK'
-                ? 'bg-rose-950/20 border-rose-500/40'
-                : decision === 'REVIEW'
-                ? 'bg-amber-950/20 border-amber-500/40'
-                : 'bg-slate-950/80 border-slate-800'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] text-slate-500 uppercase block">Gate</span>
-              {decision === 'ALLOW' && (
-                <ShieldCheck className="h-3 w-3 text-emerald-400" />
-              )}
-              {decision === 'BLOCK' && (
-                <ShieldAlert className="h-3 w-3 text-rose-400" />
-              )}
-              {decision === 'REVIEW' && (
-                <ShieldQuestion className="h-3 w-3 text-amber-400" />
-              )}
-            </div>
-            <span className="font-semibold text-slate-200 block">EventGate</span>
-            <span
-              className={`text-[10px] block font-mono ${
-                decision === 'ALLOW'
-                  ? 'text-emerald-400 font-medium'
-                  : decision === 'BLOCK'
-                  ? 'text-rose-400 font-medium'
-                  : decision === 'REVIEW'
-                  ? 'text-amber-400 font-medium'
-                  : 'text-slate-500'
-              }`}
-            >
-              {decision ? `decision: ${decision}` : 'Awaiting analysis'}
-            </span>
-          </div>
-
-          {/* Transition 2 */}
-          <div className="hidden md:flex justify-center">
-            {decision === 'BLOCK' ? (
-              <span
-                title="Publication prevented by Gate"
-                className="text-rose-400 text-xs font-bold select-none"
-              >
-                ⊘
-              </span>
-            ) : decision === 'REVIEW' ? (
-              <span
-                title="Publication held pending review"
-                className="text-amber-400 text-xs font-bold select-none"
-              >
-                ⊘
-              </span>
-            ) : isAllowed ? (
-              <ArrowRight className="h-4 w-4 text-emerald-400" />
-            ) : (
-              <ArrowRight className="h-4 w-4 text-slate-700" />
-            )}
-          </div>
-
-          {/* Node 3: EventBridge */}
-          <div
-            className={`border rounded p-2.5 space-y-1 transition-colors ${
-              isPublished
-                ? 'bg-emerald-950/30 border-emerald-500/50'
-                : decision === 'BLOCK'
-                ? 'bg-rose-950/20 border-rose-500/30'
-                : decision === 'REVIEW'
-                ? 'bg-amber-950/20 border-amber-500/30'
-                : 'bg-slate-950/80 border-slate-800'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] text-slate-500 uppercase block">Broker</span>
-              {isPublished && <CheckCircle2 className="h-3 w-3 text-emerald-400" />}
-              {decision === 'BLOCK' && <span className="text-[10px] text-rose-400 font-bold">PREVENTED</span>}
-              {decision === 'REVIEW' && <span className="text-[10px] text-amber-400 font-bold">HELD</span>}
-              {decision === 'ALLOW' && !isPublished && <span className="text-[10px] text-emerald-400 font-mono">READY</span>}
-            </div>
-            <span className="font-semibold text-slate-200 block">EventBridge</span>
-            <span
-              className={`text-[10px] block font-mono ${
-                isPublished
-                  ? 'text-emerald-400 font-medium'
-                  : decision === 'BLOCK'
-                  ? 'text-rose-400 font-medium'
-                  : decision === 'REVIEW'
-                  ? 'text-amber-400 font-medium'
-                  : 'text-slate-400'
-              }`}
-            >
-              {isPublished
-                ? 'PUBLISHED'
-                : decision === 'BLOCK' || decision === 'REVIEW'
-                ? 'NOT CALLED'
-                : 'primex-eventgate-dev-bus'}
-            </span>
-            <span className="text-[9px] text-slate-500 block">
-              {isPublished
-                ? 'Delivered to bus'
-                : decision === 'BLOCK'
-                ? 'Publication prevented'
-                : decision === 'REVIEW'
-                ? 'Publication held'
-                : 'Custom event bus'}
-            </span>
-          </div>
-
-          {/* Transition 3 */}
-          <div className="hidden md:flex justify-center">
-            {isPublished ? (
-              <ArrowRight className="h-4 w-4 text-emerald-400" />
-            ) : decision === 'BLOCK' ? (
-              <span className="text-rose-400 text-xs font-bold select-none">⊘</span>
-            ) : decision === 'REVIEW' ? (
-              <span className="text-amber-400 text-xs font-bold select-none">⊘</span>
-            ) : (
-              <ArrowRight className="h-4 w-4 text-slate-700" />
-            )}
-          </div>
-
-          {/* Node 4: Consumers */}
-          <div
-            className={`border rounded p-2.5 space-y-1 transition-colors ${
-              isPublished
-                ? 'bg-emerald-950/30 border-emerald-500/50'
-                : decision === 'BLOCK' || decision === 'REVIEW'
-                ? 'bg-slate-950/30 border-slate-800/60 opacity-60'
-                : 'bg-slate-950/80 border-slate-800'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] text-slate-500 uppercase block">Subscribers</span>
-              {isPublished ? (
-                <Badge variant="safe" size="sm">
-                  DELIVERED
-                </Badge>
-              ) : decision === 'BLOCK' || decision === 'REVIEW' ? (
-                <span className={`text-[10px] font-mono ${decision === 'BLOCK' ? 'text-rose-400' : 'text-amber-400'}`}>
-                  NOT REACHED
-                </span>
-              ) : (
-                <span className="text-[10px] text-slate-500 font-mono">TARGETS</span>
-              )}
-            </div>
-            <span className="font-semibold text-slate-200 block">Consumers</span>
-            <span className="text-[10px] text-slate-400 block font-mono">
-              {isPublished
-                ? 'Billing · Inventory · Analytics'
-                : decision === 'BLOCK' || decision === 'REVIEW'
-                ? 'NOT REACHED'
-                : '3 registered targets'}
-            </span>
-            <span className="text-[9px] text-slate-500 block">
-              {isPublished
-                ? 'Delivered to subscribers'
-                : decision === 'BLOCK' || decision === 'REVIEW'
-                ? 'Consumers not reached'
-                : 'Registered consumer contracts'}
-            </span>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+    <section aria-label="Event path" className="rounded-[var(--radius-card)] border border-line bg-surface p-4">
+      <h2 className="mb-3 text-sm font-semibold text-fg">Event path</h2>
+      <ol className="flex flex-col gap-2 md:flex-row md:items-stretch">
+        <Step title="Producer" detail="POST /api/v1/events/publish" state={decision ? 'passed' : 'idle'} />
+        <ArrowRight className="hidden h-4 w-4 self-center text-fg-subtle md:block" aria-hidden="true" />
+        <Step title="EventGate" detail={gateDetail} state={gate} />
+        <ArrowRight className="hidden h-4 w-4 self-center text-fg-subtle md:block" aria-hidden="true" />
+        <Step
+          title="Event bus"
+          detail={isPublished ? `Accepted by ${busLabel}` : downstream === 'skipped' ? 'Not called' : busLabel}
+          state={downstream}
+        />
+        <ArrowRight className="hidden h-4 w-4 self-center text-fg-subtle md:block" aria-hidden="true" />
+        <Step
+          title="Consumers"
+          detail={
+            isPublished
+              ? `Delivered to ${consumerCount} subscribed ${consumerCount === 1 ? 'consumer' : 'consumers'}`
+              : downstream === 'skipped'
+                ? 'Not reached'
+                : `${consumerCount} subscribed`
+          }
+          state={downstream}
+        />
+      </ol>
+    </section>
   )
 }

@@ -1,597 +1,299 @@
+/**
+ * Developer tools: assert that a change produces an expected decision (the same
+ * check as `eventgate test`), plus the CLI commands and CI exit codes for it.
+ */
+
 import * as React from 'react'
-import {
-  Terminal,
-  CheckCircle2,
-  XCircle,
-  Play,
-  Copy,
-  Check,
-  GitPullRequest,
-  RefreshCw,
-} from 'lucide-react'
-import { eventGateApi } from '@/services/api'
-import type { AnalysisResponse, Decision, Environment } from '@/types/api'
-import { REGISTERED_CONSUMERS } from '@/data/consumers'
-import { Badge } from '@/components/ui/Badge'
+import { CheckCircle2, ExternalLink, Play, XCircle } from 'lucide-react'
+import { StatusBadge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
+import { Card, CardHeader } from '@/components/ui/Card'
+import { CopyButton } from '@/components/ui/CopyButton'
+import { FieldMessage, Label, Select } from '@/components/ui/Field'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { ErrorState } from '@/components/ui/States'
+import type { ChangeSelection } from '@/components/workspace/useReviewSession'
+import { expectedDecisionFor, findScenario, SCENARIO_LIST } from '@/data/scenarios'
+import { consumerImpacts } from '@/lib/findings'
+import { cn } from '@/lib/utils'
+import { eventGateApi } from '@/services/api'
+import { useEventCatalog, useEventDetail } from '@/services/queries'
+import { ENVIRONMENTS, type AnalysisResponse, type Decision, type Environment } from '@/types/api'
 
 interface DeveloperToolsViewProps {
-  onOpenReviewScenario?: (eventType: string, current: number, proposed: number) => void
-}
-
-function getSuggestedDecision(
-  event: string,
-  current: number,
-  proposed: number,
-  env: Environment,
-): Decision {
-  if (event === 'OrderPlaced') {
-    if (current === 1 && proposed === 2) return 'ALLOW'
-    if (current === 1 && proposed === 3) return 'BLOCK'
-    if (current === 1 && proposed === 4) return env === 'development' ? 'ALLOW' : 'REVIEW'
-  }
-  if (current === proposed) return 'ALLOW'
-  return 'ALLOW'
-}
-
-interface ExecutedRequestSnapshot {
-  eventType: string
-  currentVersion: number
-  proposedVersion: number
   environment: Environment
-  expectedDecision: Decision
+  onOpenReview?: (change: ChangeSelection) => void
 }
 
-export function DeveloperToolsView({ onOpenReviewScenario }: DeveloperToolsViewProps) {
-  // Test runner state
-  const [eventType, setEventType] = React.useState('OrderPlaced')
-  const [currentVersion, setCurrentVersion] = React.useState(1)
-  const [proposedVersion, setProposedVersion] = React.useState(2)
-  const [environment, setEnvironment] = React.useState<Environment>('production')
-  const suggestedDecision = React.useMemo(
-    () => getSuggestedDecision(eventType, currentVersion, proposedVersion, environment),
-    [eventType, currentVersion, proposedVersion, environment]
-  )
+interface RunSnapshot extends ChangeSelection {
+  environment: Environment
+  expected: Decision
+}
 
-  const [manualOverrideDecision, setManualOverrideDecision] = React.useState<Decision | null>(null)
-  const isManualOverride = manualOverrideDecision !== null
-  const expectedDecision = manualOverrideDecision ?? suggestedDecision
+export function DeveloperToolsView({ environment: globalEnvironment, onOpenReview }: DeveloperToolsViewProps) {
+  const catalog = useEventCatalog()
+  const [change, setChange] = React.useState<ChangeSelection>({ eventType: 'OrderPlaced', currentVersion: 1, proposedVersion: 2 })
+  const [environment, setEnvironment] = React.useState<Environment>(globalEnvironment)
+  const [override, setOverride] = React.useState<Decision | ''>('')
+  const [running, setRunning] = React.useState(false)
+  const [result, setResult] = React.useState<{ snapshot: RunSnapshot; analysis: AnalysisResponse } | null>(null)
+  const [error, setError] = React.useState<unknown>(null)
+  const detail = useEventDetail(change.eventType)
 
-  // Execution state
-  const [isRunning, setIsRunning] = React.useState(false)
-  const [testResult, setTestResult] = React.useState<AnalysisResponse | null>(null)
-  const [testError, setTestError] = React.useState<string | null>(null)
-  const [lastExecutedRequest, setLastExecutedRequest] = React.useState<ExecutedRequestSnapshot | null>(null)
+  const versions = detail.data?.versions ?? [change.currentVersion, change.proposedVersion]
+  const suggestion = expectedDecisionFor(change, environment)
+  const expected: Decision | null = override || suggestion
 
-  const clearStaleExecution = () => {
-    setTestResult(null)
-    setTestError(null)
-    setLastExecutedRequest(null)
+  const update = (next: Partial<ChangeSelection>, nextEnv = environment) => {
+    setChange((c) => ({ ...c, ...next }))
+    setEnvironment(nextEnv)
+    setOverride('')
+    setResult(null)
+    setError(null)
   }
 
-  const handleExpectedDecisionChange = (decision: Decision) => {
-    setManualOverrideDecision(decision)
-    clearStaleExecution()
-  }
-
-  const handleResetToSuggested = () => {
-    setManualOverrideDecision(null)
-    clearStaleExecution()
-  }
-
-  const handleApplyPreset = (event: string, cur: number, prop: number) => {
-    setEventType(event)
-    setCurrentVersion(cur)
-    setProposedVersion(prop)
-    setManualOverrideDecision(null)
-    clearStaleExecution()
-  }
-
-  const handleEventTypeChange = (newType: string) => {
-    setEventType(newType)
-    clearStaleExecution()
-  }
-
-  const handleEnvironmentChange = (newEnv: Environment) => {
-    setEnvironment(newEnv)
-    clearStaleExecution()
-  }
-
-  const handleCurrentVersionChange = (newVer: number) => {
-    setCurrentVersion(newVer)
-    clearStaleExecution()
-  }
-
-  const handleProposedVersionChange = (newVer: number) => {
-    setProposedVersion(newVer)
-    clearStaleExecution()
-  }
-
-  const consumerResults = React.useMemo(() => {
-    if (!testResult) return []
-    return REGISTERED_CONSUMERS.map((c) => {
-      const finding = testResult.findings.find((f) => f.consumerId === c.id)
-      return {
-        consumerId: c.id,
-        name: c.name,
-        status: finding ? finding.status : ('SAFE' as const),
-        ruleId: finding?.ruleId,
-        field: finding?.field,
-        reason: finding ? finding.reason : 'All consumed fields compatible',
-      }
-    })
-  }, [testResult])
-  const [copiedIndex, setCopiedIndex] = React.useState<number | null>(null)
-
-  const handleRunAssertion = async (overrideParams?: {
-    eventType?: string
-    currentVersion?: number
-    proposedVersion?: number
-    environment?: Environment
-    expectedDecision?: Decision
-  }) => {
-    setIsRunning(true)
-    setTestError(null)
-
-    const targetEvent = overrideParams?.eventType ?? eventType
-    const targetCurrent = overrideParams?.currentVersion ?? currentVersion
-    const targetProposed = overrideParams?.proposedVersion ?? proposedVersion
-    const targetEnv = overrideParams?.environment ?? environment
-    const targetExpected = overrideParams?.expectedDecision ?? (
-      isManualOverride
-        ? expectedDecision
-        : getSuggestedDecision(targetEvent, targetCurrent, targetProposed, targetEnv)
-    )
-
-    const requestSnapshot: ExecutedRequestSnapshot = {
-      eventType: targetEvent,
-      currentVersion: targetCurrent,
-      proposedVersion: targetProposed,
-      environment: targetEnv,
-      expectedDecision: targetExpected,
-    }
-
+  const run = async () => {
+    if (!expected) return
+    setRunning(true)
+    setError(null)
+    const snapshot: RunSnapshot = { ...change, environment, expected }
     try {
-      const res = await eventGateApi.analyzeCompatibility({
-        eventType: targetEvent,
-        currentVersion: targetCurrent,
-        proposedVersion: targetProposed,
-        environment: targetEnv,
-      })
-      setLastExecutedRequest(requestSnapshot)
-      setTestResult(res)
+      const analysis = await eventGateApi.analyzeCompatibility({ ...change, environment })
+      setResult({ snapshot, analysis })
     } catch (err) {
-      setTestError(err instanceof Error ? err.message : 'Execution failed')
-      setTestResult(null)
-      setLastExecutedRequest(null)
+      setResult(null)
+      setError(err)
     } finally {
-      setIsRunning(false)
+      setRunning(false)
     }
   }
 
-  const isPassed = Boolean(
-    testResult &&
-    lastExecutedRequest &&
-    testResult.decision === lastExecutedRequest.expectedDecision
-  )
-
-  const copyToClipboard = (text: string, index: number) => {
-    navigator.clipboard.writeText(text)
-    setCopiedIndex(index)
-    setTimeout(() => setCopiedIndex(null), 2000)
-  }
-
-  const cliCommands = [
+  const commands = [
     {
-      title: 'Check release compatibility',
-      cmd: `eventgate check --event ${eventType} --current ${currentVersion} --proposed ${proposedVersion} --env ${environment}`,
+      title: 'Check a change (exit 0 ALLOW, 1 BLOCK, 2 REVIEW)',
+      cmd: `eventgate check --event ${change.eventType} --current ${change.currentVersion} --proposed ${change.proposedVersion} --env ${environment}`,
     },
     {
-      title: 'Check release compatibility (strict CI review gate)',
-      cmd: `eventgate check --event ${eventType} --current ${currentVersion} --proposed ${proposedVersion} --env ${environment} --fail-on-review`,
+      title: 'Fail CI on REVIEW as well as BLOCK',
+      cmd: `eventgate check --event ${change.eventType} --current ${change.currentVersion} --proposed ${change.proposedVersion} --env ${environment} --fail-on-review`,
     },
     {
-      title: 'Run contract assertion',
-      cmd: `eventgate test --event ${eventType} --current ${currentVersion} --proposed ${proposedVersion} --expected ${expectedDecision} --env ${environment}`,
+      title: 'Assert the expected decision',
+      cmd: `eventgate test --event ${change.eventType} --current ${change.currentVersion} --proposed ${change.proposedVersion} --expected ${expected ?? 'ALLOW'} --env ${environment}`,
     },
-    {
-      title: 'Inspect registered contract',
-      cmd: `eventgate catalog --event ${eventType}`,
-    },
+    { title: 'Show versions and consumers', cmd: `eventgate catalog --event ${change.eventType}` },
   ]
 
+  const passed = result ? result.analysis.decision === result.snapshot.expected : false
+
   return (
-    <div className="space-y-6 pb-12">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
-        <div>
-          <div className="flex items-center space-x-2">
-            <h1 className="text-xl font-bold tracking-tight text-slate-100">Developer Tools</h1>
-            <Badge variant="default" size="sm">
-              Engine Suite
-            </Badge>
-          </div>
-          <p className="text-xs text-slate-400 font-mono mt-1">
-            Deterministic contract test runner, CLI command generator, and CI integration guidance
-          </p>
-        </div>
-      </div>
+    <div>
+      <PageHeader title="Developer tools" description="Assert gate decisions against the live API and copy the matching CLI commands." />
 
-      {/* Grid: Test Runner + CLI Generator */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Col: Contract Test Runner (7 Cols) */}
-        <div className="lg:col-span-7 space-y-4">
-          <div className="bg-[#0b0f19] border border-slate-800 rounded-lg p-5">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center space-x-2">
-                <Play className="h-4 w-4 text-blue-400" />
-                <h2 className="text-sm font-semibold text-slate-200">Contract Test Runner</h2>
-              </div>
-              <span className="text-[11px] font-mono text-slate-500">Live API Execution</span>
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.4fr_1fr]">
+        <Card>
+          <CardHeader title="Decision assertion" description="Runs an analysis and compares the decision with the one you expect." />
+          <div className="space-y-4 p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-fg-subtle">Samples</span>
+              {SCENARIO_LIST.map((s) => {
+                const active = findScenario(change.eventType, change.currentVersion, change.proposedVersion)?.id === s.id
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => update({ eventType: s.eventType, currentVersion: s.currentVersion, proposedVersion: s.proposedVersion })}
+                    className={cn(
+                      'rounded-[var(--radius-control)] border px-2.5 py-1 text-xs transition-colors duration-150',
+                      active ? 'border-accent bg-accent-tint text-fg' : 'border-line text-fg-muted hover:border-line-strong hover:text-fg'
+                    )}
+                  >
+                    {s.eventType} v{s.currentVersion}→v{s.proposedVersion} ({s.compatibility})
+                  </button>
+                )
+              })}
             </div>
 
-            {/* Scenario Presets */}
-            <div className="mb-4 pb-3 border-b border-slate-800">
-              <span className="text-[11px] font-mono text-slate-400 block mb-2">Scenario Presets:</span>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleApplyPreset('OrderPlaced', 1, 2)}
-                  className={`px-2.5 py-1 text-xs font-mono rounded border transition-colors cursor-pointer ${
-                    eventType === 'OrderPlaced' && currentVersion === 1 && proposedVersion === 2
-                      ? 'bg-emerald-950/50 text-emerald-300 border-emerald-500/50 font-semibold'
-                      : 'bg-slate-900 text-slate-300 border-slate-700/60 hover:bg-slate-800'
-                  }`}
-                >
-                  OrderPlaced v1 → v2 (SAFE)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleApplyPreset('OrderPlaced', 1, 3)}
-                  className={`px-2.5 py-1 text-xs font-mono rounded border transition-colors cursor-pointer ${
-                    eventType === 'OrderPlaced' && currentVersion === 1 && proposedVersion === 3
-                      ? 'bg-rose-950/50 text-rose-300 border-rose-500/50 font-semibold'
-                      : 'bg-slate-900 text-slate-300 border-slate-700/60 hover:bg-slate-800'
-                  }`}
-                >
-                  OrderPlaced v1 → v3 (BREAK)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleApplyPreset('OrderPlaced', 1, 4)}
-                  className={`px-2.5 py-1 text-xs font-mono rounded border transition-colors cursor-pointer ${
-                    eventType === 'OrderPlaced' && currentVersion === 1 && proposedVersion === 4
-                      ? 'bg-amber-950/50 text-amber-300 border-amber-500/50 font-semibold'
-                      : 'bg-slate-900 text-slate-300 border-slate-700/60 hover:bg-slate-800'
-                  }`}
-                >
-                  OrderPlaced v1 → v4 (RISK)
-                </button>
-              </div>
-            </div>
-
-            {/* Test Configuration Controls */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-mono mb-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <label className="block text-slate-400 mb-1">Event Type</label>
-                <select
-                  value={eventType}
-                  onChange={(e) => handleEventTypeChange(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 focus:outline-hidden focus:border-blue-500"
+                <Label htmlFor="dt-event">Event type</Label>
+                <Select
+                  id="dt-event"
+                  value={change.eventType}
+                  onChange={(e) => {
+                    const v = catalog.data?.find((c) => c.eventType === e.target.value)?.versions ?? [1, 2]
+                    update({ eventType: e.target.value, currentVersion: v[0], proposedVersion: v[1] ?? v[0] })
+                  }}
                 >
-                  <option value="OrderPlaced">OrderPlaced</option>
-                  <option value="PaymentCompleted">PaymentCompleted</option>
-                  <option value="UserCreated">UserCreated</option>
-                </select>
+                  {(catalog.data?.map((c) => c.eventType) ?? [change.eventType]).map((et) => (
+                    <option key={et} value={et}>
+                      {et}
+                    </option>
+                  ))}
+                </Select>
               </div>
-
               <div>
-                <label className="block text-slate-400 mb-1">Environment</label>
-                <select
-                  value={environment}
-                  onChange={(e) => handleEnvironmentChange(e.target.value as Environment)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 focus:outline-hidden focus:border-blue-500"
-                >
-                  <option value="production">production</option>
-                  <option value="staging">staging</option>
-                  <option value="development">development</option>
-                </select>
+                <Label htmlFor="dt-env">Environment</Label>
+                <Select id="dt-env" value={environment} onChange={(e) => update({}, e.target.value as Environment)}>
+                  {ENVIRONMENTS.map((env) => (
+                    <option key={env} value={env}>
+                      {env}
+                    </option>
+                  ))}
+                </Select>
               </div>
-
-              <div className="flex items-center space-x-3">
-                <div className="flex-1">
-                  <label className="block text-slate-400 mb-1">Current Version</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={10}
-                    value={currentVersion}
-                    onChange={(e) => handleCurrentVersionChange(Number(e.target.value))}
-                    className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 focus:outline-hidden focus:border-blue-500"
-                  />
-                </div>
-                <div className="flex-1">
-                  <label className="block text-slate-400 mb-1">Proposed Version</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={10}
-                    value={proposedVersion}
-                    onChange={(e) => handleProposedVersionChange(Number(e.target.value))}
-                    className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 focus:outline-hidden focus:border-blue-500"
-                  />
-                </div>
-              </div>
-
               <div>
-                <label className="block text-slate-400 mb-1">Expected Decision</label>
-                <select
-                  value={expectedDecision}
-                  onChange={(e) => handleExpectedDecisionChange(e.target.value as Decision)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 focus:outline-hidden focus:border-blue-500"
+                <Label htmlFor="dt-current">Current version</Label>
+                <Select id="dt-current" value={change.currentVersion} onChange={(e) => update({ currentVersion: Number(e.target.value) })}>
+                  {versions.map((v) => (
+                    <option key={v} value={v}>
+                      v{v}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="dt-proposed">Proposed version</Label>
+                <Select id="dt-proposed" value={change.proposedVersion} onChange={(e) => update({ proposedVersion: Number(e.target.value) })}>
+                  {versions.map((v) => (
+                    <option key={v} value={v}>
+                      v{v}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div className="sm:col-span-2">
+                <Label htmlFor="dt-expected">Expected decision</Label>
+                <Select
+                  id="dt-expected"
+                  value={override || suggestion || ''}
+                  onChange={(e) => {
+                    setOverride(e.target.value as Decision | '')
+                    setResult(null)
+                  }}
                 >
+                  {!suggestion && <option value="">Choose a decision</option>}
                   <option value="ALLOW">ALLOW</option>
                   <option value="REVIEW">REVIEW</option>
                   <option value="BLOCK">BLOCK</option>
-                </select>
-                <div className="flex items-center justify-between mt-1.5 text-[10px]">
-                  {isManualOverride ? (
-                    <>
-                      <span className="text-amber-400 font-medium">Manual expectation</span>
-                      <button
-                        type="button"
-                        onClick={handleResetToSuggested}
-                        className="text-blue-400 hover:text-blue-300 underline cursor-pointer"
-                      >
-                        Reset to suggested ({suggestedDecision})
-                      </button>
-                    </>
-                  ) : (
-                    <span className="text-slate-400">Suggested from scenario</span>
+                </Select>
+                <FieldMessage>
+                  {suggestion
+                    ? override && override !== suggestion
+                      ? `Overriding the sample's expected ${suggestion}.`
+                      : 'Filled in from the sample change.'
+                    : 'No sample covers this change; choose the decision you expect.'}
+                  {override && override !== suggestion && suggestion && (
+                    <button type="button" onClick={() => setOverride('')} className="ml-2 text-accent-fg underline-offset-2 hover:underline">
+                      Use {suggestion}
+                    </button>
                   )}
-                </div>
+                </FieldMessage>
               </div>
             </div>
 
-            <Button
-              onClick={() => handleRunAssertion()}
-              disabled={isRunning}
-              variant="primary"
-              className="w-full justify-center"
-            >
-              {isRunning ? (
-                <>
-                  <RefreshCw className="h-3.5 w-3.5 mr-2 animate-spin" />
-                  Running Backend Assertion...
-                </>
-              ) : (
-                <>
-                  <Play className="h-3.5 w-3.5 mr-2" />
-                  Execute Contract Assertion
-                </>
-              )}
+            <Button onClick={run} isLoading={running} disabled={!expected || change.currentVersion === change.proposedVersion} className="w-full">
+              {!running && <Play className="h-4 w-4" aria-hidden="true" />}
+              Run assertion
             </Button>
-          </div>
+            {change.currentVersion === change.proposedVersion && (
+              <FieldMessage error>Choose two different versions.</FieldMessage>
+            )}
 
-          {/* Test Error */}
-          {testError && (
-            <div className="bg-rose-950/30 border border-rose-500/50 rounded-lg p-3 text-xs text-rose-300 font-mono">
-              <span className="font-bold">Assertion Execution Error:</span> {testError}
-            </div>
-          )}
+            {Boolean(error) && <ErrorState title="The assertion could not run" error={error} onRetry={run} />}
 
-          {/* Assertion Result Outcome Banner */}
-          {testResult && lastExecutedRequest && (
-            <div
-              className={`border rounded-lg p-4 space-y-3 font-mono ${
-                isPassed
-                  ? 'bg-emerald-950/20 border-emerald-500/40 text-emerald-300'
-                  : 'bg-rose-950/20 border-rose-500/40 text-rose-300'
-              }`}
-            >
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-start space-x-2.5">
-                  {isPassed ? (
-                    <CheckCircle2 className="h-5 w-5 text-emerald-400 flex-shrink-0 mt-0.5" />
-                  ) : (
-                    <XCircle className="h-5 w-5 text-rose-400 flex-shrink-0 mt-0.5" />
-                  )}
-                  <div>
-                    <div className="flex items-center space-x-2 flex-wrap">
-                      <span className="text-sm font-bold tracking-wider">
-                        {isPassed ? 'ASSERTION PASSED' : 'ASSERTION FAILED'}
-                      </span>
-                    </div>
-                    <div className="text-[11px] font-mono text-slate-300 mt-1">
-                      <span className="text-slate-500 font-normal mr-1">Executed:</span>
-                      <span className="font-semibold text-slate-200">
-                        {lastExecutedRequest.eventType} · v{lastExecutedRequest.currentVersion} → v{lastExecutedRequest.proposedVersion} · {lastExecutedRequest.environment}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-400 mt-1">
-                      {isPassed
-                        ? `Expected ${lastExecutedRequest.expectedDecision}, got ${testResult.decision}. Gate permitted transition according to policy.`
-                        : `Expected ${lastExecutedRequest.expectedDecision}, but actual gate decision evaluated to ${testResult.decision}.`}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center space-x-2 flex-shrink-0">
-                  <Badge
-                    variant={
-                      testResult.decision.toLowerCase() as 'allow' | 'block' | 'review'
-                    }
-                  >
-                    Actual: {testResult.decision}
-                  </Badge>
-                  {onOpenReviewScenario && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onOpenReviewScenario(
-                          lastExecutedRequest.eventType,
-                          lastExecutedRequest.currentVersion,
-                          lastExecutedRequest.proposedVersion
-                        )
-                      }
-                      className="text-xs text-blue-400 hover:text-blue-300 underline cursor-pointer"
-                    >
-                      Open in Review
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Detail Metrics */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-800/80 text-xs">
-                <div>
-                  <span className="text-[10px] text-slate-500 block">Compatibility</span>
-                  <span className="font-bold text-slate-200">
-                    {testResult.compatibilityResult || (testResult.decision === 'BLOCK' ? 'BREAK' : testResult.decision === 'REVIEW' ? 'RISK' : 'SAFE')}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-500 block">Severity</span>
-                  <span className="font-bold text-slate-200">
-                    {testResult.severity}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-500 block">Release Policy</span>
-                  <span className="font-bold text-slate-200">
-                    {testResult.policyName || 'StandardReleasePolicy'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-500 block">Final Decision</span>
-                  <span className="font-bold text-slate-200">
-                    {testResult.decision}
-                  </span>
-                </div>
-              </div>
-
-              {/* Per-Consumer Breakdown */}
-              <div className="pt-2">
-                <span className="text-[11px] font-bold text-slate-300 block mb-1.5">
-                  Per-Consumer Results ({consumerResults.length} consumers evaluated):
-                </span>
-                <div className="bg-slate-950/60 border border-slate-800 rounded divide-y divide-slate-800/60 text-xs">
-                  {consumerResults.map((c) => (
-                    <div
-                      key={c.consumerId}
-                      className="p-2.5 flex items-center justify-between"
-                    >
-                      <div>
-                        <span className="font-bold text-slate-200">{c.consumerId}</span>
-                        {c.ruleId && (
-                          <span className="text-slate-500 text-[11px] ml-2">
-                            ({c.ruleId})
-                          </span>
-                        )}
-                        {c.field && (
-                          <span className="text-slate-400 text-[11px] ml-1.5">
-                            field: <code className="text-slate-300">{c.field}</code>
-                          </span>
-                        )}
-                        <p className="text-[11px] text-slate-400 mt-0.5">{c.reason}</p>
-                      </div>
-                      <Badge
-                        variant={
-                          c.status.toLowerCase() as 'safe' | 'risk' | 'break'
-                        }
-                        size="sm"
-                      >
-                        {c.status}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Right Col: CLI Generator & CI Guide (5 Cols) */}
-        <div className="lg:col-span-5 space-y-4">
-          {/* CLI Generator */}
-          <div className="bg-[#0b0f19] border border-slate-800 rounded-lg p-5">
-            <div className="flex items-center space-x-2 mb-3">
-              <Terminal className="h-4 w-4 text-emerald-400" />
-              <h2 className="text-sm font-semibold text-slate-200">CLI Generator</h2>
-            </div>
-            <p className="text-xs text-slate-400 font-mono mb-4">
-              Real command-line invocations matching the active runner inputs:
-            </p>
-
-            <div className="space-y-3">
-              {cliCommands.map((item, idx) => (
+            {result && (
+              <div aria-live="polite" className="space-y-3">
                 <div
-                  key={item.title}
-                  className="bg-slate-950/90 border border-slate-800 rounded p-2.5 font-mono text-xs"
+                  className={cn(
+                    'flex items-start gap-3 rounded-[var(--radius-card)] border p-4',
+                    passed ? 'border-success-line bg-success-tint/50' : 'border-danger-line bg-danger-tint/50'
+                  )}
                 >
-                  <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
-                    <span>{item.title}</span>
-                    <button
-                      type="button"
-                      onClick={() => copyToClipboard(item.cmd, idx)}
-                      className="flex items-center space-x-1 text-blue-400 hover:text-blue-300 cursor-pointer"
-                    >
-                      {copiedIndex === idx ? (
-                        <>
-                          <Check className="h-3 w-3 text-emerald-400" />
-                          <span className="text-emerald-400">Copied</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="h-3 w-3" />
-                          <span>Copy</span>
-                        </>
-                      )}
-                    </button>
+                  {passed ? (
+                    <CheckCircle2 className="h-5 w-5 shrink-0 text-success" aria-hidden="true" />
+                  ) : (
+                    <XCircle className="h-5 w-5 shrink-0 text-danger" aria-hidden="true" />
+                  )}
+                  <div className="text-sm">
+                    <p className="font-medium text-fg">
+                      {passed ? 'Pass' : 'Fail'}: expected {result.snapshot.expected}, got {result.analysis.decision}
+                    </p>
+                    <p className="mt-0.5 font-mono text-xs text-fg-subtle">
+                      {result.snapshot.eventType} v{result.snapshot.currentVersion}→v{result.snapshot.proposedVersion} ·{' '}
+                      {result.snapshot.environment} · request {result.analysis.requestId ?? 'n/a'}
+                    </p>
+                    <p className="mt-1 text-fg-muted">{result.analysis.policyReason}</p>
                   </div>
-                  <pre className="text-emerald-400 overflow-x-auto py-1 text-[11px] select-all whitespace-pre-wrap break-all">
-                    {item.cmd}
-                  </pre>
                 </div>
+                <ul aria-label="Consumer results" className="divide-y divide-line rounded-[var(--radius-control)] border border-line">
+                  {consumerImpacts([], result.analysis.findings).map((impact) => (
+                    <li key={impact.consumerId} className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm">
+                      <span className="font-mono text-fg">{impact.consumerId}</span>
+                      <StatusBadge value={impact.status} />
+                      <span className="w-full text-xs text-fg-subtle sm:w-auto sm:flex-1 sm:text-right">
+                        {impact.findings[0]?.ruleId}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                {onOpenReview && (
+                  <Button variant="secondary" size="sm" onClick={() => onOpenReview(result.snapshot)}>
+                    <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                    Open this change in Review
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+        </Card>
+
+        <div className="space-y-4">
+          <Card>
+            <CardHeader title="CLI commands" description="Equivalent commands for the inputs on the left." />
+            <ul className="space-y-3 p-4">
+              {commands.map((c) => (
+                <li key={c.title}>
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <span className="text-xs text-fg-subtle">{c.title}</span>
+                    <CopyButton value={c.cmd} label={`Copy command: ${c.title}`} />
+                  </div>
+                  <pre tabIndex={0} className="overflow-x-auto rounded-[var(--radius-control)] border border-line bg-canvas px-3 py-2 font-mono text-xs text-fg">
+                    {c.cmd}
+                  </pre>
+                </li>
               ))}
+            </ul>
+          </Card>
+          <Card>
+            <CardHeader title="CI gate" description=".github/workflows/eventgate-contract-check.yml runs on pull requests that touch contracts/**." />
+            <div className="p-4">
+            <table className="w-full text-left text-sm">
+              <caption className="sr-only">eventgate check exit codes</caption>
+              <thead className="text-xs text-fg-subtle">
+                <tr className="border-b border-line">
+                  <th scope="col" className="py-1.5 font-medium">Exit code</th>
+                  <th scope="col" className="py-1.5 font-medium">Meaning</th>
+                </tr>
+              </thead>
+              <tbody className="text-fg-muted">
+                <tr className="border-b border-line/60">
+                  <td className="py-1.5 font-mono text-fg">0</td>
+                  <td className="py-1.5">ALLOW</td>
+                </tr>
+                <tr className="border-b border-line/60">
+                  <td className="py-1.5 font-mono text-fg">1</td>
+                  <td className="py-1.5">BLOCK, an error, or REVIEW with --fail-on-review</td>
+                </tr>
+                <tr>
+                  <td className="py-1.5 font-mono text-fg">2</td>
+                  <td className="py-1.5">REVIEW</td>
+                </tr>
+              </tbody>
+            </table>
             </div>
-          </div>
-
-          {/* CI Workflow Guidance */}
-          <div className="bg-[#0b0f19] border border-slate-800 rounded-lg p-5 font-mono text-xs space-y-3">
-            <div className="flex items-center space-x-2 text-slate-200">
-              <GitPullRequest className="h-4 w-4 text-blue-400" />
-              <h3 className="text-sm font-semibold">CI / CD Gate Standards</h3>
-            </div>
-            <p className="text-slate-400 text-[11px]">
-              The EventGate CLI returns deterministic exit codes to enforce hard boundaries in CI:
-            </p>
-
-            <div className="grid grid-cols-3 gap-2 text-center text-[11px]">
-              <div className="bg-emerald-950/30 border border-emerald-500/30 rounded p-1.5">
-                <span className="font-bold text-emerald-400 block">Exit 0</span>
-                <span className="text-slate-400 text-[10px]">ALLOW (Safe)</span>
-              </div>
-              <div className="bg-rose-950/30 border border-rose-500/30 rounded p-1.5">
-                <span className="font-bold text-rose-400 block">Exit 1</span>
-                <span className="text-slate-400 text-[10px]">BLOCK (Break)</span>
-              </div>
-              <div className="bg-amber-950/30 border border-amber-500/30 rounded p-1.5">
-                <span className="font-bold text-amber-400 block">Exit 2</span>
-                <span className="text-slate-400 text-[10px]">REVIEW (Risk)</span>
-              </div>
-            </div>
-
-            <div className="bg-slate-950/80 border border-slate-800/80 rounded p-2.5 text-[11px] text-slate-400">
-              <span className="text-slate-300 font-bold block mb-1">
-                GitHub Actions Workflow
-              </span>
-              <code>.github/workflows/eventgate-contract-check.yml</code>
-              <p className="mt-1 text-[10px] text-slate-500">
-                Automatically triggered on PR when files under <code>contracts/**</code> change.
-              </p>
-            </div>
-          </div>
+          </Card>
         </div>
       </div>
     </div>

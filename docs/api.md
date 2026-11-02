@@ -1,395 +1,134 @@
-# EventGate API Reference
+# API reference
 
-EventGate exposes a lightweight HTTP JSON interface with camelCase field serialization and stable structured error response envelopes.
+Base URL locally: `http://127.0.0.1:8000`. Interactive docs: `/docs` (Swagger UI) and `/openapi.json`. All bodies are JSON with camelCase fields. Every response carries `X-Request-ID`; send your own to correlate logs.
 
----
+## Analyze a change
 
-## 1. Endpoints Overview
+`POST /api/v1/analyze`
 
-| Method | Path | Purpose | Transport Side Effects |
-| :--- | :--- | :--- | :--- |
-| `GET` | `/health` | Service health status check | None (pure health probe) |
-| `POST` | `/api/v1/analyze` | Advisory compatibility analysis & policy evaluation | None (persists initial evaluated audit record) |
-| `POST` | `/api/v1/events/publish` | Payload validation, compatibility, policy, and gated EventBridge publishing | Publishes to EventBridge **only** on `ALLOW` |
-| `GET` | `/api/v1/contracts/events` | List registered event types and metadata | None (catalog read) |
-| `GET` | `/api/v1/contracts/events/{event_type}` | Event version details and schemas | None (catalog read) |
-| `GET` | `/api/v1/contracts/consumers` | List all registered consumer services | None (catalog read) |
-| `GET` | `/api/v1/history` | Query persistent release review history | None (audit read) |
-| `GET` | `/api/v1/history/{record_id}` | Get specific release review record | None (audit read) |
-| `GET` | `/api/v1/history/{record_id}/report` | Export release audit report (Markdown or JSON) | None (audit report export) |
-| `POST` | `/api/v1/reports/export` | Export release report directly from active review payload | None (ad-hoc report export) |
-| `GET` | `/api/v1/policies` | Active policy engine, 3x3 matrix, and Cedar policy source | None (policy inspection) |
-| `GET` | `/api/v1/config/runtime` | Authoritative runtime configuration | None (configuration probe) |
-
----
-
-## 2. Core Release Endpoints
-
-### 2.1 Health Check
-Returns operational service status and running version.
-
-- **Method:** `GET`
-- **Path:** `/health`
-- **Headers:** None required
-- **Success Response (`200 OK`):**
 ```json
-{
-  "status": "ok",
-  "service": "eventgate",
-  "version": "0.1.0"
-}
+{"eventType": "OrderPlaced", "currentVersion": 1, "proposedVersion": 3, "environment": "production"}
 ```
 
----
+`environment` is `development`, `staging` or `production` (case-insensitive, default `production`). The versions must exist and differ.
 
-### 2.2 Event Compatibility Analysis (Advisory)
-Evaluates proposed schema evolution against active downstream consumer contracts within the target environment policy without publishing to EventBridge.
+Response `200`:
 
-- **Method:** `POST`
-- **Path:** `/api/v1/analyze`
-- **Headers:**
-  - `Content-Type: application/json`
-  - `X-Request-ID: <string>` *(optional correlation ID)*
-- **Request Body:**
 ```json
 {
+  "analysisId": "7c18b762-6f29-411a-a53c-f86a98da5f81",
   "eventType": "OrderPlaced",
   "currentVersion": 1,
-  "proposedVersion": 2,
-  "environment": "production"
-}
-```
-
-#### Request Fields
-| Field | Type | Required | Default | Description |
-| :--- | :--- | :--- | :--- | :--- |
-| `eventType` | `string` | Yes | - | Target event name (e.g. `OrderPlaced`) |
-| `currentVersion` | `integer` | Yes | - | Baseline version number ($\ge 1$) |
-| `proposedVersion` | `integer` | Yes | - | Proposed version number ($\ge 1$) |
-| `environment` | `string` | No | `"production"` | Operational environment (`production`, `staging`, `development`) |
-
-#### Success Response (`200 OK`)
-```json
-{
-  "analysisId": "197ada2a-5e37-4028-9c08-56af25fed6f4",
-  "eventType": "OrderPlaced",
-  "currentVersion": 1,
-  "proposedVersion": 2,
+  "proposedVersion": 3,
   "environment": "production",
-  "compatibilityResult": "SAFE",
-  "severity": "LOW",
-  "decision": "ALLOW",
-  "policyName": "StandardProductionPolicy",
-  "policyReason": "All consumers compatible in production.",
-  "policyProvider": "standard",
+  "compatibilityResult": "BREAK",
+  "severity": "HIGH",
+  "decision": "BLOCK",
+  "policyName": "StandardReleasePolicy",
+  "policyReason": "Release policy for 'production' strictly blocks breaking changes (1 high-severity break detected).",
+  "warnings": [],
+  "summary": "The proposed event is incompatible with 1 registered consumer.",
   "changeSet": {
-    "addedFields": ["metadata"],
+    "addedFields": [],
     "removedFields": [],
-    "typeChanges": [],
+    "typeChanges": [{"field": "shippingMethod", "fromType": "string", "toType": "object"}],
     "requirednessChanges": []
   },
   "findings": [
     {
-      "consumerId": "billing-service",
-      "status": "SAFE",
-      "ruleId": "EVT005_OPTIONAL_FIELD_ADDED",
-      "field": "*",
-      "severity": "LOW",
-      "reason": "Billing Service is not affected by the proposed changes."
+      "consumerId": "inventory-service",
+      "status": "BREAK",
+      "ruleId": "EVT001_FIELD_TYPE_CHANGED",
+      "field": "shippingMethod",
+      "expectedType": "string",
+      "proposedType": "object",
+      "severity": "HIGH",
+      "reason": "Inventory Service expects 'shippingMethod' to be string, but the proposed contract defines it as object."
     }
   ],
-  "summary": "All 3 consumers are safe with the proposed event change.",
-  "timestamp": "2026-09-19T10:00:00.000000Z",
-  "requestId": "req-123"
+  "timestamp": "2026-11-02T08:00:00.000000Z",
+  "requestId": "4f2e3414-76e1-45a4-9923-3e4b05eebc0a"
 }
 ```
 
----
+`findings` contains at least one entry per subscribed consumer (SAFE ones too). The result is also saved to release history under `analysisId`.
 
-### 2.3 Event Publishing & Cloud Enforcement
-Validates the event payload against the proposed contract, runs downstream consumer compatibility and policy analysis, and publishes to Amazon EventBridge **only if the decision is `ALLOW`**.
+## Publish an event
 
-> [!IMPORTANT]
-> **Payload-First Validation Order:** EventGate validates the submitted `payload` against the proposed version's contract **before** executing consumer compatibility analysis. If the payload is malformed or invalid, the request fails immediately with HTTP 422 (`INVALID_EVENT_PAYLOAD`), completely bypassing consumer analysis and EventBridge transport.
+`POST /api/v1/events/publish`
 
-- **Method:** `POST`
-- **Path:** `/api/v1/events/publish`
-- **Headers:**
-  - `Content-Type: application/json`
-  - `X-Request-ID: <string>` *(optional correlation ID)*
-- **Request Body:**
 ```json
 {
   "eventType": "OrderPlaced",
   "currentVersion": 1,
   "proposedVersion": 2,
-  "environment": "production",
-  "payload": {
-    "orderId": "O1001",
-    "amount": 500,
-    "items": [],
-    "shippingMethod": "standard",
-    "couponCode": "SAVE10"
-  },
-  "analysisId": "197ada2a-5e37-4028-9c08-56af25fed6f4"
+  "environment": "staging",
+  "analysisId": "7c18b762-…",
+  "payload": {"orderId": "ord-1", "amount": 10.5, "items": ["sku-1"], "shippingMethod": "standard"}
 }
 ```
 
-#### Request Fields
-| Field | Type | Required | Default | Description |
-| :--- | :--- | :--- | :--- | :--- |
-| `eventType` | `string` | Yes | - | Target event name (e.g. `OrderPlaced`) |
-| `currentVersion` | `integer` | Yes | - | Baseline version number ($\ge 1$) |
-| `proposedVersion` | `integer` | Yes | - | Proposed version number ($\ge 1$) |
-| `environment` | `string` | No | `"production"` | Operational environment (`production`, `staging`, `development`) |
-| `payload` | `object` | Yes | - | Domain event payload conforming to the proposed version contract |
-| `analysisId` | `string` | No | `null` | Optional correlation ID from preceding analysis to correlate audit record |
+| Status | Meaning |
+| --- | --- |
+| 200 | Decision ALLOW and the event was published. `published: true`, `eventBridgeEventId` set. |
+| 409 | Decision BLOCK or REVIEW. Same body shape, `published: false`; the bus was not called. |
+| 400 | `analysisId` refers to a different event, version pair or environment. |
+| 422 | Payload missing a required field or with a wrong top-level type (`INVALID_EVENT_PAYLOAD`), or a malformed request (`VALIDATION_ERROR`). |
+| 503 | Decision ALLOW but the bus rejected the event (`EVENT_PUBLISH_FAILED`). The attempt is still recorded. |
 
----
-
-## 3. Publishing Response Semantics
-
-### 3.1 Allowed & Published (`ALLOW`)
-When all consumers are compatible (`decision: "ALLOW"`):
-- **HTTP Status:** `200 OK`
-- **`published`:** `true`
-- **`eventBridgeEventId`:** Present (AWS EventBridge entry UUID returned by `PutEvents`)
-- **Transport Behavior:** Event published to custom EventBridge bus (`primex-eventgate-dev-bus`), fanning out to subscribed consumer Lambdas.
+Response body (200 and 409):
 
 ```json
 {
-  "eventId": "4d22c323-2506-42ec-af22-8ac6ed99e18b",
+  "eventId": "e0b7…",
   "published": true,
   "decision": "ALLOW",
   "severity": "LOW",
-  "eventBridgeEventId": "a983ef0d-1ffa-fe94-a3be-012aba52c883",
-  "analysis": {
-    "analysisId": "197ada2a-5e37-4028-9c08-56af25fed6f4",
-    "eventType": "OrderPlaced",
-    "currentVersion": 1,
-    "proposedVersion": 2,
-    "environment": "production",
-    "decision": "ALLOW",
-    "severity": "LOW",
-    "summary": "All 3 consumers are safe with the proposed event change."
-  }
+  "eventBridgeEventId": "4d1f…",
+  "analysis": { "…": "same shape as /analyze" }
 }
 ```
 
-### 3.2 Breaking Change Blocked (`BLOCK`)
-When a consumer experiences a breaking change (`decision: "BLOCK"`):
-- **HTTP Status:** `409 Conflict`
-- **`published`:** `false`
-- **`eventBridgeEventId`:** `null`
-- **Transport Behavior:** **EventBridge publication is prevented.** Zero downstream consumer delivery.
+`analysisId` is optional. With it, the publish outcome is written onto that analysis's history record; without it, a new record is created.
 
-```json
-{
-  "eventId": "8a4cafba-f9a6-48b1-af5b-57cb397e3d43",
-  "published": false,
-  "decision": "BLOCK",
-  "severity": "HIGH",
-  "eventBridgeEventId": null,
-  "analysis": {
-    "analysisId": "fa9d2b78-b11c-4b47-8a19-4841a1005a8b",
-    "eventType": "OrderPlaced",
-    "currentVersion": 1,
-    "proposedVersion": 3,
-    "environment": "production",
-    "findings": [
-      {
-        "consumerId": "inventory-service",
-        "status": "BREAK",
-        "ruleId": "EVT001_FIELD_TYPE_CHANGED",
-        "field": "shippingMethod",
-        "expectedType": "string",
-        "proposedType": "object",
-        "severity": "HIGH",
-        "reason": "Field 'shippingMethod' type changed from string to object which is incompatible with consumer expectation."
-      }
-    ],
-    "decision": "BLOCK",
-    "severity": "HIGH",
-    "summary": "The proposed event cannot be deployed because 1 consumer would break."
-  }
-}
-```
+## Contracts
 
-### 3.3 Risky Change Review Required (`REVIEW`)
-When a consumer experiences an uncertain or risky change (`decision: "REVIEW"`):
-- **HTTP Status:** `409 Conflict`
-- **`published`:** `false`
-- **`eventBridgeEventId`:** `null`
-- **Transport Behavior:** **EventBridge publication is prevented pending future review.** Zero downstream consumer delivery.
+| Request | Returns |
+| --- | --- |
+| `GET /api/v1/contracts/events` | `[{eventType, versionCount, versions, latestVersion, consumerCount}]` |
+| `GET /api/v1/contracts/events/{eventType}` | `{eventType, versions, latestVersion, contracts: [{version, fields}], consumers: [{consumerId, expectedFields}]}`; 404 if unknown |
+| `GET /api/v1/contracts/consumers` | `[{consumerId, eventType, expectedFieldsCount}]` |
+| `GET /api/v1/contracts/consumers/{consumerId}` | `{consumerId, eventType, expectedFields}`; 404 if unknown |
 
----
+Field specs are `{name, type, required}` with type one of `string`, `number`, `integer`, `boolean`, `object`, `array`, `null`.
 
-## 4. Contract Catalog Endpoints
+## History
 
-### 4.1 List Event Types
-- **Method:** `GET`
-- **Path:** `/api/v1/contracts/events`
-- **Response (`200 OK`):**
-```json
-[
-  {
-    "eventType": "OrderPlaced",
-    "versions": [1, 2, 3, 4],
-    "latestVersion": 4,
-    "consumerCount": 3,
-    "schemaDescription": "Fired when a customer completes checkout"
-  },
-  {
-    "eventType": "PaymentCompleted",
-    "versions": [1, 2],
-    "latestVersion": 2,
-    "consumerCount": 2,
-    "schemaDescription": "Fired when payment processor settles charge"
-  },
-  {
-    "eventType": "UserCreated",
-    "versions": [1, 2],
-    "latestVersion": 2,
-    "consumerCount": 2,
-    "schemaDescription": "Fired upon user registration"
-  }
-]
-```
+| Request | Returns |
+| --- | --- |
+| `GET /api/v1/history?eventType=&limit=` | Release records, newest first. `limit` 1–200, default 50. |
+| `GET /api/v1/history/{recordId}` | One record. Locally `recordId` may also be an analysis ID. 404 `RELEASE_RECORD_NOT_FOUND`. |
+| `GET /api/v1/history/{recordId}/report?format=markdown\|json` | `{recordId, format, content}`; `content` is the rendered report. |
 
-### 4.2 Get Event Type Detail
-- **Method:** `GET`
-- **Path:** `/api/v1/contracts/events/{event_type}`
-- **Response (`200 OK`):** Returns full contract detail and schema dictionary for all versions of the event.
+A record has: `recordId`, `analysisId`, `eventType`, `currentVersion`, `proposedVersion`, `environment`, `compatibilityResult`, `severity`, `policyName`, `policyReason`, `decision`, `affectedConsumers`, `findingsSummary`, `published`, `attemptedPublish`, `eventId`, `eventBridgeEventId`, `requestId`, `timestamp`, `publishedAt`, `error`.
 
-### 4.3 List Consumers
-- **Method:** `GET`
-- **Path:** `/api/v1/contracts/consumers`
-- **Response (`200 OK`):**
-```json
-[
-  {
-    "consumerId": "billing-service",
-    "serviceName": "Billing Service",
-    "subscribedEvents": ["OrderPlaced", "PaymentCompleted"],
-    "owner": "finance-team"
-  },
-  {
-    "consumerId": "inventory-service",
-    "serviceName": "Inventory Service",
-    "subscribedEvents": ["OrderPlaced"],
-    "owner": "logistics-team"
-  }
-]
-```
+## Inspection
 
-### 4.4 Get Consumer Detail
-- **Method:** `GET`
-- **Path:** `/api/v1/contracts/consumers/{consumer_id}`
-- **Response (`200 OK`):** Returns detailed consumer contracts including exact field dependencies, types, and requiredness.
+- `GET /health` → `{"status": "ok", "service": "eventgate", "version": "0.1.0"}`. Does not check dependencies.
+- `GET /api/v1/policies` → `{activeEngine, engineName, description, matrix: [{environment, low, medium, high}], cedarPolicyAvailable, cedarPolicyText}`.
+- `GET /api/v1/config/runtime` → `{serviceVersion, storageBackend, storageBackendType, contractsSource, historyStore, publisherBackend, publisherBackendType, eventBridgeBus, awsRegion, policyEngine, policyEngineType}`. Contains no file system paths or credentials.
 
----
+## Errors
 
-## 5. Release History & Audit Trail Endpoints
-
-### 5.1 Query Release History
-- **Method:** `GET`
-- **Path:** `/api/v1/history`
-- **Query Parameters:**
-  - `eventType` *(optional string)*: Filter by event name
-  - `limit` *(optional int, default 50)*: Maximum records to return
-- **Response (`200 OK`):** Array of correlated `ReleaseRecord` objects.
-
-### 5.2 Get Specific Release Record
-- **Method:** `GET`
-- **Path:** `/api/v1/history/{record_id}`
-- **Response (`200 OK`):** Correlated `ReleaseRecord` entity.
-
-### 5.3 Export Audit Report
-- **Method:** `GET`
-- **Path:** `/api/v1/history/{record_id}/report?format=markdown` (or `format=json`)
-- **Response (`200 OK`):**
-  - For `format=markdown`: Content-Type `text/markdown`, returns GitHub-formatted compliance report.
-  - For `format=json`: Content-Type `application/json`, returns structured audit payload.
-
-### 5.4 Export Active Review Report
-- **Method:** `POST`
-- **Path:** `/api/v1/reports/export`
-- **Request Body:** Active review payload with `format` ("markdown" | "json")
-- **Response (`200 OK`):** Structured report payload with filename and content.
-
----
-
-## 6. Policies & Runtime Configuration Endpoints
-
-### 6.1 Get Active Policies & Matrix
-- **Method:** `GET`
-- **Path:** `/api/v1/policies`
-- **Response (`200 OK`):**
-```json
-{
-  "activeEngine": "standard",
-  "policyMatrix": {
-    "production": { "LOW": "ALLOW", "MEDIUM": "REVIEW", "HIGH": "BLOCK" },
-    "staging": { "LOW": "ALLOW", "MEDIUM": "REVIEW", "HIGH": "BLOCK" },
-    "development": { "LOW": "ALLOW", "MEDIUM": "ALLOW", "HIGH": "BLOCK" }
-  },
-  "cedarAvailable": true,
-  "cedarSource": "permit (principal, action, resource) when { ... };"
-}
-```
-
-### 6.2 Get Authoritative Runtime Configuration
-- **Method:** `GET`
-- **Path:** `/api/v1/config/runtime`
-- **Response (`200 OK`):**
-```json
-{
-  "environment": "development",
-  "storageBackend": "Local JSON",
-  "publisher": "Local Event Publisher",
-  "awsRegion": "ap-south-1",
-  "eventBus": "primex-eventgate-dev-bus",
-  "policyEngine": "Standard Deterministic Engine",
-  "contractsPath": "c:\\primex-eventgate\\contracts"
-}
-```
-
----
-
-## 7. Error Responses
-
-All errors return a consistent structured error envelope:
-
-### 7.1 Invalid Event Payload (`422 Unprocessable Entity`)
 ```json
 {
   "error": {
-    "code": "INVALID_EVENT_PAYLOAD",
-    "message": "Event payload is invalid against proposed contract OrderPlaced v2: Missing required field: orderId",
-    "requestId": "test-req-invalid-payload"
+    "code": "VALIDATION_ERROR",
+    "message": "Invalid request. currentVersion: Field required",
+    "requestId": "…",
+    "details": [{"field": "currentVersion", "message": "Field required"}]
   }
 }
 ```
 
-### 7.2 Unknown Event or Version (`404 Not Found`)
-```json
-{
-  "error": {
-    "code": "CONTRACT_NOT_FOUND",
-    "message": "Contract version 99 not found for event type 'OrderPlaced'.",
-    "requestId": "6cf6c321-72f1-43e5-827c-17e94fbf2f8a"
-  }
-}
-```
-
-### 7.3 Event Publishing Failure (`503 Service Unavailable`)
-```json
-{
-  "error": {
-    "code": "EVENT_PUBLISH_FAILED",
-    "message": "Failed to publish event to EventBridge: Internal service error",
-    "requestId": "test-req-fail"
-  }
-}
-```
-
+The codes and statuses are listed in [architecture.md](architecture.md#requests-and-errors).

@@ -1,1 +1,1 @@
-# Configuration
+"""Runtime configuration from environment variables."""

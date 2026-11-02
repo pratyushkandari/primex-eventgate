@@ -1,15 +1,17 @@
-"""EventGate CLI -- Developer and CI release-control gate.
+"""eventgate command-line tool: the same analysis and policy as the API, for local
+use and CI pipelines. Reads the storage backend from the same environment
+variables as the API.
 
 Commands:
-- eventgate check: Analyze event compatibility and enforce release policy
-- eventgate catalog: Inspect registered event contracts and schemas
-- eventgate history: Query release audit records
-- eventgate test: Run automated contract regression assertions
+- eventgate check:   analyze a version change and apply the release policy
+- eventgate catalog: list event types, or one event's versions and consumers
+- eventgate history: list recorded release reviews
+- eventgate test:    assert that a change produces an expected decision
 
 Exit codes for 'check':
-- 0: ALLOW (Safe or permitted by environment policy)
-- 1: BLOCK (Breaking change rejected)
-- 2: REVIEW (Manual approval required, exits 1 if --fail-on-review)
+- 0: ALLOW
+- 1: BLOCK, an error, or REVIEW with --fail-on-review
+- 2: REVIEW
 """
 
 from __future__ import annotations
@@ -19,26 +21,40 @@ import sys
 
 import click
 
+from eventgate import __version__
 from eventgate.api.dependencies import (
     get_analysis_service,
     get_catalog_service,
     get_history_service,
 )
-from eventgate.application.services.release_history_service import ReleaseHistoryService
-from eventgate.domain.enums import CompatibilityStatus, Decision
+from eventgate.domain.enums import CompatibilityStatus, Decision, Environment
 from eventgate.domain.errors import EventGateError
-from eventgate.domain.history import ReleaseRecord
+from eventgate.domain.history import ReleaseRecord, affected_consumer_ids, summarize_findings
+from eventgate.domain.models import AnalysisResult
 from eventgate.domain.reports import generate_json_report, generate_markdown_report
-from eventgate.infrastructure.repositories.release_review_repository import (
-    InMemoryReleaseReviewRepository,
-)
+
+ENV_CHOICE = click.Choice([e.value for e in Environment], case_sensitive=False)
 
 
 @click.group()
-@click.version_option(version="0.1.0", prog_name="eventgate")
+@click.version_option(version=__version__, prog_name="eventgate")
 def main():
-    """EventGate - Enterprise Event Contract Release-Control Platform."""
-    pass
+    """EventGate: consumer-aware release gate for event contracts."""
+
+
+def _analyze_or_exit(
+    event_type: str, current_version: int, proposed_version: int, environment: str
+) -> AnalysisResult:
+    try:
+        return get_analysis_service().analyze(
+            event_type=event_type,
+            current_version=current_version,
+            proposed_version=proposed_version,
+            environment=environment,
+        )
+    except EventGateError as exc:
+        click.secho(f"Error: {exc.message} ({exc.code})", fg="red", err=True)
+        sys.exit(1)
 
 
 @main.command(name="check")
@@ -68,9 +84,10 @@ def main():
 @click.option(
     "--env",
     "environment",
+    type=ENV_CHOICE,
     default="production",
     show_default=True,
-    help="Target deployment environment (development, staging, production).",
+    help="Release target environment.",
 )
 @click.option(
     "--format",
@@ -102,66 +119,35 @@ def check_command(
     persist: bool,
 ):
     """Analyze contract compatibility against downstream consumers and evaluate policy."""
-    try:
-        service = get_analysis_service()
-        result = service.analyze(
-            event_type=event_type,
-            current_version=current_version,
-            proposed_version=proposed_version,
-            environment=environment,
-        )
-    except EventGateError as exc:
-        click.secho(f"Error: {exc.message} ({exc.code})", fg="red", err=True)
-        sys.exit(1)
-    except Exception as exc:
-        click.secho(f"Unexpected error during analysis: {exc}", fg="red", err=True)
-        sys.exit(1)
+    result = _analyze_or_exit(event_type, current_version, proposed_version, environment)
+    findings_summary = summarize_findings(result.findings)
+    affected = affected_consumer_ids(result.findings)
 
-    # Persist in history
-    try:
-        should_persist = persist or os.environ.get("EVENTGATE_PERSIST_HISTORY", "").lower() in (
-            "1",
-            "true",
-            "yes",
-        )
-        if should_persist:
-            history_service = get_history_service()
-        else:
-            history_service = ReleaseHistoryService(review_repo=InMemoryReleaseReviewRepository())
-        findings_summary = [
-            {
-                "consumerId": f.consumer_id,
-                "status": f.status.value,
-                "ruleId": f.rule_id,
-                "field": f.field,
-                "expectedType": f.expected_type,
-                "proposedType": f.proposed_type,
-                "severity": f.severity.value,
-                "reason": f.reason,
-            }
-            for f in result.findings
-        ]
-        affected_consumers = sorted(
-            {f.consumer_id for f in result.findings if f.status != CompatibilityStatus.SAFE}
-        )
-        history_service.record_evaluation(
-            analysis_id=result.analysis_id,
-            event_type=result.event_type,
-            current_version=result.current_version,
-            proposed_version=result.proposed_version,
-            environment=result.environment,
-            compatibility_result=result.compatibility_result,
-            severity=result.severity.value,
-            policy_name=result.policy_name,
-            policy_reason=result.policy_reason or result.summary,
-            decision=result.decision.value,
-            affected_consumers=affected_consumers,
-            findings_summary=findings_summary,
-        )
-    except Exception:
-        pass
+    should_persist = persist or os.environ.get("EVENTGATE_PERSIST_HISTORY", "").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    if should_persist:
+        try:
+            get_history_service().record_evaluation(
+                analysis_id=result.analysis_id,
+                event_type=result.event_type,
+                current_version=result.current_version,
+                proposed_version=result.proposed_version,
+                environment=result.environment,
+                compatibility_result=result.compatibility_result,
+                severity=result.severity.value,
+                policy_name=result.policy_name,
+                policy_reason=result.policy_reason or result.summary,
+                decision=result.decision.value,
+                affected_consumers=affected,
+                findings_summary=findings_summary,
+            )
+        except Exception as exc:
+            # The decision is still valid; warn rather than change the exit code.
+            click.secho(f"Warning: could not persist history record: {exc}", fg="yellow", err=True)
 
-    # Build Record for report rendering
     rec = ReleaseRecord(
         record_id=result.analysis_id,
         analysis_id=result.analysis_id,
@@ -174,22 +160,8 @@ def check_command(
         policy_name=result.policy_name,
         policy_reason=result.policy_reason or result.summary,
         decision=result.decision.value,
-        affected_consumers=sorted(
-            {f.consumer_id for f in result.findings if f.status != CompatibilityStatus.SAFE}
-        ),
-        findings_summary=[
-            {
-                "consumerId": f.consumer_id,
-                "status": f.status.value,
-                "ruleId": f.rule_id,
-                "field": f.field,
-                "expectedType": f.expected_type,
-                "proposedType": f.proposed_type,
-                "severity": f.severity.value,
-                "reason": f.reason,
-            }
-            for f in result.findings
-        ],
+        affected_consumers=affected,
+        findings_summary=findings_summary,
         published=False,
     )
 
@@ -338,7 +310,7 @@ def history_command(event_type: str | None, limit: int):
     required=True,
     type=click.Choice(["ALLOW", "REVIEW", "BLOCK"], case_sensitive=False),
 )
-@click.option("--env", "environment", default="production", show_default=True)
+@click.option("--env", "environment", type=ENV_CHOICE, default="production", show_default=True)
 def test_command(
     event_type: str,
     current_version: int,
@@ -347,13 +319,7 @@ def test_command(
     environment: str,
 ):
     """Assert actual release decision matches expected policy outcome."""
-    service = get_analysis_service()
-    result = service.analyze(
-        event_type=event_type,
-        current_version=current_version,
-        proposed_version=proposed_version,
-        environment=environment,
-    )
+    result = _analyze_or_exit(event_type, current_version, proposed_version, environment)
     expected_upper = expected_decision.upper()
     actual_decision = result.decision.value
 

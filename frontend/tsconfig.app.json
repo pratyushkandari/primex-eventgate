@@ -22,11 +22,11 @@
     },
 
     /* Linting */
+    "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"],
-  "exclude": ["src/test/**", "**/*.test.ts", "**/*.test.tsx"]
+  "include": ["src"]
 }

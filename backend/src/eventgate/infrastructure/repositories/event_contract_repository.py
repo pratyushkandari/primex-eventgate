@@ -1,80 +1,37 @@
-"""JSON-based event contract repository for local development.
+"""Event contracts read from JSON files (local storage backend).
 
-Reads event contracts from the filesystem:
-  contracts/events/{event-type-slug}/v{version}.json
-
-The slug is derived from the event type by lowercasing and replacing spaces
-with hyphens (e.g. "OrderPlaced" → "order-placed"). Version files may also
-use descriptive names like "v2-safe.json" — the version inside the JSON is
-authoritative.
+Layout: contracts/events/{event-type-slug}/v{version}.json, where the slug is the
+event type in kebab case (OrderPlaced -> order-placed). A file may carry a
+description after the version, e.g. v2-safe.json; the version and eventType
+inside the file must match the requested event type and version.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 
-from eventgate.domain.enums import SUPPORTED_FIELD_TYPES
 from eventgate.domain.errors import (
     ContractNotFoundError,
     InvalidContractError,
     UnsupportedEventVersionError,
 )
-from eventgate.domain.models import EventContract, EventField
+from eventgate.domain.models import EventContract
+from eventgate.infrastructure.repositories.contract_parsing import parse_event_contract
 
 logger = logging.getLogger(__name__)
 
 
 def _slugify(event_type: str) -> str:
-    """Convert an event type name to a directory slug.
-
-    Examples:
-        OrderPlaced → order-placed
-        UserSignedUp → user-signed-up
-    """
-    result: list[str] = []
-    for i, char in enumerate(event_type):
-        if char.isupper() and i > 0:
-            result.append("-")
-        result.append(char.lower())
-    return "".join(result)
+    """OrderPlaced -> order-placed."""
+    return re.sub(r"(?<!^)(?=[A-Z])", "-", event_type).lower()
 
 
-def _parse_event_contract(data: dict, source: str) -> EventContract:
-    """Parse and validate a raw JSON dict into an EventContract."""
-    event_type = data.get("eventType")
-    if not event_type or not isinstance(event_type, str):
-        raise InvalidContractError(f"Missing or invalid 'eventType' in {source}.")
-
-    version = data.get("version")
-    if not isinstance(version, int) or version < 1:
-        raise InvalidContractError(f"Missing or invalid 'version' in {source}.")
-
-    raw_fields = data.get("fields")
-    if not isinstance(raw_fields, dict):
-        raise InvalidContractError(f"Missing or invalid 'fields' in {source}.")
-
-    fields: dict[str, EventField] = {}
-    for name, spec in raw_fields.items():
-        if not isinstance(spec, dict):
-            raise InvalidContractError(f"Invalid field spec for '{name}' in {source}.")
-
-        field_type = spec.get("type")
-        if field_type not in SUPPORTED_FIELD_TYPES:
-            raise InvalidContractError(
-                f"Unsupported type '{field_type}' for field '{name}' in {source}."
-            )
-
-        required = spec.get("required")
-        if not isinstance(required, bool):
-            raise InvalidContractError(
-                f"Missing or invalid 'required' for field '{name}' in {source}."
-            )
-
-        fields[name] = EventField(name=name, type=field_type, required=required)
-
-    return EventContract(event_type=event_type, version=version, fields=fields)
+def _version_file_pattern(version: int) -> re.Pattern[str]:
+    # v1.json or v1-anything.json, but never v10.json.
+    return re.compile(rf"^v{version}(-[^.]*)?\.json$")
 
 
 class JsonEventContractRepository:
@@ -83,108 +40,89 @@ class JsonEventContractRepository:
     def __init__(self, contracts_dir: Path):
         self._contracts_dir = contracts_dir
 
-    def get_event_contract(self, event_type: str, version: int) -> EventContract:
-        """Load a specific event contract version.
-
-        Searches for files matching v{version}*.json in the event type directory.
-        """
-        slug = _slugify(event_type)
-        event_dir = self._contracts_dir / "events" / slug
-
+    def _event_dir(self, event_type: str) -> Path:
+        event_dir = self._contracts_dir / "events" / _slugify(event_type)
         if not event_dir.is_dir():
             raise ContractNotFoundError(f"No contracts found for event type '{event_type}'.")
+        return event_dir
 
-        # Look for files that start with "v{version}" (e.g. v1.json, v2-safe.json).
-        prefix = f"v{version}"
-        candidates = sorted(p for p in event_dir.glob(f"{prefix}*.json") if p.is_file())
+    def get_event_contract(self, event_type: str, version: int) -> EventContract:
+        """Load one version.
 
+        Raises ContractNotFoundError for an unknown event type,
+        UnsupportedEventVersionError for an unknown version, and
+        InvalidContractError if the file is malformed or names another event/version.
+        """
+        event_dir = self._event_dir(event_type)
+        pattern = _version_file_pattern(version)
+        candidates = sorted(p for p in event_dir.iterdir() if p.is_file() and pattern.match(p.name))
         if not candidates:
             raise UnsupportedEventVersionError(event_type, version)
-
-        # Use the first matching file (there should be exactly one per version).
-        contract_path = candidates[0]
-        return self._load_contract(contract_path, event_type, version)
+        if len(candidates) > 1:
+            names = ", ".join(p.name for p in candidates)
+            raise InvalidContractError(f"Multiple files define {event_type} v{version}: {names}.")
+        return self._load_contract(candidates[0], event_type, version)
 
     def list_event_contracts(self, event_type: str) -> list[EventContract]:
-        """Load all versions of an event contract, sorted by version number."""
-        slug = _slugify(event_type)
-        event_dir = self._contracts_dir / "events" / slug
-
-        if not event_dir.is_dir():
-            raise ContractNotFoundError(f"No contracts found for event type '{event_type}'.")
-
+        """Load every valid version, sorted by version; invalid files are skipped with a warning."""
+        event_dir = self._event_dir(event_type)
         contracts: list[EventContract] = []
         for path in sorted(event_dir.glob("v*.json")):
-            if path.is_file():
-                try:
-                    data = json.loads(path.read_text(encoding="utf-8"))
-                    contract = _parse_event_contract(data, source=path.name)
-                    contracts.append(contract)
-                except (json.JSONDecodeError, InvalidContractError) as exc:
-                    logger.warning("Skipping invalid contract %s: %s", path.name, exc)
+            if not path.is_file():
+                continue
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                contracts.append(parse_event_contract(data, source=path.name))
+            except (json.JSONDecodeError, InvalidContractError) as exc:
+                logger.warning("Skipping invalid contract %s: %s", path.name, exc)
 
         if not contracts:
             raise ContractNotFoundError(f"No valid contracts found for event type '{event_type}'.")
-
         contracts.sort(key=lambda c: c.version)
         return contracts
 
     def list_event_types(self) -> list[str]:
-        """Return all distinct registered event type names."""
+        """Return event type names, read from the first parseable file in each directory."""
         events_dir = self._contracts_dir / "events"
         if not events_dir.is_dir():
             return []
 
-        event_types: list[str] = []
-        for d in sorted(events_dir.iterdir()):
-            if d.is_dir():
-                # Inspect the first valid contract file in this dir to get canonical eventType
-                candidate_files = sorted(d.glob("v*.json"))
-                found = False
-                for cf in candidate_files:
-                    try:
-                        data = json.loads(cf.read_text(encoding="utf-8"))
-                        et = data.get("eventType")
-                        if et and isinstance(et, str):
-                            event_types.append(et)
-                            found = True
-                            break
-                    except Exception:
-                        continue
-                if not found:
-                    words = d.name.split("-")
-                    event_types.append("".join(w.capitalize() for w in words))
-        return sorted(list(dict.fromkeys(event_types)))
+        event_types: set[str] = set()
+        for directory in sorted(d for d in events_dir.iterdir() if d.is_dir()):
+            for path in sorted(directory.glob("v*.json")):
+                try:
+                    name = json.loads(path.read_text(encoding="utf-8")).get("eventType")
+                except (OSError, json.JSONDecodeError):
+                    continue
+                if isinstance(name, str) and name:
+                    event_types.add(name)
+                    break
+        return sorted(event_types)
 
     def get_event_versions(self, event_type: str) -> list[int]:
-        """Return all available version numbers for an event type."""
+        """Return the available version numbers (empty if the event type is unknown)."""
         try:
-            contracts = self.list_event_contracts(event_type)
-            return [c.version for c in contracts]
+            return [c.version for c in self.list_event_contracts(event_type)]
         except ContractNotFoundError:
             return []
 
     def _load_contract(
         self, path: Path, expected_type: str, expected_version: int
     ) -> EventContract:
-        """Read, parse, and validate a single contract file."""
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:
             raise InvalidContractError(f"Malformed JSON in {path.name}: {exc}") from exc
 
-        contract = _parse_event_contract(data, source=path.name)
-
+        contract = parse_event_contract(data, source=path.name)
         if contract.event_type != expected_type:
             raise InvalidContractError(
                 f"Contract in {path.name} has eventType '{contract.event_type}' "
                 f"but expected '{expected_type}'."
             )
-
         if contract.version != expected_version:
             raise InvalidContractError(
                 f"Contract in {path.name} has version {contract.version} "
                 f"but expected {expected_version}."
             )
-
         return contract

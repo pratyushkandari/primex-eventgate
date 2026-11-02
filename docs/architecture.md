@@ -1,173 +1,109 @@
-# EventGate Platform Architecture Specification
+# Architecture
 
-## 1. Architectural Philosophy
+EventGate is one Python package (`backend/src/eventgate`) behind two entry points, the FastAPI app and the `eventgate` CLI, plus a React console in `frontend/`. The package follows a ports-and-adapters layout so the same code runs locally on JSON files and on AWS with DynamoDB and EventBridge.
 
-EventGate is designed according to **Clean Architecture / Ports & Adapters (Hexagonal)** principles:
+## Layers
 
-1. **Pure Domain Core:** The domain layer contains zero third-party dependencies. It does not import FastAPI, Pydantic, AWS SDKs, or database drivers.
-2. **Ports as Abstract Interfaces:** Persistence, cloud publishing, and policy evaluation are abstracted behind interface contracts (`IEventContractRepository`, `IConsumerContractRepository`, `IReleaseReviewRepository`, `IEventPublisher`, `IPolicyEngine`).
-3. **Decoupled Architectural Decision Model:**
-   * **Compatibility Analysis:** Deterministically evaluates the technical impact on consumers: `(CurrentContract, ProposedContract, ConsumerContract) -> list[Finding]`. Produces `SAFE | RISK | BREAK` and `LOW | MEDIUM | HIGH` severity.
-   * **Release Policy:** Evaluates the technical compatibility outcome within an operational environment context (`production`, `staging`, `development`). Produces `ALLOW | REVIEW | BLOCK`.
-4. **Deterministic State & Zero Fake Telemetry:** Given identical inputs, EventGate will always output identical findings and policy decisions. Initial audit history is empty (`reviews.json = []`), and settings reflect actual runtime configuration.
-5. **Boundary Isolation:** Pydantic is utilized strictly at the API presentation boundary for HTTP schema validation and serialization.
+| Layer | Package | Responsibility |
+| --- | --- | --- |
+| Domain | `eventgate.domain` | Contract models, diffing (`changes.py`), per-consumer rules (`compatibility.py`), verdict aggregation (`decision.py`), release policy (`policy.py`), payload validation, history records and report rendering. No I/O except reading the packaged Cedar file. |
+| Application | `eventgate.application` | Use cases: `EventAnalysisService`, `EventPublishService`, `ReleaseHistoryService`, `ContractCatalogService`. Ports (`ports/`) define the repository and publisher interfaces they depend on. |
+| Infrastructure | `eventgate.infrastructure` | Adapters: JSON and DynamoDB repositories, the local in-memory publisher and the EventBridge publisher, and shared contract parsing. |
+| API | `eventgate.api`, `eventgate.main` | FastAPI routes, request ID middleware, error envelope, and `dependencies.py`, which builds adapters from environment variables. |
+| CLI | `eventgate.cli` | `check`, `test`, `catalog`, `history` commands over the same services. |
 
----
+`lambda_handler.py` wraps the FastAPI app with Mangum for API Gateway HTTP API (payload format 2.0).
 
-## 2. Layered Component Architecture
+## Data flow
 
-```text
-               +----------------------------------+
-               |   HTTP Client / CLI / CI / Web   |
-               +----------------------------------+
-                                |  (HTTP / Command)
-                                v
-               +----------------------------------+
-               |            API Layer             |
-               | - FastAPI Routers (analyze,      |
-               |   publish, catalog, history,     |
-               |   policies, config)              |
-               | - Pydantic Request/Response DTOs |
-               | - Structured Error Middleware    |
-               +----------------------------------+
-                                |
-                                v
-               +----------------------------------+
-               |        Application Layer         |
-               | - EventAnalysisService           |
-               | - GatedEventPublishService       |
-               | - ContractCatalogService         |
-               | - ReleaseHistoryService          |
-               | - ReportExportService            |
-               +----------------------------------+
-                     /          |           \
-                    /           |            \
-                   v            v             v
-    +--------------------+ +-------------+ +--------------------+
-    | Infrastructure     | | Policy      | | Domain Layer       |
-    | (Adapters)         | | Engines     | | (Pure Core)        |
-    | - JsonEventRepo    | | - Standard  | | - Frozen Entities  |
-    | - JsonConsumerRepo | |   Policy    | | - Compatibility    |
-    | - JsonReviewRepo   | | - Cedar     | |   Engine (EVT001-8)|
-    | - DynamoDB Repos   | |   Policy    | | - Policy Matrix    |
-    | - EventBridge /    | |   Engine    | | - Correlation      |
-    |   Local Publisher  | |             | |   Entities         |
-    +--------------------+ +-------------+ +--------------------+
+### Analyze (`POST /api/v1/analyze`)
+
+1. `EventAnalysisService.analyze` validates the input (non-empty event type, positive and different versions, a known environment).
+2. It loads both contract versions and every consumer subscribed to the event type.
+3. `compute_change_set` lists added, removed, retyped and requiredness-changed fields.
+4. `CompatibilityEngine.evaluate` produces findings per consumer. Only fields the consumer declares can produce RISK or BREAK; when several rules hit the same field, the one with the lowest precedence number wins. A consumer with no relevant change gets one SAFE finding (EVT005 if optional fields were added, otherwise EVT008).
+5. `aggregate_decision` turns the findings into SAFE/RISK/BREAK with LOW/MEDIUM/HIGH severity. No findings (no consumers) is RISK/MEDIUM.
+6. The policy engine maps verdict and environment to ALLOW, REVIEW or BLOCK, with a reason and any warnings.
+7. The route records the result as a release record whose `record_id` is the analysis ID (best effort: a history failure is logged and the analysis is still returned).
+
+### Publish (`POST /api/v1/events/publish`)
+
+1. The payload is validated against the proposed contract: required fields present, top-level JSON types match (booleans are never accepted as numbers). Failure is HTTP 422.
+2. If the request carries an `analysisId`, the stored record must describe the same event, versions and environment; otherwise HTTP 400 and nothing is published.
+3. The analysis runs again, so the decision enforced is the one at publish time.
+4. On ALLOW the publisher sends the event; otherwise the response is HTTP 409 with `published: false`.
+5. The attempt is written to history, on the analysis record when one was given. A transport failure is recorded with its error before the API returns HTTP 503.
+
+## Compatibility rules
+
+| Precedence | Rule | Result | Fires when, for a consumer |
+| --- | --- | --- | --- |
+| 1 | `EVT001_FIELD_TYPE_CHANGED` | BREAK | a declared field's proposed type is not one the consumer accepts (only exact matches and `integer` for a `number` field are accepted) |
+| 2 | `EVT003_CONSUMER_REQUIRED_FIELD_MISSING` | BREAK | a field the consumer requires is not in the proposed contract |
+| 3 | `EVT004_REQUIREDNESS_CHANGED` | BREAK | a declared field changes between required and optional, in either direction |
+| 4 | `EVT006_OPTIONAL_FIELD_REMOVED` | RISK | a field the consumer declares as optional is removed |
+| 5 | `EVT005_OPTIONAL_FIELD_ADDED` | SAFE | no relevant change, and optional fields were added |
+| 6 | `EVT008_CONSUMER_UNAFFECTED` | SAFE | no relevant change |
+
+EVT004 treats optional → required as BREAK even though it guarantees more to readers: the rule flags any change in a declared field's contract for an explicit decision rather than guessing which direction is safe.
+
+## Release policy
+
+| Environment | SAFE (LOW) | RISK (MEDIUM) | BREAK (HIGH) |
+| --- | --- | --- | --- |
+| production | ALLOW | REVIEW | BLOCK |
+| staging | ALLOW | REVIEW | BLOCK |
+| development | ALLOW | ALLOW with a warning | BLOCK |
+
+`StandardReleasePolicyEngine` implements the matrix in Python and is the default. `CedarReleasePolicyEngine` evaluates `eventgate/policies/release_policy.cedar` with cedarpy: two `forbid` rules (any HIGH; MEDIUM in production or staging) and two `permit` rules (LOW; MEDIUM in development). A Cedar deny maps to BLOCK for HIGH and REVIEW otherwise. Tests check that both engines agree for every cell. `GET /api/v1/policies` derives its matrix from the standard engine, so the published table cannot drift from the enforced one.
+
+## Storage
+
+### Local (default)
+
+- Event contracts: `contracts/events/{kebab-case-event}/v{N}.json` (a suffix such as `v2-safe.json` is allowed; the file's `version` must match).
+- Consumer contracts: `contracts/consumers/{consumer-id}.json`, one event type per consumer.
+- Release history: one JSON array in `.eventgate/history.json`. A process-wide lock serializes writes, each write goes to a temporary file that replaces the original, the parsed list is cached while the file's mtime and size are unchanged, and a corrupt file raises instead of being overwritten.
+
+### DynamoDB
+
+| Table | Key | Index | Notes |
+| --- | --- | --- | --- |
+| `…-event-contracts` | `eventType` (S) + `version` (N) | – | `eventType="METADATA#CATALOG", version=0` holds the list of event types |
+| `…-consumer-contracts` | `consumerId` (S) | `EventTypeIndex`: `eventType` + `consumerId` | `consumerId="METADATA#CATALOG"` holds the list of consumer IDs and has no `eventType`, so it stays out of the index |
+| `…-release-history` | `recordId` (S) | `EventTypeIndex`: `eventType` + `timestamp` | Unfiltered listing queries the index once per event type from the catalog |
+
+Every access is a GetItem or a Query; nothing scans. The catalog items are written by `scripts/seed_dynamodb.py`; if they are missing the API returns empty lists and logs a warning instead of guessing.
+
+## Event bus
+
+On ALLOW, `EventBridgeEventPublisher` calls `PutEvents` on the custom bus with `Source: primex.eventgate`, `DetailType: EventGateEvent` and this detail:
+
+```json
+{"eventId": "…", "eventType": "OrderPlaced", "version": 2, "decision": "ALLOW",
+ "analysisId": "…", "requestId": "…", "payload": {"orderId": "…"}}
 ```
 
----
+The rule `…-order-placed-rule` matches `detail.eventType = OrderPlaced` and targets three demo Lambdas (`consumers/src/consumer_handler.py`) that log the delivery with their `CONSUMER_ID`. A failed entry or missing `EventId` raises `EventPublishFailedError` (HTTP 503). Locally, `LocalEventPublisher` keeps events in memory and returns a `local-eb-…` ID.
 
-## 3. End-to-End Request & Release Correlation Flow
+## Requests and errors
 
-A single release workflow produces a single correlated audit record.
+Middleware assigns every request an ID (the caller's `X-Request-ID` when it contains only letters, digits, `-` and `_`, up to 128 characters; otherwise a UUID) and returns it in the `X-Request-ID` header. Domain errors, validation errors, unknown routes and unexpected exceptions all return:
 
-```text
-[Client / CLI / Web]
-   │
-   ├─► 1. POST /api/v1/analyze { eventType, currentVersion, proposedVersion, environment="production" }
-   │
-[API Router (eventgate.api.routes.analysis)]
-   │
-   ├─► 2. Validates JSON payload using Pydantic DTO (AnalysisRequestSchema)
-   ├─► 3. Extracts or generates correlation analysisId (UUID)
-   ├─► 4. Calls EventAnalysisService.analyze(event_type, current, proposed, environment, request_id, analysis_id)
-   │
-[Application Service (eventgate.application.services.event_analysis_service)]
-   │
-   ├─► 5. Loads current and proposed contracts from IEventContractRepository
-   ├─► 6. Loads downstream consumers from IConsumerContractRepository
-   ├─► 7. Computes schema diff ChangeSet (added, removed, typeChanges, requirednessChanges)
-   ├─► 8. CompatibilityEngine.evaluate(...) -> deterministic findings (SAFE | RISK | BREAK)
-   ├─► 9. IPolicyEngine.evaluate_release(compatibility_result, severity, environment) -> PolicyEvaluationResult
-   ├─► 10. Persists initial ReleaseRecord in IReleaseReviewRepository:
-   │          record_id = analysis_id
-   │          status = EVALUATED, published = false
-   │
-[Client / CLI / Web]
-   │
-   ├─► 11. POST /api/v1/events/publish { eventType, currentVersion, proposedVersion, environment, payload, analysisId }
-   │
-[Application Service (eventgate.application.services.gated_publish_service)]
-   │
-   ├─► 12. Validates payload against proposed version contract (HTTP 422 if invalid)
-   ├─► 13. Evaluates compatibility & policy (ALLOW | REVIEW | BLOCK)
-   ├─► 14. If ALLOW:
-   │          Calls IEventPublisher.publish(...) -> returns eventId and eventBridgeEventId
-   │          Updates existing ReleaseRecord(record_id=analysisId):
-   │             published = true, event_id = ..., event_bridge_event_id = ..., published_at = ...
-   │       If BLOCK or REVIEW:
-   │          Prevents publication (PutEvents NOT called)
-   │          Updates existing ReleaseRecord(record_id=analysisId):
-   │             attempted_publish = true, published = false, reason = ...
-   │          Returns HTTP 409 Conflict with violation diagnosis
+```json
+{"error": {"code": "CONTRACT_NOT_FOUND", "message": "…", "requestId": "…"}}
 ```
 
----
+| Code | Status |
+| --- | --- |
+| `VALIDATION_ERROR` (with `details` per field) | 422 |
+| `INVALID_EVENT_PAYLOAD` | 422 |
+| `INVALID_ANALYSIS_REQUEST`, `INVALID_CONTRACT` | 400 |
+| `CONTRACT_NOT_FOUND`, `UNSUPPORTED_EVENT_VERSION`, `RELEASE_RECORD_NOT_FOUND`, `NOT_FOUND` | 404 |
+| `METHOD_NOT_ALLOWED` | 405 |
+| `EVENT_PUBLISH_FAILED` | 503 |
+| `CONFIGURATION_ERROR`, `INTERNAL_ERROR` | 500 |
 
-## 4. Layer Responsibilities
+## Console
 
-### Presentation Layer (`eventgate.api`)
-- Exposes ASGI endpoints using FastAPI.
-- Validates request payloads and maps domain exceptions to stable structured error response envelopes.
-- Injects dependencies via `eventgate.api.dependencies`.
-- Exposes:
-  - `/health`: Service health probe.
-  - `/api/v1/analyze`: Advisory compatibility analysis.
-  - `/api/v1/events/publish`: Gated publication.
-  - `/api/v1/contracts/events` & `/api/v1/contracts/consumers`: Contract and consumer catalog.
-  - `/api/v1/history`, `/api/v1/history/{record_id}`, & `/api/v1/history/{record_id}/report`: Persistent audit trail & reports.
-  - `/api/v1/policies`: Active policy engine status, 3x3 matrix, and Cedar source.
-  - `/api/v1/config/runtime`: Authoritative runtime configuration.
-
-### Application Layer (`eventgate.application`)
-- `EventAnalysisService`: Coordinates contract retrieval, change set diffing, compatibility evaluation, policy evaluation, and initial audit record creation.
-- `GatedEventPublishService`: Validates event payload syntax/schema, enforces release policy, calls the event publisher on `ALLOW`, and updates the correlated release record.
-- `ContractCatalogService`: Serves event catalog summaries, version details, consumer catalogs, and consumer drill-downs.
-- `ReleaseHistoryService`: Manages audit trail persistence and retrieval.
-- `ReportExportService`: Formats release records into deterministic Markdown and JSON compliance reports.
-
-### Domain Layer (`eventgate.domain`)
-- Plain frozen Python dataclasses (`EventContract`, `ConsumerContract`, `ChangeSet`, `Finding`, `AnalysisResult`, `ReleaseRecord`, `PolicyEvaluationResult`).
-- Compatibility matrix and rule evaluation (`CompatibilityEngine`, rules `EVT001` through `EVT008`).
-- Decoupled release policy abstraction (`IPolicyEngine`).
-- Authoritative environment release policy matrix (`production`, `staging`, `development`).
-
-### Infrastructure Layer (`eventgate.infrastructure`)
-- Repository interfaces and implementations:
-  - `IEventContractRepository`: Local JSON & DynamoDB implementations (`list_event_types`, `get_event_versions`, `get_contract`).
-  - `IConsumerContractRepository`: Local JSON & DynamoDB implementations (`list_all_consumers`, `get_consumers_for_event`, `get_consumer`).
-  - `IReleaseReviewRepository`: In-memory implementation (`InMemoryReleaseReviewRepository` for isolated, zero-side-effect test and local CLI verification), local JSON (`JsonReleaseReviewRepository`, targeting `contracts/history/reviews.json` or custom path via `EVENTGATE_HISTORY_FILE`), and DynamoDB (`DynamoReleaseReviewRepository` targeting `primex-eventgate-${Environment}-release-history`).
-- Cloud & Local Publishers:
-  - `EventBridgePublisher`: AWS SDK `boto3` calls to `events:PutEvents`.
-  - `LocalEventPublisher`: In-memory thread-safe event sink for zero-credential local execution.
-- Policy Engines:
-  - `StandardPolicyEngine`: Pure deterministic implementation of the release policy matrix.
-  - `CedarPolicyEngine`: Evaluates Amazon Cedar policy files (`contracts/policies/release_policy.cedar`); raises explicit `ConfigurationError` on misconfiguration without silent fallbacks.
-
----
-
-## 5. DynamoDB Zero-Scan Access Patterns
-
-To guarantee predictable latency and cost efficiency, EventGate executes **zero DynamoDB table scans** across all catalog and history operations:
-
-### Event Contracts Table (`primex-eventgate-dev-event-contracts`)
-| Access Pattern | Operation | Key Condition |
-| :--- | :--- | :--- |
-| **Get Event Contract** | `GetItem` | `PK = eventType`, `SK = version` |
-| **Get All Versions of Event**| `Query` | `PK = eventType` |
-| **List All Event Types** | `GetItem` | `PK = METADATA#CATALOG`, `SK = EVENTS` |
-
-### Consumer Contracts Table (`primex-eventgate-dev-consumer-contracts`)
-| Access Pattern | Operation | Key Condition |
-| :--- | :--- | :--- |
-| **Get Consumer by ID** | `GetItem` | `PK = consumerId` |
-| **Get Consumers for Event**| `Query` (on `EventTypeIndex`) | `GSI PK = eventType` |
-| **List All Consumers** | `GetItem` | `PK = METADATA#CATALOG`, `SK = CONSUMERS` |
-
-### Release History Table (`primex-eventgate-${Environment}-release-history`)
-| Access Pattern | Operation | Key Condition |
-| :--- | :--- | :--- |
-| **Save / Update Review** | `PutItem` | `PK = recordId` |
-| **Get Review by ID** | `GetItem` | `PK = recordId` |
-| **List Reviews by Event** | `Query` (on `EventTypeIndex`) | `GSI PK = eventType`, `SK <= timestamp` |
-
+The React app (`frontend/src`) is organised by page: `workspace/` (Review), `contracts/`, `history/`, `devtools/`, `policies/`, `settings/`, with shared primitives in `components/ui` and design tokens in `index.css`. Pages are selected by the URL hash (`#/history`). Review state lives in `useReviewSession`, owned by the app shell, so it survives navigation; read-only server state goes through TanStack Query hooks in `services/queries.ts`, and every API response is validated with Zod (`schemas/api.ts`). The dependency graph (`@xyflow/react`) is the only lazily loaded module.

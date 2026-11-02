@@ -94,11 +94,26 @@ class TestDynamoReleaseReviewRepository:
         self.mock_table.query.assert_called_once()
         assert self.mock_table.query.call_args[1]["IndexName"] == "EventTypeIndex"
 
-    def test_list_reviews_without_event_type(self):
+    def test_list_reviews_without_event_type_queries_each_catalog_event_type(self):
         item1 = _make_sample_record("rec-all-1", "OrderPlaced").to_dict()
         item1["recordId"] = "rec-all-1"
         item1["eventType"] = "OrderPlaced"
-        self.mock_table.query.return_value = {"Items": [item1]}
+        item2 = _make_sample_record("rec-all-2", "InvoiceIssued").to_dict()
+        item2["recordId"] = "rec-all-2"
+        item2["eventType"] = "InvoiceIssued"
+        self.mock_table.query.side_effect = [{"Items": [item1]}, {"Items": [item2]}]
+        repo = DynamoReleaseReviewRepository(
+            table_name="test-history-table",
+            dynamodb_resource=self.mock_resource,
+            event_types_provider=lambda: ["OrderPlaced", "InvoiceIssued"],
+        )
 
+        results = repo.list_reviews(limit=20)
+
+        assert {r.record_id for r in results} == {"rec-all-1", "rec-all-2"}
+        assert self.mock_table.query.call_count == 2
+
+    def test_list_reviews_without_provider_returns_empty_instead_of_guessing(self):
         results = self.repo.list_reviews(limit=20)
-        assert len(results) >= 1
+        assert results == []
+        self.mock_table.query.assert_not_called()

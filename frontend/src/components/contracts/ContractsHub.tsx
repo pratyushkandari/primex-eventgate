@@ -1,54 +1,47 @@
-/**
- * ContractsHub — Main hub for Contract Registry and Downstream Consumer Explorer.
- */
-
 import { useState } from 'react'
-import { Database, Users } from 'lucide-react'
-import { ContractRegistryView } from './ContractRegistryView'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { Segmented } from '@/components/ui/Segmented'
+import type { ChangeSelection } from '@/components/workspace/useReviewSession'
 import { ConsumerExplorerView } from './ConsumerExplorerView'
+import { ContractRegistryView } from './ContractRegistryView'
 
 interface ContractsHubProps {
-  onOpenReviewScenario?: (eventType: string, currentVer: number, proposedVer: number) => void
+  onOpenReview: (change: ChangeSelection) => void
 }
 
-export function ContractsHub({ onOpenReviewScenario }: ContractsHubProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'events' | 'consumers'>('events')
+/** Contracts page: event contract versions and the consumer contracts that read them. */
+export function ContractsHub({ onOpenReview }: ContractsHubProps) {
+  const [view, setView] = useState<'events' | 'consumers'>('events')
+  const [selectedEvent, setSelectedEvent] = useState<string | null>(null)
 
   return (
-    <div className="space-y-6">
-      {/* Sub-tab Navigation */}
-      <div className="flex items-center gap-2 border-b border-zinc-800 pb-3">
-        <button
-          onClick={() => setActiveSubTab('events')}
-          className={`flex items-center gap-2 px-3.5 py-1.5 rounded-md text-xs font-medium transition-all ${
-            activeSubTab === 'events'
-              ? 'bg-zinc-800 text-zinc-100 border border-zinc-700/80 shadow-sm'
-              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
-          }`}
-        >
-          <Database className="w-3.5 h-3.5 text-emerald-400" />
-          Event Contracts
-        </button>
-
-        <button
-          onClick={() => setActiveSubTab('consumers')}
-          className={`flex items-center gap-2 px-3.5 py-1.5 rounded-md text-xs font-medium transition-all ${
-            activeSubTab === 'consumers'
-              ? 'bg-zinc-800 text-zinc-100 border border-zinc-700/80 shadow-sm'
-              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
-          }`}
-        >
-          <Users className="w-3.5 h-3.5 text-indigo-400" />
-          Consumer Explorer
-        </button>
-      </div>
-
-      {activeSubTab === 'events' ? (
-        <ContractRegistryView onOpenReviewScenario={onOpenReviewScenario} />
+    <div>
+      <PageHeader
+        title="Contracts"
+        description="Versioned event schemas and the fields each consumer depends on."
+        actions={
+          <Segmented
+            label="Contract type"
+            value={view}
+            onChange={setView}
+            options={[
+              { value: 'events', label: 'Event contracts' },
+              { value: 'consumers', label: 'Consumer contracts' },
+            ]}
+          />
+        }
+      />
+      {view === 'events' ? (
+        <ContractRegistryView
+          selectedEventType={selectedEvent}
+          onSelectEventType={setSelectedEvent}
+          onOpenReview={onOpenReview}
+        />
       ) : (
         <ConsumerExplorerView
-          onSelectEvent={() => {
-            setActiveSubTab('events')
+          onSelectEvent={(eventType) => {
+            setSelectedEvent(eventType)
+            setView('events')
           }}
         />
       )}

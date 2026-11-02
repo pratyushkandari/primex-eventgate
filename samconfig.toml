@@ -1,5 +1,4 @@
-# AWS SAM configuration file for EventGate Phase 2
-# Safe to commit: contains NO secrets, NO credentials, and NO sensitive tokens.
+# `sam build` / `sam deploy` defaults for the dev stack. Contains no credentials.
 version = 0.1
 
 [default]

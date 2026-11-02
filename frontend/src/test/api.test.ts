@@ -1,167 +1,132 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { eventGateApi } from '@/services/api'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describeError, eventGateApi } from '@/services/api'
+import { API_CONFIG } from '@/config/env'
 import { EventGateApiError } from '@/types/api'
+import { analysis, publishResponse, record } from './fixtures'
 
-describe('eventGateApi service', () => {
-  const originalFetch = globalThis.fetch
+function respond(status: number, body: unknown) {
+  return vi.fn().mockResolvedValue({
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+  } as Response)
+}
 
-  beforeEach(() => {
-    vi.resetAllMocks()
-  })
+const originalFetch = globalThis.fetch
+afterEach(() => {
+  globalThis.fetch = originalFetch
+})
 
-  afterEach(() => {
-    globalThis.fetch = originalFetch
-  })
-
-  it('checkHealth returns operational service information', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ status: 'ok', service: 'eventgate', version: '0.1.0' }),
-    } as Response)
-
-    const res = await eventGateApi.checkHealth()
-    expect(res.status).toBe('ok')
-    expect(res.service).toBe('eventgate')
-    expect(res.version).toBe('0.1.0')
-  })
-
-  it('analyzeCompatibility sends POST request with correct payload', async () => {
-    const mockResponse = {
-      analysisId: 'test-analysis-123',
-      eventType: 'OrderPlaced',
-      currentVersion: 1,
-      proposedVersion: 2,
-      decision: 'ALLOW',
-      severity: 'LOW',
-      findings: [],
-      changeSet: { addedFields: ['metadata'], removedFields: [], typeChanges: [], requirednessChanges: [] },
-      summary: 'All consumers are safe',
-      timestamp: '2026-09-18T00:00:00Z',
-      requestId: 'test-req-id',
-    }
-
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => mockResponse,
-    } as Response)
+describe('eventGateApi', () => {
+  it('posts analysis requests as JSON to the configured base URL', async () => {
+    globalThis.fetch = respond(200, analysis('ALLOW'))
 
     const result = await eventGateApi.analyzeCompatibility({
       eventType: 'OrderPlaced',
       currentVersion: 1,
       proposedVersion: 2,
+      environment: 'staging',
     })
 
     expect(result.decision).toBe('ALLOW')
-    expect(result.analysisId).toBe('test-analysis-123')
+    const [url, init] = vi.mocked(globalThis.fetch).mock.calls[0]
+    expect(url).toBe(`${API_CONFIG.baseUrl}/api/v1/analyze`)
+    expect(init?.method).toBe('POST')
+    expect(new Headers(init?.headers).get('Content-Type')).toBe('application/json')
+    expect(JSON.parse(String(init?.body))).toMatchObject({ environment: 'staging' })
   })
 
-  it('publishEvent handles HTTP 409 Conflict as valid domain PublishResponse', async () => {
-    const mockBlockResponse = {
-      eventId: 'evt-block-123',
-      published: false,
-      decision: 'BLOCK',
-      severity: 'HIGH',
-      eventBridgeEventId: null,
-      analysis: {
-        analysisId: 'an-block-123',
-        eventType: 'OrderPlaced',
-        currentVersion: 1,
-        proposedVersion: 3,
-        decision: 'BLOCK',
-        severity: 'HIGH',
-        findings: [],
-        changeSet: { addedFields: [], removedFields: [], typeChanges: [], requirednessChanges: [] },
-        summary: 'Publication blocked',
-        timestamp: '2026-09-18T00:00:00Z',
-        requestId: 'req-block-123',
-      },
-    }
-
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: false,
-      status: 409,
-      json: async () => mockBlockResponse,
-    } as Response)
-
+  it('treats a 409 from publish as a normal BLOCK/REVIEW result', async () => {
+    globalThis.fetch = respond(409, publishResponse({ published: false, decision: 'BLOCK', eventBridgeEventId: null }))
     const result = await eventGateApi.publishEvent({
       eventType: 'OrderPlaced',
       currentVersion: 1,
       proposedVersion: 3,
-      payload: { orderId: 'O1' },
+      payload: {},
     })
-
     expect(result.published).toBe(false)
     expect(result.decision).toBe('BLOCK')
-    expect(result.eventBridgeEventId).toBeNull()
   })
 
-  it('throws EventGateApiError on HTTP 422 Invalid Payload', async () => {
+  it('does not accept 409 from other endpoints', async () => {
+    globalThis.fetch = respond(409, { error: { code: 'CONFLICT', message: 'nope' } })
+    await expect(eventGateApi.listEventCatalog()).rejects.toBeInstanceOf(EventGateApiError)
+  })
+
+  it('maps the error envelope into EventGateApiError', async () => {
+    globalThis.fetch = respond(422, {
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Invalid request. environment: Input should be ...',
+        requestId: 'req-9',
+        details: [{ field: 'environment', message: 'Input should be ...' }],
+      },
+    })
+    const err = await eventGateApi
+      .analyzeCompatibility({ eventType: 'OrderPlaced', currentVersion: 1, proposedVersion: 2 })
+      .catch((e) => e)
+    expect(err).toBeInstanceOf(EventGateApiError)
+    expect(err.statusCode).toBe(422)
+    expect(err.code).toBe('VALIDATION_ERROR')
+    expect(err.requestId).toBe('req-9')
+    expect(err.details).toHaveLength(1)
+  })
+
+  it('falls back to a status message when the error body is not JSON', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,
-      status: 422,
-      json: async () => ({
-        error: {
-          code: 'INVALID_EVENT_PAYLOAD',
-          message: 'Missing required field: orderId',
-          requestId: 'test-req-422',
-        },
-      }),
-    } as Response)
+      status: 502,
+      json: async () => {
+        throw new SyntaxError('Unexpected token <')
+      },
+    } as unknown as Response)
+    await expect(eventGateApi.checkHealth()).rejects.toMatchObject({ code: 'HTTP_502', statusCode: 502 })
+  })
 
+  it('reports network failures with the API address', async () => {
+    globalThis.fetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'))
+    const err = await eventGateApi.checkHealth().catch((e) => e)
+    expect(err.code).toBe('NETWORK_ERROR')
+    expect(err.statusCode).toBe(0)
+    expect(err.message).toContain(API_CONFIG.baseUrl)
+  })
+
+  it('rejects responses that do not match the expected shape', async () => {
+    globalThis.fetch = respond(200, { analysisId: 'x' })
     await expect(
-      eventGateApi.publishEvent({
-        eventType: 'OrderPlaced',
-        currentVersion: 1,
-        proposedVersion: 2,
-        payload: {},
-      })
-    ).rejects.toThrow(EventGateApiError)
+      eventGateApi.analyzeCompatibility({ eventType: 'OrderPlaced', currentVersion: 1, proposedVersion: 2 })
+    ).rejects.toThrow(/Unexpected analysis response/)
   })
 
-  it('throws EventGateApiError with 503 on EVENT_PUBLISH_FAILED', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: false,
-      status: 503,
-      json: async () => ({
-        error: {
-          code: 'EVENT_PUBLISH_FAILED',
-          message: 'Failed to publish event to EventBridge',
-          requestId: 'test-req-503',
-        },
-      }),
-    } as Response)
-
-    try {
-      await eventGateApi.publishEvent({
-        eventType: 'OrderPlaced',
-        currentVersion: 1,
-        proposedVersion: 2,
-        payload: { orderId: 'O1' },
-      })
-      expect.unreachable()
-    } catch (err) {
-      expect(err).toBeInstanceOf(EventGateApiError)
-      if (err instanceof EventGateApiError) {
-        expect(err.statusCode).toBe(503)
-        expect(err.code).toBe('EVENT_PUBLISH_FAILED')
-        expect(err.message).toBe('Failed to publish event to EventBridge')
-      }
-    }
+  it('requests reports for stored records by ID and format', async () => {
+    globalThis.fetch = respond(200, { recordId: 'an-1', format: 'json', content: '{}' })
+    await eventGateApi.getReport('an 1', 'json')
+    expect(vi.mocked(globalThis.fetch).mock.calls[0][0]).toBe(
+      `${API_CONFIG.baseUrl}/api/v1/history/an%201/report?format=json`
+    )
   })
 
-  it('throws EventGateApiError with NETWORK_ERROR on connection failure', async () => {
-    globalThis.fetch = vi.fn().mockRejectedValue(new Error('Failed to fetch'))
+  it('lists history with a limit and optional event filter', async () => {
+    globalThis.fetch = respond(200, [record()])
+    await eventGateApi.listHistory('OrderPlaced', 20)
+    expect(vi.mocked(globalThis.fetch).mock.calls[0][0]).toBe(
+      `${API_CONFIG.baseUrl}/api/v1/history?limit=20&eventType=OrderPlaced`
+    )
+  })
 
-    try {
-      await eventGateApi.checkHealth()
-      expect.unreachable()
-    } catch (err) {
-      expect(err).toBeInstanceOf(EventGateApiError)
-      if (err instanceof EventGateApiError) {
-        expect(err.code).toBe('NETWORK_ERROR')
-      }
-    }
+  it.each([
+    ['getEventDetail', 'Order Placed', '/api/v1/contracts/events/Order%20Placed'],
+    ['getConsumerDetail', 'billing/service', '/api/v1/contracts/consumers/billing%2Fservice'],
+  ] as const)('%s encodes path parameters', async (method, arg, path) => {
+    globalThis.fetch = respond(200, {})
+    await eventGateApi[method](arg).catch(() => undefined)
+    expect(vi.mocked(globalThis.fetch).mock.calls[0][0]).toBe(`${API_CONFIG.baseUrl}${path}`)
+  })
+})
+
+describe('describeError', () => {
+  it('uses the error message, with a generic fallback', () => {
+    expect(describeError(new Error('boom'))).toBe('boom')
+    expect(describeError('weird')).toMatch(/Something went wrong/)
   })
 })

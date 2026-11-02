@@ -1,21 +1,13 @@
 import * as React from 'react'
-import { Search, X } from 'lucide-react'
-
-export type CommandCategory =
-  | 'Navigation'
-  | 'Actions'
-  | 'Scenarios'
-  | 'Filters'
-  | 'Consumers'
-  | 'Environments'
-  | 'Identifiers'
-  | 'Help'
+import { createPortal } from 'react-dom'
+import { Search } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 export interface CommandItem {
   id: string
   title: string
   description?: string
-  category: CommandCategory
+  category: string
   icon: React.ComponentType<{ className?: string }>
   shortcut?: string
   disabled?: boolean
@@ -29,179 +21,130 @@ interface CommandPaletteProps {
   commands: CommandItem[]
 }
 
+function matches(command: CommandItem, query: string) {
+  const q = query.trim().toLowerCase()
+  if (!q) return true
+  return [command.title, command.description, command.category, ...(command.keywords ?? [])].some(
+    (text) => text?.toLowerCase().includes(q)
+  )
+}
+
+/** Ctrl/Cmd+K command list with type-to-filter and arrow-key navigation. */
 export function CommandPalette({ isOpen, onClose, commands }: CommandPaletteProps) {
+  // Mounting the body on open gives every opening a fresh query and selection.
+  return isOpen ? <PaletteBody onClose={onClose} commands={commands} /> : null
+}
+
+function PaletteBody({ onClose, commands }: Omit<CommandPaletteProps, 'isOpen'>) {
   const [query, setQuery] = React.useState('')
-  const [selectedIndex, setSelectedIndex] = React.useState(0)
+  const [active, setActive] = React.useState(0)
   const inputRef = React.useRef<HTMLInputElement>(null)
-  const listRef = React.useRef<HTMLDivElement>(null)
+  const listId = React.useId()
 
-  const filteredCommands = React.useMemo(() => {
-    if (!query.trim()) return commands
-    const q = query.toLowerCase().trim()
-    return commands.filter(
-      (c) =>
-        c.title.toLowerCase().includes(q) ||
-        (c.description && c.description.toLowerCase().includes(q)) ||
-        c.category.toLowerCase().includes(q) ||
-        (c.keywords && c.keywords.some((k) => k.toLowerCase().includes(q)))
-    )
-  }, [commands, query])
+  const filtered = React.useMemo(() => commands.filter((c) => matches(c, query)), [commands, query])
 
-  // Close on Escape key
   React.useEffect(() => {
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose()
-      }
-    }
-    if (isOpen) {
-      window.addEventListener('keydown', handleGlobalKeyDown)
-    }
-    return () => window.removeEventListener('keydown', handleGlobalKeyDown)
-  }, [isOpen, onClose])
+    const previouslyFocused = document.activeElement as HTMLElement | null
+    inputRef.current?.focus()
+    return () => previouslyFocused?.focus?.()
+  }, [])
 
-  // Keyboard navigation inside palette
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const run = (command: CommandItem | undefined) => {
+    if (!command || command.disabled) return
+    onClose()
+    command.onSelect()
+  }
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
       e.preventDefault()
       onClose()
     } else if (e.key === 'ArrowDown') {
       e.preventDefault()
-      setSelectedIndex((prev) => (prev + 1) % Math.max(1, filteredCommands.length))
+      setActive((i) => (filtered.length ? (i + 1) % filtered.length : 0))
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
-      setSelectedIndex((prev) =>
-        prev === 0 ? Math.max(0, filteredCommands.length - 1) : prev - 1
-      )
+      setActive((i) => (filtered.length ? (i - 1 + filtered.length) % filtered.length : 0))
     } else if (e.key === 'Enter') {
       e.preventDefault()
-      const selected = filteredCommands[selectedIndex]
-      if (selected && !selected.disabled) {
-        selected.onSelect()
-        onClose()
-      }
+      run(filtered[active])
+    } else if (e.key === 'Tab') {
+      // The search box is the only focusable element; keep focus in the palette.
+      e.preventDefault()
     }
   }
 
-  if (!isOpen) return null
-
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4 bg-black/70 backdrop-blur-sm transition-opacity"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Command Palette"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 pt-[12vh] animate-fade-in"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
-        className="bg-[#0c121e] border border-slate-700/80 rounded-xl shadow-2xl max-w-xl w-full overflow-hidden flex flex-col font-mono text-slate-200 animate-in fade-in zoom-in-95 duration-150"
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={handleKeyDown}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command palette"
+        className="w-full max-w-xl overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface shadow-[var(--shadow-overlay)]"
+        onKeyDown={onKeyDown}
       >
-        {/* Search Header */}
-        <div className="flex items-center px-3.5 py-3 border-b border-slate-800 bg-[#080c14]">
-          <Search className="h-4 w-4 text-slate-400 mr-2.5 flex-shrink-0" />
+        <div className="flex items-center gap-2 border-b border-line px-3">
+          <Search className="h-4 w-4 text-fg-subtle" aria-hidden="true" />
           <input
             ref={inputRef}
-            type="text"
             value={query}
             onChange={(e) => {
               setQuery(e.target.value)
-              setSelectedIndex(0)
+              setActive(0)
             }}
-            placeholder="Type a command or search action..."
-            className="bg-transparent text-slate-100 placeholder-slate-500 text-xs w-full focus:outline-none font-mono"
-            aria-autocomplete="list"
+            placeholder="Type a command or search"
+            aria-label="Search commands"
+            role="combobox"
+            aria-expanded="true"
+            aria-controls={listId}
+            aria-activedescendant={filtered[active] ? `${listId}-${filtered[active].id}` : undefined}
+            className="h-11 flex-1 bg-transparent text-sm text-fg placeholder:text-fg-subtle focus:outline-none"
           />
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-slate-500 hover:text-slate-300 p-1 rounded hover:bg-slate-800 cursor-pointer"
-            aria-label="Close command palette"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
+          <kbd className="rounded border border-line px-1.5 text-[11px] text-fg-subtle">Esc</kbd>
         </div>
-
-        {/* Command List */}
-        <div
-          ref={listRef}
-          className="max-h-80 overflow-y-auto p-2 space-y-1 text-xs"
-          role="listbox"
-        >
-          {filteredCommands.length === 0 ? (
-            <div className="py-8 text-center text-slate-500 font-sans text-xs">
-              No matching commands found.
-            </div>
-          ) : (
-            filteredCommands.map((command, idx) => {
-              const Icon = command.icon
-              const isSelected = idx === selectedIndex
-
-              return (
-                <div
-                  key={command.id}
+        <ul id={listId} role="listbox" aria-label="Commands" className="max-h-[50vh] overflow-y-auto p-1.5">
+          {filtered.length === 0 && <li className="px-3 py-6 text-center text-sm text-fg-subtle">No matching commands</li>}
+          {filtered.map((command, index) => {
+            const Icon = command.icon
+            const showCategory = index === 0 || filtered[index - 1].category !== command.category
+            return (
+              <React.Fragment key={command.id}>
+                {showCategory && (
+                  <li role="presentation" className="px-2.5 pt-2 pb-1 text-xs font-medium text-fg-subtle">
+                    {command.category}
+                  </li>
+                )}
+                <li
+                  id={`${listId}-${command.id}`}
                   role="option"
-                  aria-selected={isSelected}
-                  className={`flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer transition-colors ${
-                    command.disabled
-                      ? 'opacity-40 cursor-not-allowed'
-                      : isSelected
-                      ? 'bg-blue-600/20 text-blue-300 border border-blue-500/40'
-                      : 'hover:bg-slate-800/60 text-slate-200'
-                  }`}
-                  onClick={() => {
-                    if (!command.disabled) {
-                      command.onSelect()
-                      onClose()
-                    }
-                  }}
-                  onMouseEnter={() => setSelectedIndex(idx)}
+                  aria-selected={index === active}
+                  aria-disabled={command.disabled || undefined}
+                  onMouseEnter={() => setActive(index)}
+                  onClick={() => run(command)}
+                  className={cn(
+                    'flex cursor-pointer items-center gap-3 rounded-[var(--radius-control)] px-2.5 py-2',
+                    index === active ? 'bg-raised' : '',
+                    command.disabled && 'cursor-not-allowed opacity-50'
+                  )}
                 >
-                  <div className="flex items-center space-x-2.5 truncate">
-                    <Icon className={`h-4 w-4 flex-shrink-0 ${isSelected ? 'text-blue-400' : 'text-slate-400'}`} />
-                    <div className="truncate">
-                      <span className="font-semibold">{command.title}</span>
-                      {command.description && (
-                        <span className="text-[11px] text-slate-400 ml-2 font-sans">
-                          {command.description}
-                        </span>
-                      )}
-                    </div>
+                  <Icon className="h-4 w-4 shrink-0 text-fg-subtle" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm text-fg">{command.title}</p>
+                    {command.description && <p className="truncate text-xs text-fg-subtle">{command.description}</p>}
                   </div>
-
-                  <div className="flex items-center space-x-2 flex-shrink-0">
-                    <span className="text-[10px] text-slate-500 uppercase tracking-wider bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">
-                      {command.category}
-                    </span>
-                    {command.shortcut && (
-                      <kbd className="text-[10px] text-slate-400 bg-slate-900 border border-slate-700/80 px-1.5 py-0.5 rounded">
-                        {command.shortcut}
-                      </kbd>
-                    )}
-                  </div>
-                </div>
-              )
-            })
-          )}
-        </div>
-
-        {/* Footer info strip */}
-        <div className="px-3.5 py-2 border-t border-slate-800 bg-[#080c14] text-[10px] text-slate-500 flex items-center justify-between font-mono">
-          <div className="flex items-center space-x-3">
-            <span>
-              <kbd className="bg-slate-900 px-1 py-0.5 rounded border border-slate-800 text-slate-400">↑↓</kbd> Navigate
-            </span>
-            <span>
-              <kbd className="bg-slate-900 px-1 py-0.5 rounded border border-slate-800 text-slate-400">↵</kbd> Select
-            </span>
-            <span>
-              <kbd className="bg-slate-900 px-1 py-0.5 rounded border border-slate-800 text-slate-400">ESC</kbd> Dismiss
-            </span>
-          </div>
-          <span>EventGate Console</span>
-        </div>
+                  {command.shortcut && (
+                    <kbd className="rounded border border-line px-1.5 text-[11px] text-fg-subtle">{command.shortcut}</kbd>
+                  )}
+                </li>
+              </React.Fragment>
+            )
+          })}
+        </ul>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

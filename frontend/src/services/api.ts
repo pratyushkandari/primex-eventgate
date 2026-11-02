@@ -1,23 +1,27 @@
 /**
- * EventGate API client service.
- * Connects to the AWS Lambda / API Gateway backend.
+ * HTTP client for the EventGate API. Every method validates the response body
+ * and throws EventGateApiError (with the API's error code and request ID) for
+ * non-success responses and network failures.
  */
 
+import { z } from 'zod'
 import { API_CONFIG } from '@/config/env'
 import {
   type AnalysisRequest,
   type AnalysisResponse,
+  type ApiErrorDetail,
   type ConsumerDetail,
   type ConsumerSummary,
   type EventCatalogSummary,
   type EventDetail,
   EventGateApiError,
   type HealthResponse,
+  type PolicyInspectionResponse,
   type PublishRequest,
   type PublishResponse,
   type ReleaseRecord,
   type ReportExportResponse,
-  type PolicyInspectionResponse,
+  type ReportFormat,
   type RuntimeConfigResponse,
 } from '@/types/api'
 import {
@@ -34,198 +38,122 @@ import {
   RuntimeConfigResponseSchema,
   validateResponse,
 } from '@/schemas/api'
-import { z } from 'zod'
 
-async function request<T>(
-  endpoint: string,
-  options: RequestInit = {},
-  allow409AsJson = false
-): Promise<T> {
-  const url = `${API_CONFIG.baseUrl}${endpoint}`
-  const headers = new Headers(options.headers || {})
-  
-  if (!headers.has('Content-Type') && options.method && options.method !== 'GET') {
-    headers.set('Content-Type', 'application/json')
+async function readErrorDetail(res: Response): Promise<ApiErrorDetail> {
+  const fallback: ApiErrorDetail = {
+    code: `HTTP_${res.status}`,
+    message: `The API responded with HTTP ${res.status}.`,
   }
+  try {
+    const body = await res.json()
+    if (body?.error?.code && body?.error?.message) return body.error as ApiErrorDetail
+  } catch {
+    // Non-JSON error body (e.g. an HTML gateway page): keep the fallback.
+  }
+  return fallback
+}
+
+/**
+ * Send a request and return the parsed JSON body.
+ * `acceptConflict` treats 409 as a normal result; the publish endpoint uses it
+ * for BLOCK and REVIEW decisions.
+ */
+async function request(path: string, init: RequestInit = {}, acceptConflict = false) {
+  const headers = new Headers(init.headers)
+  if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
 
   let res: Response
   try {
-    res = await fetch(url, {
-      ...options,
-      headers,
-    })
-  } catch (err) {
+    res = await fetch(`${API_CONFIG.baseUrl}${path}`, { ...init, headers })
+  } catch {
     throw new EventGateApiError(0, {
       code: 'NETWORK_ERROR',
-      message: err instanceof Error ? err.message : 'Failed to connect to EventGate API',
+      message: `Could not reach the EventGate API at ${API_CONFIG.baseUrl}.`,
     })
   }
 
-  // Handle 409 Conflict as domain result for publishing when requested
-  if (res.status === 409 && allow409AsJson) {
-    try {
-      const data = await res.json()
-      // Verify if response body matches PublishResponse shape
-      if (data && 'published' in data && 'decision' in data) {
-        return data as T
-      }
-    } catch {
-      // Fall through to standard error handling below
-    }
+  if (res.ok || (acceptConflict && res.status === 409)) {
+    return res.json() as Promise<unknown>
   }
-
-  if (!res.ok) {
-    let errorDetail = {
-      code: `HTTP_${res.status}`,
-      message: `Request failed with status ${res.status}`,
-    }
-
-    try {
-      const errorJson = await res.json()
-      if (errorJson?.error) {
-        errorDetail = errorJson.error
-      } else if (errorJson?.message) {
-        errorDetail.message = errorJson.message
-      }
-    } catch {
-      // Ignore JSON parse error, keep fallback status message
-    }
-
-    throw new EventGateApiError(res.status, errorDetail)
-  }
-
-  return (await res.json()) as T
+  throw new EventGateApiError(res.status, await readErrorDetail(res))
 }
 
+const post = (body: unknown): RequestInit => ({ method: 'POST', body: JSON.stringify(body) })
+
 export const eventGateApi = {
-  /**
-   * Health probe verifying operational connectivity.
-   */
   async checkHealth(): Promise<HealthResponse> {
-    const data = await request<HealthResponse>('/health', { method: 'GET' })
-    return validateResponse(HealthResponseSchema, data, 'Health')
+    return validateResponse(HealthResponseSchema, await request('/health'), 'health')
   },
 
-  /**
-   * Advisory schema compatibility analysis. Does NOT publish to EventBridge.
-   */
+  /** Analyze a version change. Does not publish anything. */
   async analyzeCompatibility(req: AnalysisRequest): Promise<AnalysisResponse> {
-    const data = await request<AnalysisResponse>('/api/v1/analyze', {
-      method: 'POST',
-      body: JSON.stringify(req),
-    })
-    return validateResponse(AnalysisResponseSchema, data, 'Analysis')
+    const data = await request('/api/v1/analyze', post(req))
+    return validateResponse(AnalysisResponseSchema, data, 'analysis')
   },
 
   /**
-   * Evaluates payload schema, executes consumer analysis, and publishes to EventBridge if ALLOW.
-   * Returns PublishResponse even on 409 (BLOCK/REVIEW domain outcomes).
+   * Run the gate and publish when the decision is ALLOW. BLOCK and REVIEW come
+   * back as a normal result with published=false (HTTP 409).
    */
   async publishEvent(req: PublishRequest): Promise<PublishResponse> {
-    const data = await request<PublishResponse>(
-      '/api/v1/events/publish',
-      {
-        method: 'POST',
-        body: JSON.stringify(req),
-      },
-      true // allow409AsJson
-    )
-    return validateResponse(PublishResponseSchema, data, 'Publish')
+    const data = await request('/api/v1/events/publish', post(req), true)
+    return validateResponse(PublishResponseSchema, data, 'publish')
   },
 
-  /**
-   * Fetch all registered event types in the catalog.
-   */
   async listEventCatalog(): Promise<EventCatalogSummary[]> {
-    const data = await request<EventCatalogSummary[]>('/api/v1/contracts/events', { method: 'GET' })
-    return validateResponse(z.array(EventCatalogSummarySchema), data, 'EventCatalog')
+    const data = await request('/api/v1/contracts/events')
+    return validateResponse(z.array(EventCatalogSummarySchema), data, 'event catalog')
   },
 
-  /**
-   * Fetch full contract detail and schemas for an event type.
-   */
   async getEventDetail(eventType: string): Promise<EventDetail> {
-    const data = await request<EventDetail>(`/api/v1/contracts/events/${encodeURIComponent(eventType)}`, {
-      method: 'GET',
-    })
-    return validateResponse(EventDetailSchema, data, 'EventDetail')
+    const data = await request(`/api/v1/contracts/events/${encodeURIComponent(eventType)}`)
+    return validateResponse(EventDetailSchema, data, 'event detail')
   },
 
-  /**
-   * Fetch all registered downstream consumers.
-   */
   async listConsumers(): Promise<ConsumerSummary[]> {
-    const data = await request<ConsumerSummary[]>('/api/v1/contracts/consumers', { method: 'GET' })
-    return validateResponse(z.array(ConsumerSummarySchema), data, 'ConsumerList')
+    const data = await request('/api/v1/contracts/consumers')
+    return validateResponse(z.array(ConsumerSummarySchema), data, 'consumer catalog')
   },
 
-  /**
-   * Fetch consumer contract detail by consumer ID.
-   */
   async getConsumerDetail(consumerId: string): Promise<ConsumerDetail> {
-    const data = await request<ConsumerDetail>(`/api/v1/contracts/consumers/${encodeURIComponent(consumerId)}`, {
-      method: 'GET',
-    })
-    return validateResponse(ConsumerDetailSchema, data, 'ConsumerDetail')
+    const data = await request(`/api/v1/contracts/consumers/${encodeURIComponent(consumerId)}`)
+    return validateResponse(ConsumerDetailSchema, data, 'consumer detail')
   },
 
-  /**
-   * Fetch persistent release review history.
-   */
-  async listHistory(eventType?: string, limit = 50): Promise<ReleaseRecord[]> {
-    const params = new URLSearchParams()
+  async listHistory(eventType?: string, limit = 100): Promise<ReleaseRecord[]> {
+    const params = new URLSearchParams({ limit: String(limit) })
     if (eventType) params.set('eventType', eventType)
-    if (limit) params.set('limit', String(limit))
-    const qs = params.toString() ? `?${params.toString()}` : ''
-    const data = await request<ReleaseRecord[]>(`/api/v1/history${qs}`, { method: 'GET' })
-    return validateResponse(z.array(ReleaseRecordSchema), data, 'ReleaseHistory')
+    const data = await request(`/api/v1/history?${params}`)
+    return validateResponse(z.array(ReleaseRecordSchema), data, 'release history')
   },
 
-  /**
-   * Fetch single release review record by record ID or analysis ID.
-   */
-  async getReview(recordId: string): Promise<ReleaseRecord> {
-    const data = await request<ReleaseRecord>(`/api/v1/history/${encodeURIComponent(recordId)}`, {
-      method: 'GET',
-    })
-    return validateResponse(ReleaseRecordSchema, data, 'ReleaseRecord')
-  },
-
-  /**
-   * Export release report for a historical record.
-   */
-  async getReport(recordId: string, format = 'markdown'): Promise<ReportExportResponse> {
-    const data = await request<ReportExportResponse>(
-      `/api/v1/history/${encodeURIComponent(recordId)}/report?format=${encodeURIComponent(format)}`,
-      { method: 'GET' }
+  /** Render a stored record (by record ID or analysis ID) as Markdown or JSON. */
+  async getReport(recordId: string, format: ReportFormat = 'markdown'): Promise<ReportExportResponse> {
+    const data = await request(
+      `/api/v1/history/${encodeURIComponent(recordId)}/report?format=${format}`
     )
-    return validateResponse(ReportExportResponseSchema, data, 'ReportExport')
+    return validateResponse(ReportExportResponseSchema, data, 'report')
   },
 
-  /**
-   * Export report directly from an active in-memory review state.
-   */
-  async exportActiveReport(data: Record<string, unknown>): Promise<ReportExportResponse> {
-    const raw = await request<ReportExportResponse>('/api/v1/reports/export', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    })
-    return validateResponse(ReportExportResponseSchema, raw, 'ActiveReportExport')
-  },
-
-  /**
-   * Fetch active policy configuration, matrix, and Cedar specifications.
-   */
   async getPolicies(): Promise<PolicyInspectionResponse> {
-    const data = await request<PolicyInspectionResponse>('/api/v1/policies', { method: 'GET' })
-    return validateResponse(PolicyInspectionResponseSchema, data, 'Policies')
+    return validateResponse(
+      PolicyInspectionResponseSchema,
+      await request('/api/v1/policies'),
+      'policy'
+    )
   },
 
-  /**
-   * Fetch authoritative runtime configuration.
-   */
   async getRuntimeConfig(): Promise<RuntimeConfigResponse> {
-    const data = await request<RuntimeConfigResponse>('/api/v1/config/runtime', { method: 'GET' })
-    return validateResponse(RuntimeConfigResponseSchema, data, 'RuntimeConfig')
+    return validateResponse(
+      RuntimeConfigResponseSchema,
+      await request('/api/v1/config/runtime'),
+      'runtime configuration'
+    )
   },
+}
+
+/** A message for display: the API's own message, or the error text. */
+export function describeError(err: unknown): string {
+  if (err instanceof Error) return err.message
+  return 'Something went wrong. Try again.'
 }

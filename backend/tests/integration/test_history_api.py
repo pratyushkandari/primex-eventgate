@@ -70,26 +70,43 @@ def test_export_history_report():
     assert parsed["record_id"] == analysis_id
 
 
-def test_export_active_report_direct():
-    """POST /api/v1/reports/export generates reports from in-memory review state."""
-    body = {
-        "analysisId": "mem-analysis-123",
-        "eventType": "PaymentCompleted",
-        "currentVersion": 1,
-        "proposedVersion": 2,
-        "environment": "staging",
-        "compatibilityResult": "SAFE",
-        "severity": "LOW",
-        "policyName": "StandardReleasePolicy",
-        "policyReason": "Safe release",
-        "decision": "ALLOW",
-        "format": "markdown",
-    }
-    resp = client.post("/api/v1/reports/export", json=body)
+def test_report_for_fresh_analysis_is_served_from_history():
+    """The review workspace exports reports for the record /analyze just wrote."""
+    analyze = client.post(
+        "/api/v1/analyze",
+        json={
+            "eventType": "PaymentCompleted",
+            "currentVersion": 1,
+            "proposedVersion": 2,
+            "environment": "staging",
+        },
+    )
+    analysis_id = analyze.json()["analysisId"]
+
+    resp = client.get(f"/api/v1/history/{analysis_id}/report", params={"format": "markdown"})
+
     assert resp.status_code == 200
     data = resp.json()
-    assert data["format"] == "markdown"
-    assert "PaymentCompleted" in data["content"]
+    assert data["recordId"] == analysis_id
+    assert "`PaymentCompleted`" in data["content"]
+    assert "`staging`" in data["content"]
+
+
+def test_client_supplied_report_endpoint_is_gone():
+    """Reports are only rendered from stored records, never from client-supplied results."""
+    resp = client.post("/api/v1/reports/export", json={"analysisId": "x"})
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "NOT_FOUND"
+
+
+def test_report_rejects_unknown_format():
+    analysis_id = client.post(
+        "/api/v1/analyze",
+        json={"eventType": "OrderPlaced", "currentVersion": 1, "proposedVersion": 2},
+    ).json()["analysisId"]
+    resp = client.get(f"/api/v1/history/{analysis_id}/report", params={"format": "xml"})
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "VALIDATION_ERROR"
 
 
 def test_publish_updates_correlated_history_record():

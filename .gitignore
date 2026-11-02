@@ -29,10 +29,21 @@ dist/
 build/
 *.egg-info/
 
-# Node (future frontend)
+# Node
 node_modules/
 npm-debug.log*
 
 # AWS SAM
 .aws-sam/
+
+# Local runtime data (release history written by the API and CLI)
+.eventgate/
+
+# Test, coverage and audit output
+frontend/coverage/
+frontend/playwright-report/
+frontend/test-results/
+.screenshots/
+perf-results/
+.mypy_cache/
 

@@ -1,373 +1,183 @@
 /**
- * DependencyTopology — Interactive blast radius graph using @xyflow/react.
- * Renders Producer → EventGate → Consumer fan-out with decision-aware edges.
+ * Producer → EventGate → consumers graph drawn with @xyflow/react. Loaded
+ * lazily because xyflow is the largest dependency in the bundle.
  */
-
-import { useMemo, useCallback } from 'react'
-import {
-  ReactFlow,
-  Background,
-  Controls,
-  type Node,
-  type Edge,
-  type NodeTypes,
-  type NodeProps,
-  Handle,
-  Position,
-} from '@xyflow/react'
+import { useMemo } from 'react'
+import { Background, Handle, Position, ReactFlow, type Edge, type Node, type NodeProps } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
-import { Badge } from '@/components/ui/Badge'
-import { Network, ShieldCheck, ShieldAlert, ShieldQuestion } from 'lucide-react'
-import type { AnalysisResponse, ConsumerStatus } from '@/types/api'
-import { TopologyFallback } from '@/components/workspace/TopologyFallback'
+import { Card, CardHeader } from '@/components/ui/Card'
+import { StatusBadge } from '@/components/ui/Badge'
+import { cn } from '@/lib/utils'
+import type { ConsumerImpact } from '@/lib/findings'
+import type { Decision } from '@/types/api'
+import { TopologyFallback } from './TopologyFallback'
 
 interface DependencyTopologyProps {
-  analysis: AnalysisResponse | null
+  eventType: string
+  currentVersion: number
+  proposedVersion: number
+  decision: Decision | null
+  impacts: ConsumerImpact[]
+  hasAnalysis: boolean
   selectedConsumerId: string | null
   onSelectConsumer: (consumerId: string) => void
 }
 
-// ─── Custom Node Components ──────────────────────────────────────────
+const COLORS = {
+  ALLOW: '#3ccf91',
+  SAFE: '#3ccf91',
+  REVIEW: '#f5b544',
+  RISK: '#f5b544',
+  BLOCK: '#f77b7b',
+  BREAK: '#f77b7b',
+  idle: '#34425a',
+}
+
+const NODE_BOX = 'rounded-md border bg-surface px-3 py-2 text-left shadow-sm'
 
 function ProducerNode({ data }: NodeProps) {
   return (
-    <div className="p-3 rounded-lg border border-slate-700 bg-slate-900/95 min-w-[150px] shadow-sm font-mono">
-      <span className="text-[10px] text-slate-500 uppercase tracking-wider block">
-        Producer Contract
-      </span>
-      <span className="text-sm font-bold text-blue-400 block">{data.eventType as string}</span>
-      <span className="text-[10px] text-slate-400 mt-1 block">
-        v{data.currentVersion as number} → v{data.proposedVersion as number}
-      </span>
-      <Handle type="source" position={Position.Right} className="!bg-blue-500 !w-2 !h-2 !border-0" />
+    <div className={cn(NODE_BOX, 'border-line')}>
+      <p className="text-xs text-fg-subtle">Producer</p>
+      <p className="text-sm font-medium text-fg">{data.label as string}</p>
+      <Handle type="source" position={Position.Right} className="!bg-line-strong" />
     </div>
   )
 }
 
 function GateNode({ data }: NodeProps) {
-  const decision = data.decision as string | null
-  const borderColor =
-    decision === 'ALLOW'
-      ? 'border-emerald-500/50'
-      : decision === 'BLOCK'
-      ? 'border-rose-500/50'
-      : decision === 'REVIEW'
-      ? 'border-amber-500/50'
-      : 'border-slate-700'
-  const bgColor =
-    decision === 'ALLOW'
-      ? 'bg-emerald-950/30'
-      : decision === 'BLOCK'
-      ? 'bg-rose-950/30'
-      : decision === 'REVIEW'
-      ? 'bg-amber-950/30'
-      : 'bg-slate-900/95'
-
+  const decision = data.decision as Decision | null
   return (
-    <div className={`p-3 rounded-lg border ${borderColor} ${bgColor} min-w-[160px] shadow-sm font-mono`}>
-      <Handle type="target" position={Position.Left} className="!bg-slate-500 !w-2 !h-2 !border-0" />
-      <div className="flex items-center justify-between">
-        <span className="text-[10px] uppercase tracking-wider opacity-80">Release Gate</span>
-        {decision === 'ALLOW' && <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />}
-        {decision === 'BLOCK' && <ShieldAlert className="h-3.5 w-3.5 text-rose-400" />}
-        {decision === 'REVIEW' && <ShieldQuestion className="h-3.5 w-3.5 text-amber-400" />}
-      </div>
-      <span className={`text-sm font-bold mt-0.5 block ${
-        decision === 'ALLOW' ? 'text-emerald-300' : decision === 'BLOCK' ? 'text-rose-300' : decision === 'REVIEW' ? 'text-amber-300' : 'text-slate-300'
-      }`}>EventGate</span>
-      <span className={`text-[10px] opacity-80 mt-1 block ${
-        decision === 'ALLOW' ? 'text-emerald-400' : decision === 'BLOCK' ? 'text-rose-400' : decision === 'REVIEW' ? 'text-amber-400' : 'text-slate-500'
-      }`}>
-        {decision ? `Decision: ${decision}` : 'Ready for analysis'}
-      </span>
-      <Handle type="source" position={Position.Right} className="!bg-slate-500 !w-2 !h-2 !border-0" />
+    <div className={cn(NODE_BOX, 'border-line-strong')}>
+      <Handle type="target" position={Position.Left} className="!bg-line-strong" />
+      <p className="text-xs text-fg-subtle">EventGate</p>
+      <div className="mt-0.5">{decision ? <StatusBadge value={decision} /> : <span className="text-sm text-fg-muted">Not analyzed</span>}</div>
+      <Handle type="source" position={Position.Right} className="!bg-line-strong" />
     </div>
   )
 }
 
 function ConsumerNode({ data }: NodeProps) {
-  const status = data.status as ConsumerStatus
-  const isSelected = data.isSelected as boolean
-  const isMuted = data.isMuted as boolean
-  const finding = data.finding as { field?: string; expectedType?: string | null; proposedType?: string | null } | null
-
-  const borderColor =
-    status === 'BREAK'
-      ? 'border-rose-500/60'
-      : status === 'RISK'
-      ? 'border-amber-500/60'
-      : 'border-slate-800'
-  const bgColor =
-    status === 'BREAK'
-      ? 'bg-rose-950/30'
-      : status === 'RISK'
-      ? 'bg-amber-950/30'
-      : 'bg-slate-900/95'
-
+  const impact = data.impact as ConsumerImpact
+  const finding = impact.findings.find((f) => f.status !== 'SAFE')
   return (
-    <button
-      type="button"
-      onClick={() => {
-        if (typeof data.onSelect === 'function') {
-          (data.onSelect as (id: string) => void)(data.consumerId as string)
-        }
-      }}
-      className={`text-left w-full p-2.5 rounded-lg border ${borderColor} ${bgColor} min-w-[140px] shadow-sm font-mono cursor-pointer transition-all ${
-        isSelected
-          ? 'ring-2 ring-blue-500 scale-[1.02] opacity-100'
-          : isMuted
-          ? 'opacity-40 hover:opacity-90'
-          : 'hover:border-slate-600'
-      }`}
+    <div
+      className={cn(
+        NODE_BOX,
+        'w-56 cursor-pointer',
+        data.selected ? 'border-accent' : 'border-line hover:border-line-strong',
+        data.muted ? 'border-dashed' : ''
+      )}
     >
-      <Handle type="target" position={Position.Left} className="!bg-slate-500 !w-2 !h-2 !border-0" />
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-xs font-bold text-slate-200 truncate">{data.name as string}</span>
-        <Badge variant={status.toLowerCase() as 'break' | 'risk' | 'safe'} size="sm">
-          {status}
-        </Badge>
+      <Handle type="target" position={Position.Left} className="!bg-line-strong" />
+      <div className="flex items-center justify-between gap-2">
+        <span className="truncate font-mono text-xs text-fg">{impact.consumerId}</span>
+        {Boolean(data.hasAnalysis) && <StatusBadge value={impact.status} />}
       </div>
-      <span className="text-[10px] text-slate-500 block truncate">{data.consumerId as string}</span>
-      {status === 'BREAK' && finding && (
-        <div className="text-[10px] text-rose-300 font-semibold truncate mt-1">
-          {finding.field}: {finding.expectedType} → {finding.proposedType}
-        </div>
+      {finding && finding.field !== '*' && (
+        <p className="mt-1 truncate text-xs text-fg-subtle">
+          {finding.field}
+          {finding.expectedType && finding.proposedType ? `: ${finding.expectedType} → ${finding.proposedType}` : ''}
+        </p>
       )}
-      {status === 'RISK' && finding && (
-        <div className="text-[10px] text-amber-300 font-semibold truncate mt-1">
-          {finding.field} removed
-        </div>
-      )}
-      {status === 'SAFE' && (
-        <span className="text-[10px] text-emerald-400/80 block mt-1">Compatible</span>
-      )}
-    </button>
+    </div>
   )
 }
 
-const nodeTypes: NodeTypes = {
-  producer: ProducerNode,
-  gate: GateNode,
-  consumer: ConsumerNode,
-}
-
-// ─── Layout constants ────────────────────────────────────────────────
-
-const PRODUCER_X = 0
-const GATE_X = 260
-const CONSUMER_X = 520
-const CONSUMER_Y_START = -60
-const CONSUMER_Y_GAP = 100
-
-// ─── Main Component ──────────────────────────────────────────────────
+const nodeTypes = { producer: ProducerNode, gate: GateNode, consumer: ConsumerNode }
+const ROW_GAP = 84
 
 export function DependencyTopology({
-  analysis,
+  eventType,
+  currentVersion,
+  proposedVersion,
+  decision,
+  impacts,
+  hasAnalysis,
   selectedConsumerId,
   onSelectConsumer,
 }: DependencyTopologyProps) {
-  // Derive consumers from analysis findings or use defaults
-  const consumers = useMemo(() => {
-    const defaultConsumers = [
-      { id: 'billing-service', name: 'Billing' },
-      { id: 'inventory-service', name: 'Inventory' },
-      { id: 'analytics-service', name: 'Analytics' },
-    ]
+  const label = `${eventType} v${currentVersion} → v${proposedVersion}`
+  const middle = ((impacts.length - 1) * ROW_GAP) / 2
 
-    if (!analysis) return defaultConsumers
-
-    // Build consumer list from findings, ensuring all known consumers are represented
-    const fromFindings = analysis.findings.map((f) => ({
-      id: f.consumerId,
-      name: f.consumerId.replace(/-service$/, '').replace(/^\w/, (c) => c.toUpperCase()),
-    }))
-
-    // Merge: include findings consumers + defaults not already present
-    const seen = new Set(fromFindings.map((f) => f.id))
-    const merged = [...fromFindings]
-    for (const dc of defaultConsumers) {
-      if (!seen.has(dc.id)) {
-        merged.push(dc)
-      }
-    }
-    return merged
-  }, [analysis])
-
-  const getConsumerStatus = useCallback(
-    (id: string): ConsumerStatus => {
-      if (!analysis) return 'SAFE'
-      const finding = analysis.findings.find((f) => f.consumerId === id)
-      return finding ? finding.status : 'SAFE'
-    },
-    [analysis]
-  )
-
-  const getConsumerFinding = useCallback(
-    (id: string) => {
-      if (!analysis) return null
-      return analysis.findings.find((f) => f.consumerId === id) || null
-    },
-    [analysis]
-  )
-
-  const gateDecision = analysis?.decision ?? null
-
-  // Build deterministic nodes
   const nodes = useMemo<Node[]>(() => {
-    const consumerYCenter = ((consumers.length - 1) * CONSUMER_Y_GAP) / 2
-    const currentNodes: Node[] = [
-      {
-        id: 'producer',
-        type: 'producer',
-        position: { x: PRODUCER_X, y: consumerYCenter - 20 },
-        data: {
-          eventType: analysis?.eventType || 'OrderPlaced',
-          currentVersion: analysis?.currentVersion ?? 1,
-          proposedVersion: analysis?.proposedVersion ?? 2,
-        },
-        draggable: false,
-      },
-      {
-        id: 'gate',
-        type: 'gate',
-        position: { x: GATE_X, y: consumerYCenter - 20 },
-        data: { decision: gateDecision },
-        draggable: false,
-      },
-    ]
-
-    const hasImpactedConsumers = consumers.some((c) => getConsumerStatus(c.id) !== 'SAFE')
-
-    consumers.forEach((c, i) => {
-      const status = getConsumerStatus(c.id)
-      const finding = getConsumerFinding(c.id)
-      const isMuted = selectedConsumerId
-        ? selectedConsumerId !== c.id
-        : hasImpactedConsumers && status === 'SAFE'
-
-      currentNodes.push({
-        id: c.id,
+    const anyAffected = impacts.some((i) => i.status !== 'SAFE')
+    return [
+      { id: 'producer', type: 'producer', position: { x: 0, y: middle }, data: { label } },
+      { id: 'gate', type: 'gate', position: { x: 260, y: middle - 4 }, data: { decision } },
+      ...impacts.map<Node>((impact, i) => ({
+        id: impact.consumerId,
         type: 'consumer',
-        position: { x: CONSUMER_X, y: CONSUMER_Y_START + i * CONSUMER_Y_GAP },
+        position: { x: 470, y: i * ROW_GAP },
         data: {
-          consumerId: c.id,
-          name: c.name,
-          status,
-          isSelected: selectedConsumerId === c.id,
-          isMuted,
-          finding: finding
-            ? { field: finding.field, expectedType: finding.expectedType, proposedType: finding.proposedType }
-            : null,
-          onSelect: onSelectConsumer,
+          impact,
+          hasAnalysis,
+          selected: selectedConsumerId === impact.consumerId,
+          muted: selectedConsumerId
+            ? selectedConsumerId !== impact.consumerId
+            : hasAnalysis && anyAffected && impact.status === 'SAFE',
         },
-        draggable: false,
-      })
-    })
+      })),
+    ]
+  }, [impacts, label, decision, hasAnalysis, selectedConsumerId, middle])
 
-    return currentNodes
-  }, [analysis, gateDecision, consumers, selectedConsumerId, getConsumerStatus, getConsumerFinding, onSelectConsumer])
-
-  // Build deterministic edges
   const edges = useMemo<Edge[]>(() => {
-    const currentEdges: Edge[] = [
+    const stopped = decision === 'BLOCK' || decision === 'REVIEW'
+    return [
       {
         id: 'producer-gate',
         source: 'producer',
         target: 'gate',
-        animated: gateDecision === 'ALLOW',
-        style: {
-          stroke: gateDecision === 'ALLOW' ? '#34d399' : gateDecision === 'BLOCK' ? '#f87171' : gateDecision === 'REVIEW' ? '#fbbf24' : '#475569',
-          strokeWidth: 2,
-        },
+        style: { stroke: decision ? COLORS[decision] : COLORS.idle, strokeWidth: 2 },
       },
-    ]
-
-    consumers.forEach((c) => {
-      const status = getConsumerStatus(c.id)
-      const isBlocked = gateDecision === 'BLOCK' || gateDecision === 'REVIEW'
-      currentEdges.push({
-        id: `gate-${c.id}`,
+      ...impacts.map<Edge>((impact) => ({
+        id: `gate-${impact.consumerId}`,
         source: 'gate',
-        target: c.id,
-        animated: gateDecision === 'ALLOW' && status === 'SAFE',
+        target: impact.consumerId,
         style: {
-          stroke:
-            isBlocked && status === 'BREAK'
-              ? '#f87171'
-              : isBlocked && status === 'RISK'
-              ? '#fbbf24'
-              : isBlocked
-              ? '#334155'
-              : status === 'SAFE'
-              ? '#34d399'
-              : '#475569',
-          strokeWidth: status === 'BREAK' ? 2 : 1.5,
-          strokeDasharray: status === 'BREAK' ? '6 4' : status === 'RISK' ? '4 4' : undefined,
+          stroke: hasAnalysis ? COLORS[impact.status] : COLORS.idle,
+          strokeWidth: impact.status === 'SAFE' ? 1.5 : 2,
+          strokeDasharray: stopped ? '6 4' : undefined,
         },
-      })
-    })
+      })),
+    ]
+  }, [impacts, decision, hasAnalysis])
 
-    return currentEdges
-  }, [gateDecision, consumers, getConsumerStatus])
-
-  const handleNodeClick = useCallback(
-    (_event: React.MouseEvent, node: Node) => {
-      if (node.type === 'consumer') {
-        onSelectConsumer(node.id)
-      }
-    },
-    [onSelectConsumer]
-  )
+  const height = Math.max(200, impacts.length * ROW_GAP + 60)
 
   return (
-    <Card className="border-slate-800 bg-[#0c1220]/80">
-      <CardHeader className="py-3 px-4 border-b border-slate-800/80">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-xs font-mono uppercase tracking-wider text-slate-300 flex items-center space-x-2">
-            <Network className="h-3.5 w-3.5 text-blue-400" />
-            <span>Dependency Topology</span>
-          </CardTitle>
-          <span className="text-[10px] text-slate-500 font-mono">
-            Interactive Node Map • Click to inspect
-          </span>
-        </div>
-      </CardHeader>
-
-      <CardContent className="p-0 font-mono">
-        <div className="h-[280px] w-full relative" role="img" aria-label="Event dependency topology graph">
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            nodeTypes={nodeTypes}
-            onNodeClick={handleNodeClick}
-            fitView
-            fitViewOptions={{ padding: 0.3 }}
-            proOptions={{ hideAttribution: true }}
-            minZoom={0.5}
-            maxZoom={1.5}
-            nodesDraggable={false}
-            nodesConnectable={false}
-            elementsSelectable={false}
-            panOnDrag
-            zoomOnScroll
-          >
-            <Background color="#1e293b" gap={20} size={1} />
-            <Controls
-              showInteractive={false}
-              position="bottom-right"
-              className="!bg-slate-900 !border-slate-700 !shadow-lg [&>button]:!bg-slate-800 [&>button]:!border-slate-700 [&>button]:!text-slate-300 [&>button:hover]:!bg-slate-700"
-            />
-          </ReactFlow>
-        </div>
-
-        {/* Accessible semantic fallback */}
-        <TopologyFallback
-          analysis={analysis}
-          consumers={consumers}
-          onSelectConsumer={onSelectConsumer}
-        />
-      </CardContent>
+    <Card>
+      <CardHeader
+        title="Dependency graph"
+        description={
+          decision === 'BLOCK' || decision === 'REVIEW'
+            ? 'Dashed edges: the event stops at the gate and no consumer receives it.'
+            : 'Click a consumer to inspect it.'
+        }
+      />
+      <div style={{ height }} className="w-full" aria-hidden="true">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          onNodeClick={(_, node) => node.type === 'consumer' && onSelectConsumer(node.id)}
+          fitView
+          fitViewOptions={{ padding: 0.15 }}
+          proOptions={{ hideAttribution: true }}
+          nodesDraggable={false}
+          nodesConnectable={false}
+          elementsSelectable={false}
+          nodesFocusable={false}
+          edgesFocusable={false}
+          zoomOnScroll={false}
+          preventScrolling={false}
+          minZoom={0.4}
+          maxZoom={1}
+        >
+          <Background color="#243044" gap={24} size={1} />
+        </ReactFlow>
+      </div>
+      <TopologyFallback eventLabel={label} decision={decision} impacts={impacts} hasAnalysis={hasAnalysis} />
     </Card>
   )
 }
