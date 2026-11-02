@@ -1,114 +1,63 @@
-import { render, screen, fireEvent } from '@testing-library/react'
-import { describe, it, expect, vi } from 'vitest'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
+import { Play, Settings } from 'lucide-react'
 import { CommandPalette, type CommandItem } from '@/components/workspace/CommandPalette'
-import { Play, Sparkles } from 'lucide-react'
 
-describe('CommandPalette component', () => {
-  const mockCommands: CommandItem[] = [
-    {
-      id: 'cmd-analyze',
-      title: 'Analyze Compatibility',
-      description: 'Run pre-flight check',
-      category: 'Actions',
-      icon: Play,
-      shortcut: '⌘↵',
-      onSelect: vi.fn(),
-    },
-    {
-      id: 'cmd-safe',
-      title: 'Scenario: Safe Addition',
-      description: 'Optional field added',
-      category: 'Scenarios',
-      icon: Sparkles,
-      onSelect: vi.fn(),
-    },
+function commands(overrides: Partial<Record<string, Partial<CommandItem>>> = {}): CommandItem[] {
+  return [
+    { id: 'analyze', title: 'Analyze compatibility', category: 'Actions', icon: Play, onSelect: vi.fn(), ...overrides.analyze },
+    { id: 'publish', title: 'Publish event', category: 'Actions', icon: Play, disabled: true, onSelect: vi.fn(), ...overrides.publish },
+    { id: 'settings', title: 'Go to Settings', category: 'Navigation', icon: Settings, keywords: ['config'], onSelect: vi.fn(), ...overrides.settings },
   ]
+}
 
-  it('renders nothing when isOpen is false', () => {
-    const { container } = render(
-      <CommandPalette isOpen={false} onClose={vi.fn()} commands={mockCommands} />
-    )
-    expect(container.firstChild).toBeNull()
+describe('CommandPalette', () => {
+  it('renders nothing when closed', () => {
+    render(<CommandPalette isOpen={false} onClose={vi.fn()} commands={commands()} />)
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  it('renders command palette and items when isOpen is true', () => {
-    render(<CommandPalette isOpen={true} onClose={vi.fn()} commands={mockCommands} />)
-
-    expect(screen.getByRole('dialog', { name: /Command Palette/i })).toBeInTheDocument()
-    expect(screen.getByPlaceholderText(/Type a command/i)).toBeInTheDocument()
-    expect(screen.getByText('Analyze Compatibility')).toBeInTheDocument()
-    expect(screen.getByText('Scenario: Safe Addition')).toBeInTheDocument()
+  it('focuses the search box and groups commands by category', () => {
+    render(<CommandPalette isOpen onClose={vi.fn()} commands={commands()} />)
+    expect(screen.getByRole('combobox', { name: 'Search commands' })).toHaveFocus()
+    expect(screen.getByText('Actions')).toBeInTheDocument()
+    expect(screen.getByText('Navigation')).toBeInTheDocument()
   })
 
-  it('filters commands by user query', () => {
-    render(<CommandPalette isOpen={true} onClose={vi.fn()} commands={mockCommands} />)
-
-    const input = screen.getByPlaceholderText(/Type a command/i)
-    fireEvent.change(input, { target: { value: 'Safe' } })
-
-    expect(screen.getByText('Scenario: Safe Addition')).toBeInTheDocument()
-    expect(screen.queryByText('Analyze Compatibility')).not.toBeInTheDocument()
+  it('filters by title and keyword', () => {
+    render(<CommandPalette isOpen onClose={vi.fn()} commands={commands()} />)
+    const input = screen.getByRole('combobox')
+    fireEvent.change(input, { target: { value: 'config' } })
+    expect(screen.getAllByRole('option')).toHaveLength(1)
+    fireEvent.change(input, { target: { value: 'zzz' } })
+    expect(screen.getByText('No matching commands')).toBeInTheDocument()
   })
 
-  it('executes command on click and calls onClose', () => {
-    const handleClose = vi.fn()
-    render(<CommandPalette isOpen={true} onClose={handleClose} commands={mockCommands} />)
-
-    const commandRow = screen.getByText('Analyze Compatibility')
-    fireEvent.click(commandRow)
-
-    expect(mockCommands[0].onSelect).toHaveBeenCalledTimes(1)
-    expect(handleClose).toHaveBeenCalledTimes(1)
+  it('runs commands with the keyboard and skips disabled ones', () => {
+    const items = commands()
+    const onClose = vi.fn()
+    render(<CommandPalette isOpen onClose={onClose} commands={items} />)
+    const input = screen.getByRole('combobox')
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    expect(screen.getAllByRole('option')[1]).toHaveAttribute('aria-selected', 'true')
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(items[1].onSelect).not.toHaveBeenCalled()
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(items[2].onSelect).toHaveBeenCalled()
+    expect(onClose).toHaveBeenCalled()
   })
 
-  it('calls onClose when Escape key is pressed', () => {
-    const handleClose = vi.fn()
-    render(<CommandPalette isOpen={true} onClose={handleClose} commands={mockCommands} />)
-
-    const dialog = screen.getByRole('dialog')
-    fireEvent.keyDown(dialog, { key: 'Escape' })
-
-    expect(handleClose).toHaveBeenCalledTimes(1)
-  })
-
-  it('matches commands by keyword', () => {
-    const commandsWithKeywords: CommandItem[] = [
-      {
-        id: 'cmd-scenario-breaking',
-        title: 'Scenario: Breaking Change',
-        description: 'Type mutation',
-        category: 'Scenarios',
-        keywords: ['break', 'block'],
-        icon: Sparkles,
-        onSelect: vi.fn(),
-      },
-      {
-        id: 'cmd-filter-affected',
-        title: 'Filter: Affected Consumers',
-        description: 'Show impacted',
-        category: 'Filters',
-        keywords: ['break', 'impacted'],
-        icon: Sparkles,
-        onSelect: vi.fn(),
-      },
-      {
-        id: 'cmd-safe',
-        title: 'Scenario: Safe Addition',
-        description: 'Safe',
-        category: 'Scenarios',
-        keywords: ['safe'],
-        icon: Sparkles,
-        onSelect: vi.fn(),
-      },
-    ]
-
-    render(<CommandPalette isOpen={true} onClose={vi.fn()} commands={commandsWithKeywords} />)
-
-    const input = screen.getByPlaceholderText(/Type a command/i)
-    fireEvent.change(input, { target: { value: 'break' } })
-
-    expect(screen.getByText('Scenario: Breaking Change')).toBeInTheDocument()
-    expect(screen.getByText('Filter: Affected Consumers')).toBeInTheDocument()
-    expect(screen.queryByText('Scenario: Safe Addition')).not.toBeInTheDocument()
+  it('wraps upward, runs on click and closes on Escape', () => {
+    const items = commands()
+    const onClose = vi.fn()
+    render(<CommandPalette isOpen onClose={onClose} commands={items} />)
+    const input = screen.getByRole('combobox')
+    fireEvent.keyDown(input, { key: 'ArrowUp' })
+    expect(screen.getAllByRole('option')[2]).toHaveAttribute('aria-selected', 'true')
+    fireEvent.click(screen.getByText('Analyze compatibility'))
+    expect(items[0].onSelect).toHaveBeenCalled()
+    fireEvent.keyDown(input, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledTimes(2)
   })
 })

@@ -1,105 +1,62 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { act, fireEvent, render, screen } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
 import { PublishResultPanel } from '@/components/workspace/PublishResultPanel'
-import type { PublishResponse } from '@/types/api'
+import { EventPath } from '@/components/workspace/EventPath'
+import { publishResponse } from './fixtures'
 
-describe('PublishResultPanel component', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    Object.assign(navigator, {
-      clipboard: {
-        writeText: vi.fn().mockResolvedValue(undefined),
-      },
-    })
+const destination = 'EventBridge bus primex-eventgate-dev-bus'
+
+describe('PublishResultPanel', () => {
+  it('renders nothing before a publish', () => {
+    const { container } = render(<PublishResultPanel publishResult={null} publishError={null} destination={destination} />)
+    expect(container).toBeEmptyDOMElement()
   })
 
-  it('renders nothing when result and error are null', () => {
-    const { container } = render(<PublishResultPanel publishResult={null} publishError={null} />)
-    expect(container.firstChild).toBeNull()
+  it('shows where the event went and copyable IDs', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.assign(navigator, { clipboard: { writeText } })
+    render(<PublishResultPanel publishResult={publishResponse()} publishError={null} destination={destination} />)
+    expect(screen.getByText(`Published to ${destination}`)).toBeInTheDocument()
+    expect(screen.getByText('evt-123')).toBeInTheDocument()
+    expect(screen.getByText('local-eb-abc')).toBeInTheDocument()
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Copy event id' })))
+    expect(writeText).toHaveBeenCalledWith('evt-123')
   })
 
-  it('renders successful publication with EventBridge ID', () => {
-    const mockPublishResponse: PublishResponse = {
-      eventId: 'evt-12345',
-      published: true,
-      decision: 'ALLOW',
-      severity: 'LOW',
-      eventBridgeEventId: 'eb-entry-999',
-      analysis: {
-        analysisId: 'an-1',
-        eventType: 'OrderPlaced',
-        currentVersion: 1,
-        proposedVersion: 2,
-        decision: 'ALLOW',
-        severity: 'LOW',
-        summary: 'Safe',
-        timestamp: '2026-09-18T00:00:00Z',
-        requestId: 'req-trace-101',
-        findings: [],
-        changeSet: { addedFields: [], removedFields: [], typeChanges: [], requirednessChanges: [] },
-      },
-    }
-
-    render(<PublishResultPanel publishResult={mockPublishResponse} publishError={null} />)
-
-    expect(screen.getByText(/Published to Amazon EventBridge/i)).toBeInTheDocument()
-    expect(screen.getByText('evt-12345')).toBeInTheDocument()
-    expect(screen.getByText('eb-entry-999')).toBeInTheDocument()
-    expect(screen.getByText(/Request ID: req-trace-101/i)).toBeInTheDocument()
-    expect(screen.getByText('INGESTED')).toBeInTheDocument()
-  })
-
-  it('copies event ID and request ID on button click', async () => {
-    const mockPublishResponse: PublishResponse = {
-      eventId: 'evt-copy-test-101',
-      published: true,
-      decision: 'ALLOW',
-      severity: 'LOW',
-      eventBridgeEventId: 'eb-entry-copy-202',
-      analysis: {
-        analysisId: 'an-copy-1',
-        eventType: 'OrderPlaced',
-        currentVersion: 1,
-        proposedVersion: 2,
-        decision: 'ALLOW',
-        severity: 'LOW',
-        summary: 'Safe',
-        timestamp: '2026-09-18T00:00:00Z',
-        requestId: 'req-copy-303',
-        findings: [],
-        changeSet: { addedFields: [], removedFields: [], typeChanges: [], requirednessChanges: [] },
-      },
-    }
-
-    render(<PublishResultPanel publishResult={mockPublishResponse} publishError={null} />)
-
-    const copyEventBtn = screen.getByTitle('Copy event ID')
-    fireEvent.click(copyEventBtn)
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('evt-copy-test-101')
-
-    const copyEbBtn = screen.getByTitle('Copy EventBridge ID')
-    fireEvent.click(copyEbBtn)
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('eb-entry-copy-202')
-
-    const copyReqBtn = screen.getByTitle('Copy request ID')
-    fireEvent.click(copyReqBtn)
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('req-copy-303')
-
-    await waitFor(() => {
-      expect(screen.getAllByText('Copied').length).toBeGreaterThanOrEqual(1)
-    })
-  })
-
-  it('renders publication error when publishError is present', () => {
+  it.each([
+    [422, 'Payload does not match the proposed contract'],
+    [400, 'Publish request rejected'],
+    [503, 'Event bus unavailable'],
+    [0, 'Publish failed'],
+  ])('explains HTTP %s failures with a next step', (status, title) => {
     render(
       <PublishResultPanel
         publishResult={null}
-        publishError="Invalid Event Payload: Missing required field: orderId"
+        publishError={{ status, code: 'X', message: 'server message' }}
+        destination={destination}
       />
     )
+    expect(screen.getByRole('alert')).toHaveTextContent(title)
+    expect(screen.getByText('server message')).toBeInTheDocument()
+  })
+})
 
-    expect(screen.getByText(/EventGate Publication Error/i)).toBeInTheDocument()
-    expect(screen.getByText(/Missing required field: orderId/i)).toBeInTheDocument()
-    expect(screen.getByText('FAILED')).toBeInTheDocument()
+describe('EventPath', () => {
+  it('waits for analysis', () => {
+    render(<EventPath decision={null} isPublished={false} busLabel="in-memory publisher" consumerCount={3} />)
+    expect(screen.getByText('Waiting for analysis')).toBeInTheDocument()
+  })
+
+  it('shows the event stopping at the gate on BLOCK', () => {
+    render(<EventPath decision="BLOCK" isPublished={false} busLabel="bus" consumerCount={3} />)
+    expect(screen.getByText(/stopped here \(HTTP 409\)/)).toBeInTheDocument()
+    expect(screen.getByText('Not called')).toBeInTheDocument()
+    expect(screen.getByText('Not reached')).toBeInTheDocument()
+  })
+
+  it('shows delivery after a publish', () => {
+    render(<EventPath decision="ALLOW" isPublished busLabel="bus" consumerCount={1} />)
+    expect(screen.getByText('Accepted by bus')).toBeInTheDocument()
+    expect(screen.getByText('Delivered to 1 subscribed consumer')).toBeInTheDocument()
   })
 })

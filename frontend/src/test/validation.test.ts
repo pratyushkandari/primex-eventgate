@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
   AnalysisResponseSchema,
   PublishResponseSchema,
@@ -6,130 +6,41 @@ import {
   RuntimeConfigResponseSchema,
   validateResponse,
 } from '@/schemas/api'
+import { analysis, publishResponse, record, runtimeConfig } from './fixtures'
 
-describe('API Zod Schemas & Validation', () => {
-  it('validates a valid AnalysisResponse structure', () => {
-    const validAnalysis = {
-      analysisId: 'an-val-1',
-      eventType: 'OrderPlaced',
-      currentVersion: 1,
-      proposedVersion: 2,
-      environment: 'production',
-      compatibilityResult: 'SAFE',
-      policyName: 'Production Policy',
-      policyReason: 'All consumers compatible',
-      changeSet: {
-        addedFields: ['loyaltyTier'],
-        removedFields: [],
-        typeChanges: [],
-        requirednessChanges: [],
-      },
-      findings: [
-        {
-          consumerId: 'billing-service',
-          status: 'SAFE',
-          ruleId: 'EVT008',
-          field: 'loyaltyTier',
-          expectedType: null,
-          proposedType: 'string',
-          severity: 'LOW',
-          reason: 'Optional field added',
-        },
-      ],
-      decision: 'ALLOW',
-      severity: 'LOW',
-      summary: 'Safe addition of optional field',
-      timestamp: '2026-09-19T00:00:00Z',
-      requestId: 'req-val-1',
-    }
-
-    const validated = validateResponse(AnalysisResponseSchema, validAnalysis, 'Analysis')
-    expect(validated.analysisId).toBe('an-val-1')
-    expect(validated.decision).toBe('ALLOW')
+describe('response schemas', () => {
+  it('accepts a full analysis response', () => {
+    expect(validateResponse(AnalysisResponseSchema, analysis('BLOCK'), 'analysis').decision).toBe('BLOCK')
   })
 
-  it('rejects an invalid AnalysisResponse missing required fields', () => {
-    const invalidAnalysis = {
-      // missing analysisId, eventType, etc.
-      decision: 'UNKNOWN_DECISION',
-    }
-
-    expect(() => {
-      validateResponse(AnalysisResponseSchema, invalidAnalysis, 'Analysis')
-    }).toThrow(/Invalid Analysis response structure from EventGate API/i)
+  it('names the missing fields when an analysis is incomplete', () => {
+    const { findings: _unused, ...partial } = analysis('ALLOW')
+    expect(() => validateResponse(AnalysisResponseSchema, partial, 'analysis')).toThrow(/findings/)
   })
 
-  it('validates a valid PublishResponse', () => {
-    const validPublish = {
-      eventId: 'evt-val-101',
-      published: true,
-      decision: 'ALLOW',
-      severity: 'LOW',
-      eventBridgeEventId: 'eb-val-202',
-      analysis: {
-        analysisId: 'an-val-1',
-        eventType: 'OrderPlaced',
-        currentVersion: 1,
-        proposedVersion: 2,
-        changeSet: {
-          addedFields: [],
-          removedFields: [],
-          typeChanges: [],
-          requirednessChanges: [],
-        },
-        findings: [],
-        decision: 'ALLOW',
-        severity: 'LOW',
-        summary: 'Safe',
-        timestamp: '2026-09-19T00:00:00Z',
-      },
-    }
-
-    const validated = validateResponse(PublishResponseSchema, validPublish, 'Publish')
-    expect(validated.eventId).toBe('evt-val-101')
-    expect(validated.published).toBe(true)
+  it('fills absent finding types with null', () => {
+    const raw = analysis('ALLOW')
+    const finding: Record<string, unknown> = { ...raw.findings[0] }
+    delete finding.expectedType
+    const parsed = validateResponse(AnalysisResponseSchema, { ...raw, findings: [finding] }, 'analysis')
+    expect(parsed.findings[0].expectedType).toBeNull()
   })
 
-  it('validates a valid ReleaseRecord structure', () => {
-    const validRecord = {
-      recordId: 'rec-1',
-      analysisId: 'an-1',
-      eventType: 'OrderPlaced',
-      currentVersion: 1,
-      proposedVersion: 3,
-      environment: 'production',
-      compatibilityResult: 'BREAK',
-      severity: 'HIGH',
-      policyName: 'Production Gating Policy',
-      policyReason: 'Breaking changes blocked in production',
-      decision: 'BLOCK',
-      affectedConsumers: ['inventory-service'],
-      findingsSummary: [],
-      published: false,
-      attemptedPublish: true,
-      timestamp: '2026-09-19T00:00:00Z',
-    }
-
-    const validated = validateResponse(ReleaseRecordSchema, validRecord, 'ReleaseRecord')
-    expect(validated.recordId).toBe('rec-1')
-    expect(validated.decision).toBe('BLOCK')
+  it('accepts publish responses without a bus event ID', () => {
+    expect(PublishResponseSchema.safeParse(publishResponse({ eventBridgeEventId: null })).success).toBe(true)
   })
 
-  it('validates RuntimeConfigResponse', () => {
-    const validConfig = {
-      environment: 'production',
-      storageBackend: 'DynamoDB',
-      storageBackendType: 'dynamodb',
-      publisherBackend: 'Amazon EventBridge',
-      publisherBackendType: 'eventbridge',
-      awsRegion: 'ap-south-1',
-      eventBridgeBus: 'primex-eventgate-dev-bus',
-      policyEngine: 'Standard Deterministic Engine',
-      policyEngineType: 'standard',
-      contractsDirectory: 'contracts',
-    }
+  it('keeps history readable when an old record has a non-standard environment', () => {
+    // Regression: one record with environment "Prod" used to fail the whole list.
+    expect(ReleaseRecordSchema.safeParse(record({ environment: 'Prod' })).success).toBe(true)
+  })
 
-    const validated = validateResponse(RuntimeConfigResponseSchema, validConfig, 'RuntimeConfig')
-    expect(validated.awsRegion).toBe('ap-south-1')
+  it('rejects an unknown decision value', () => {
+    expect(ReleaseRecordSchema.safeParse({ ...record(), decision: 'MAYBE' }).success).toBe(false)
+  })
+
+  it('accepts the runtime configuration shape', () => {
+    expect(RuntimeConfigResponseSchema.safeParse(runtimeConfig).success).toBe(true)
+    expect(RuntimeConfigResponseSchema.safeParse({ ...runtimeConfig, eventBridgeBus: 'bus' }).success).toBe(true)
   })
 })

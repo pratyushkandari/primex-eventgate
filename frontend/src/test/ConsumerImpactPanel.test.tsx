@@ -1,82 +1,45 @@
-import { render, screen } from '@testing-library/react'
-import { describe, it, expect } from 'vitest'
+import { fireEvent, render, screen, within } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
 import { ConsumerImpactPanel } from '@/components/workspace/ConsumerImpactPanel'
-import type { AnalysisResponse } from '@/types/api'
+import { consumerImpacts } from '@/lib/findings'
+import { analysis } from './fixtures'
 
-describe('ConsumerImpactPanel component', () => {
-  it('renders all 3 registered consumers in idle state', () => {
-    render(<ConsumerImpactPanel analysis={null} />)
-    expect(screen.getByText('billing-service')).toBeInTheDocument()
-    expect(screen.getByText('inventory-service')).toBeInTheDocument()
-    expect(screen.getByText('analytics-service')).toBeInTheDocument()
+const ids = ['analytics-service', 'billing-service', 'inventory-service']
+
+describe('ConsumerImpactPanel', () => {
+  it('lists registered consumers before analysis', () => {
+    render(<ConsumerImpactPanel impacts={consumerImpacts(ids, [])} hasAnalysis={false} onSelectConsumer={vi.fn()} />)
+    expect(screen.getByText('3 registered consumers')).toBeInTheDocument()
+    expect(screen.getAllByText('Not analyzed yet')).toHaveLength(3)
   })
 
-  it('correctly maps BREAK finding to inventory-service while keeping others SAFE', () => {
-    const mockAnalysis: AnalysisResponse = {
-      analysisId: 'an-1',
-      eventType: 'OrderPlaced',
-      currentVersion: 1,
-      proposedVersion: 3,
-      decision: 'BLOCK',
-      severity: 'HIGH',
-      summary: '1 consumer would break',
-      timestamp: '2026-09-18T00:00:00Z',
-      requestId: 'req-1',
-      changeSet: { addedFields: [], removedFields: [], typeChanges: [], requirednessChanges: [] },
-      findings: [
-        {
-          consumerId: 'inventory-service',
-          status: 'BREAK',
-          ruleId: 'EVT001_FIELD_TYPE_CHANGED',
-          field: 'shippingMethod',
-          expectedType: 'string',
-          proposedType: 'object',
-          severity: 'HIGH',
-          reason: "Field 'shippingMethod' type changed from string to object.",
-        },
-      ],
-    }
+  it('marks the broken consumer and filters to affected ones', () => {
+    render(
+      <ConsumerImpactPanel
+        impacts={consumerImpacts(ids, analysis('BLOCK').findings)}
+        hasAnalysis
+        onSelectConsumer={vi.fn()}
+      />
+    )
+    expect(screen.getByText('1 of 3 consumers affected')).toBeInTheDocument()
+    const row = screen.getByRole('button', { name: /inventory-service/ })
+    expect(within(row).getByText('BREAK')).toBeInTheDocument()
 
-    render(<ConsumerImpactPanel analysis={mockAnalysis} />)
-
-    expect(screen.getByText('BREAK')).toBeInTheDocument()
-    expect(screen.getByText(/Field: shippingMethod/i)).toBeInTheDocument()
-    expect(screen.getByText(/EVT001_FIELD_TYPE_CHANGED/i)).toBeInTheDocument()
-
-    // Other consumers default to SAFE
-    const safeBadges = screen.getAllByText('SAFE')
-    expect(safeBadges.length).toBe(2)
+    fireEvent.click(screen.getByRole('button', { name: 'Affected 1' }))
+    expect(screen.queryByRole('button', { name: /billing-service/ })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Safe 2' }))
+    expect(screen.queryByRole('button', { name: /inventory-service/ })).toBeNull()
   })
 
-  it('correctly maps RISK finding to analytics-service', () => {
-    const mockAnalysis: AnalysisResponse = {
-      analysisId: 'an-2',
-      eventType: 'OrderPlaced',
-      currentVersion: 1,
-      proposedVersion: 4,
-      decision: 'REVIEW',
-      severity: 'MEDIUM',
-      summary: '1 consumer review required',
-      timestamp: '2026-09-18T00:00:00Z',
-      requestId: 'req-2',
-      changeSet: { addedFields: [], removedFields: [], typeChanges: [], requirednessChanges: [] },
-      findings: [
-        {
-          consumerId: 'analytics-service',
-          status: 'RISK',
-          ruleId: 'EVT006_OPTIONAL_FIELD_REMOVED',
-          field: 'couponCode',
-          expectedType: 'string',
-          proposedType: null,
-          severity: 'MEDIUM',
-          reason: "Field 'couponCode' was removed.",
-        },
-      ],
-    }
+  it('opens a consumer from its row', () => {
+    const onSelect = vi.fn()
+    render(<ConsumerImpactPanel impacts={consumerImpacts(ids, analysis('REVIEW').findings)} hasAnalysis onSelectConsumer={onSelect} />)
+    fireEvent.click(screen.getByRole('button', { name: /analytics-service/ }))
+    expect(onSelect).toHaveBeenCalledWith('analytics-service')
+  })
 
-    render(<ConsumerImpactPanel analysis={mockAnalysis} />)
-
-    expect(screen.getByText('RISK')).toBeInTheDocument()
-    expect(screen.getByText(/EVT006_OPTIONAL_FIELD_REMOVED/i)).toBeInTheDocument()
+  it('explains the REVIEW outcome when nothing subscribes', () => {
+    render(<ConsumerImpactPanel impacts={[]} hasAnalysis={false} onSelectConsumer={vi.fn()} />)
+    expect(screen.getByText('No registered consumers')).toBeInTheDocument()
   })
 })

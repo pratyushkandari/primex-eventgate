@@ -1,128 +1,86 @@
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { ContractRegistryView } from '@/components/contracts/ContractRegistryView'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { ContractsHub } from '@/components/contracts/ContractsHub'
 import { eventGateApi } from '@/services/api'
-import type { EventCatalogSummary, EventDetail } from '@/types/api'
+import { mockApi } from './fixtures'
+import { renderWithProviders } from './render'
 
-vi.mock('@/services/api', () => ({
-  eventGateApi: {
-    listEventCatalog: vi.fn(),
-    getEventDetail: vi.fn(),
-  },
-}))
+vi.mock('@/services/api', async (importOriginal) => {
+  const { mockApi } = await import('./fixtures')
+  return { ...(await importOriginal<object>()), eventGateApi: mockApi() }
+})
 
-function renderWithClient(ui: React.ReactElement) {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: {
-        retry: false,
-      },
-    },
-  })
-  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>)
-}
-
-describe('ContractRegistryView component', () => {
-  const mockCatalog: EventCatalogSummary[] = [
-    {
-      eventType: 'OrderPlaced',
-      versionCount: 4,
-      versions: [1, 2, 3, 4],
-      latestVersion: 4,
-      consumerCount: 3,
-    },
-    {
-      eventType: 'PaymentCompleted',
-      versionCount: 2,
-      versions: [1, 2],
-      latestVersion: 2,
-      consumerCount: 1,
-    },
-  ]
-
-  const mockDetail: EventDetail = {
-    eventType: 'OrderPlaced',
-    versionCount: 4,
-    versions: [1, 2, 3, 4],
-    latestVersion: 4,
-    contracts: [
-      {
-        eventType: 'OrderPlaced',
-        version: 4,
-        fields: {
-          orderId: { name: 'orderId', type: 'string', required: true },
-          amount: { name: 'amount', type: 'number', required: true },
-        },
-      },
-      {
-        eventType: 'OrderPlaced',
-        version: 1,
-        fields: {
-          orderId: { name: 'orderId', type: 'string', required: true },
-          notes: { name: 'notes', type: 'string', required: false },
-        },
-      },
-    ],
-    consumers: [
-      {
-        consumerId: 'inventory-service',
-        eventType: 'OrderPlaced',
-        expectedFields: {
-          orderId: { name: 'orderId', type: 'string', required: true },
-        },
-      },
-    ],
-  }
-
+describe('Contracts page', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
-    vi.mocked(eventGateApi.listEventCatalog).mockResolvedValue(mockCatalog)
-    vi.mocked(eventGateApi.getEventDetail).mockResolvedValue(mockDetail)
+    Object.assign(eventGateApi, mockApi())
+    vi.mocked(eventGateApi.listConsumers).mockResolvedValue([
+      { consumerId: 'billing-service', eventType: 'OrderPlaced', expectedFieldsCount: 2 },
+      { consumerId: 'fraud-detection-service', eventType: 'PaymentCompleted', expectedFieldsCount: 1 },
+    ])
+    vi.mocked(eventGateApi.getConsumerDetail).mockImplementation(async (id: string) => ({
+      consumerId: id,
+      eventType: id === 'billing-service' ? 'OrderPlaced' : 'PaymentCompleted',
+      expectedFields: { orderId: { name: 'orderId', type: 'string', required: true } },
+    }))
   })
 
-  it('renders event catalog list from server', async () => {
-    renderWithClient(<ContractRegistryView />)
-
-    expect(screen.getByText(/loading event contracts/i)).toBeInTheDocument()
-
-    await waitFor(() => {
-      expect(screen.getAllByText('OrderPlaced').length).toBeGreaterThan(0)
-    })
-
-    expect(screen.getByText('PaymentCompleted')).toBeInTheDocument()
-    expect(screen.getByText('4 versions')).toBeInTheDocument()
+  it('lists event types and shows the latest version’s fields with their readers', async () => {
+    renderWithProviders(<ContractsHub onOpenReview={vi.fn()} />)
+    expect(await screen.findByRole('button', { name: /PaymentCompleted/ })).toBeInTheDocument()
+    const table = await screen.findByRole('table', { name: /Fields of OrderPlaced v4/ })
+    const row = within(table).getByText('shippingMethod').closest('tr') as HTMLElement
+    expect(within(row).getByText('inventory-service')).toBeInTheDocument()
   })
 
-  it('renders schema fields for active version and supports switching versions', async () => {
-    renderWithClient(<ContractRegistryView />)
-
-    await waitFor(() => {
-      expect(screen.getByText('orderId')).toBeInTheDocument()
-    })
-
-    expect(screen.getByText('amount')).toBeInTheDocument()
-
-    // Click version v1 pill
-    const v1Button = screen.getByRole('button', { name: /^v1/i })
-    fireEvent.click(v1Button)
-
-    await waitFor(() => {
-      expect(screen.getByText('notes')).toBeInTheDocument()
-    })
+  it('switches versions and opens the change in Review', async () => {
+    const onOpenReview = vi.fn()
+    renderWithProviders(<ContractsHub onOpenReview={onOpenReview} />)
+    fireEvent.click(await screen.findByRole('button', { name: /^v3/ }))
+    expect(await screen.findByRole('table', { name: /OrderPlaced v3/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Review v2 → v3' }))
+    expect(onOpenReview).toHaveBeenCalledWith({ eventType: 'OrderPlaced', currentVersion: 2, proposedVersion: 3 })
   })
 
-  it('filters event list when typing in search input', async () => {
-    renderWithClient(<ContractRegistryView />)
+  it('opens the selected event, not a hard-coded one', async () => {
+    const onOpenReview = vi.fn()
+    renderWithProviders(<ContractsHub onOpenReview={onOpenReview} />)
+    fireEvent.click(await screen.findByRole('button', { name: /PaymentCompleted/ }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Review v1 → v2' }))
+    expect(onOpenReview).toHaveBeenCalledWith({ eventType: 'PaymentCompleted', currentVersion: 1, proposedVersion: 2 })
+  })
 
-    await waitFor(() => {
-      expect(screen.getByText('PaymentCompleted')).toBeInTheDocument()
-    })
+  it('filters event types and offers to clear an empty result', async () => {
+    renderWithProviders(<ContractsHub onOpenReview={vi.fn()} />)
+    const input = await screen.findByLabelText('Filter event types')
+    fireEvent.change(input, { target: { value: 'zzz' } })
+    expect(screen.getByText('No event types match "zzz"')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Clear filter' }))
+    expect(screen.getByRole('button', { name: /OrderPlaced/ })).toBeInTheDocument()
+  })
 
-    const searchInput = screen.getByPlaceholderText(/filter event types/i)
-    fireEvent.change(searchInput, { target: { value: 'Payment' } })
+  it('shows an error with retry when the catalog fails', async () => {
+    vi.mocked(eventGateApi.listEventCatalog).mockRejectedValue(new Error('HTTP 500'))
+    renderWithProviders(<ContractsHub onOpenReview={vi.fn()} />)
+    expect(await screen.findByText('Could not load event contracts')).toBeInTheDocument()
+    vi.mocked(eventGateApi.listEventCatalog).mockResolvedValue([])
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(await screen.findByText('No event contracts registered')).toBeInTheDocument()
+  })
 
-    expect(screen.getByRole('button', { name: /PaymentCompleted/i })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /OrderPlaced/i })).not.toBeInTheDocument()
+  it('consumer contracts link back to the consumer’s own event', async () => {
+    renderWithProviders(<ContractsHub onOpenReview={vi.fn()} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Consumer contracts' }))
+    fireEvent.click(await screen.findByRole('button', { name: /fraud-detection-service/ }))
+    fireEvent.click(await screen.findByRole('button', { name: 'View PaymentCompleted' }))
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /PaymentCompleted/ })).toHaveAttribute('aria-current', 'true')
+    )
+  })
+
+  it('filters consumers', async () => {
+    renderWithProviders(<ContractsHub onOpenReview={vi.fn()} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Consumer contracts' }))
+    fireEvent.change(await screen.findByLabelText('Filter consumers'), { target: { value: 'fraud' } })
+    expect(screen.queryByRole('button', { name: /billing-service/ })).toBeNull()
   })
 })

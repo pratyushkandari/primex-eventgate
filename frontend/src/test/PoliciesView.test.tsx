@@ -1,62 +1,81 @@
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, screen, within } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { PoliciesView } from '@/components/policies/PoliciesView'
-import * as queries from '@/services/queries'
+import { SettingsView } from '@/components/settings/SettingsView'
+import { eventGateApi } from '@/services/api'
+import { mockApi, runtimeConfig } from './fixtures'
+import { renderWithProviders } from './render'
 
-vi.mock('@/services/queries', () => ({
-  usePolicies: vi.fn(),
-}))
+vi.mock('@/services/api', async (importOriginal) => {
+  const { mockApi } = await import('./fixtures')
+  return { ...(await importOriginal<object>()), eventGateApi: mockApi() }
+})
 
-describe('PoliciesView component', () => {
-  it('renders environment release policy matrix and Cedar code block', () => {
-    vi.mocked(queries.usePolicies).mockReturnValue({
-      data: {
-        activeEngine: 'standard',
-        engineName: 'Standard Deterministic Engine',
-        description: 'Deterministic pure policy engine evaluating 3x3 matrix',
-        matrix: [
-          { environment: 'production', low: 'ALLOW', medium: 'REVIEW', high: 'BLOCK' },
-          { environment: 'staging', low: 'ALLOW', medium: 'REVIEW', high: 'BLOCK' },
-          {
-            environment: 'development',
-            low: 'ALLOW',
-            medium: 'ALLOW with warning',
-            high: 'BLOCK',
-          },
-        ],
-        cedarPolicyAvailable: true,
-        cedarPolicyText: '@id("PROD_BLOCK_BREAK")\nforbid ( principal, action == Action::"Release", resource );',
-      },
-      isLoading: false,
-      error: null,
-      refetch: vi.fn(),
-    } as unknown as ReturnType<typeof queries.usePolicies>)
+const policy = {
+  activeEngine: 'standard',
+  engineName: 'Standard policy engine',
+  description: 'Applies the environment and severity matrix in Python.',
+  matrix: [
+    { environment: 'production', low: 'ALLOW', medium: 'REVIEW', high: 'BLOCK' },
+    { environment: 'development', low: 'ALLOW', medium: 'ALLOW with warning', high: 'BLOCK' },
+  ],
+  cedarPolicyAvailable: true,
+  cedarPolicyText: '@id("PROD_BLOCK_BREAK")\nforbid (principal, action, resource);',
+}
 
-    render(<PoliciesView />)
+describe('PoliciesView', () => {
+  beforeEach(() => Object.assign(eventGateApi, mockApi()))
 
-    expect(screen.getByText('Release Policies')).toBeInTheDocument()
-    expect(screen.getAllByText('Standard Deterministic Engine').length).toBeGreaterThan(0)
-    expect(screen.getByText('Environment Release Policy Matrix')).toBeInTheDocument()
-
-    // Assert environment rows
-    expect(screen.getByText('production')).toBeInTheDocument()
-    expect(screen.getByText('staging')).toBeInTheDocument()
-    expect(screen.getByText('development')).toBeInTheDocument()
-
-    // Assert Cedar policy code view
-    expect(screen.getByText('Cedar Language Policy Specification')).toBeInTheDocument()
-    expect(screen.getByText(/PROD_BLOCK_BREAK/)).toBeInTheDocument()
+  it('renders the matrix from the API and the Cedar source', async () => {
+    vi.mocked(eventGateApi.getPolicies).mockResolvedValue(policy)
+    renderWithProviders(<PoliciesView />)
+    const table = await screen.findByRole('table', { name: /Release decision by environment/ })
+    const dev = within(table).getByRole('rowheader', { name: 'development' }).closest('tr') as HTMLElement
+    expect(within(dev).getByText('with warning')).toBeInTheDocument()
+    expect(screen.getByText('Active engine: Standard policy engine')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('Show policy source'))
+    expect(screen.getByText(/PROD_BLOCK_BREAK/)).toBeVisible()
   })
 
-  it('renders loading state when query is active', () => {
-    vi.mocked(queries.usePolicies).mockReturnValue({
-      data: undefined,
-      isLoading: true,
-      error: null,
-      refetch: vi.fn(),
-    } as unknown as ReturnType<typeof queries.usePolicies>)
+  it('says when the Cedar file is not deployed', async () => {
+    vi.mocked(eventGateApi.getPolicies).mockResolvedValue({ ...policy, cedarPolicyAvailable: false, cedarPolicyText: null })
+    renderWithProviders(<PoliciesView />)
+    expect(await screen.findByText(/not available on this deployment/)).toBeInTheDocument()
+  })
 
-    render(<PoliciesView />)
-    expect(screen.getByText(/Loading authoritative release policies/)).toBeInTheDocument()
+  it('shows loading and error states', async () => {
+    vi.mocked(eventGateApi.getPolicies).mockRejectedValue(new Error('HTTP 500'))
+    renderWithProviders(<PoliciesView />)
+    expect(screen.getByRole('status', { name: 'Loading release policy' })).toBeInTheDocument()
+    expect(await screen.findByText('Could not load the release policy')).toBeInTheDocument()
+  })
+})
+
+describe('SettingsView', () => {
+  beforeEach(() => Object.assign(eventGateApi, mockApi()))
+
+  it('shows the adapters reported by the API, without the bus row locally', async () => {
+    renderWithProviders(<SettingsView />)
+    expect(await screen.findByText('Local JSON files')).toBeInTheDocument()
+    expect(screen.getByText('In-memory (local)')).toBeInTheDocument()
+    expect(screen.queryByText('EventBridge bus')).toBeNull()
+    expect(screen.getByText('API base URL')).toBeInTheDocument()
+  })
+
+  it('shows the bus on AWS', async () => {
+    vi.mocked(eventGateApi.getRuntimeConfig).mockResolvedValue({
+      ...runtimeConfig,
+      publisherBackend: 'Amazon EventBridge',
+      publisherBackendType: 'eventbridge',
+      eventBridgeBus: 'primex-eventgate-dev-bus',
+    })
+    renderWithProviders(<SettingsView />)
+    expect(await screen.findByText('primex-eventgate-dev-bus')).toBeInTheDocument()
+  })
+
+  it('shows an error with retry', async () => {
+    vi.mocked(eventGateApi.getRuntimeConfig).mockRejectedValue(new Error('down'))
+    renderWithProviders(<SettingsView />)
+    expect(await screen.findByText('Could not load the runtime configuration')).toBeInTheDocument()
   })
 })

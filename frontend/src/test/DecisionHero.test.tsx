@@ -1,113 +1,59 @@
-import { render, screen, fireEvent } from '@testing-library/react'
-import { describe, it, expect, vi } from 'vitest'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
 import { DecisionHero } from '@/components/workspace/DecisionHero'
-import type { AnalysisResponse } from '@/types/api'
+import { analysis } from './fixtures'
 
-describe('DecisionHero component', () => {
-  const createMockAnalysis = (decision: 'ALLOW' | 'BLOCK' | 'REVIEW', severity: 'LOW' | 'HIGH' | 'MEDIUM'): AnalysisResponse => ({
-    analysisId: 'test-an-id',
-    eventType: 'OrderPlaced',
-    currentVersion: 1,
-    proposedVersion: 2,
-    decision,
-    severity,
-    summary: `Summary for ${decision}`,
-    timestamp: '2026-09-18T00:00:00Z',
-    requestId: 'req-1',
-    findings: [],
-    changeSet: { addedFields: [], removedFields: [], typeChanges: [], requirednessChanges: [] },
+const base = { isAnalyzing: false, isPublishing: false, onPublish: vi.fn(), destination: 'the local in-memory publisher' }
+
+describe('DecisionHero', () => {
+  it('explains what to do before any analysis and keeps publishing disabled', () => {
+    render(<DecisionHero {...base} analysis={null} />)
+    expect(screen.getByText('No analysis yet')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Publish event' })).toBeDisabled()
   })
 
-  it('renders Ready to Analyze in initial idle state', () => {
-    render(<DecisionHero analysis={null} isAnalyzing={false} isPublishing={false} onPublish={vi.fn()} />)
-    expect(screen.getByText('Ready to Analyze')).toBeInTheDocument()
+  it('asks for a JSON fix first when the payload is invalid', () => {
+    render(<DecisionHero {...base} analysis={null} hasJsonError />)
+    expect(screen.getByText(/Fix the payload JSON/)).toBeInTheDocument()
   })
 
-  it('renders loading state when isAnalyzing is true', () => {
-    render(<DecisionHero analysis={null} isAnalyzing={true} isPublishing={false} onPublish={vi.fn()} />)
-    expect(screen.getByText('Analyzing Compatibility')).toBeInTheDocument()
+  it('shows a loading state while analyzing', () => {
+    render(<DecisionHero {...base} analysis={null} isAnalyzing />)
+    expect(screen.getByRole('status', { name: 'Analyzing compatibility' })).toBeInTheDocument()
   })
 
-  it('renders ALLOW state with active Publish button', () => {
-    const handlePublish = vi.fn()
-    const analysis = createMockAnalysis('ALLOW', 'LOW')
+  it('enables publishing on ALLOW and names the destination', () => {
+    const onPublish = vi.fn()
+    render(<DecisionHero {...base} onPublish={onPublish} analysis={analysis('ALLOW')} />)
+    expect(screen.getByText('Safe to publish')).toBeInTheDocument()
+    expect(screen.getByText('Sends to the local in-memory publisher')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Publish event' }))
+    expect(onPublish).toHaveBeenCalled()
+  })
+
+  it('blocks publishing on BLOCK and names the broken consumer field', () => {
+    render(<DecisionHero {...base} analysis={analysis('BLOCK')} />)
+    expect(screen.getByText('Blocked')).toBeInTheDocument()
+    expect(screen.getByText('inventory-service')).toBeInTheDocument()
+    expect(screen.getByText(/string → object/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Publishing not allowed' })).toBeDisabled()
+    expect(screen.getByText(/HTTP 409 for BLOCK/)).toBeInTheDocument()
+  })
+
+  it('holds REVIEW and shows the policy reason and warnings', () => {
     render(
       <DecisionHero
-        analysis={analysis}
-        isAnalyzing={false}
-        isPublishing={false}
-        onPublish={handlePublish}
+        {...base}
+        analysis={analysis('REVIEW', { warnings: ['Review downstream impacts before promoting.'] })}
       />
     )
-
-    expect(screen.getAllByText('ALLOW').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getByText('Publication permitted.')).toBeInTheDocument()
-    expect(screen.getByText('SEVERITY: LOW')).toBeInTheDocument()
-
-    const publishBtn = screen.getByRole('button', { name: /Publish Event/i })
-    expect(publishBtn).toBeEnabled()
-    fireEvent.click(publishBtn)
-    expect(handlePublish).toHaveBeenCalledTimes(1)
+    expect(screen.getByText('Held for review')).toBeInTheDocument()
+    expect(screen.getByText(/requires manual engineering review/)).toBeInTheDocument()
+    expect(screen.getByText('Review downstream impacts before promoting.')).toBeInTheDocument()
   })
 
-  it('renders BLOCK state with disabled publish button and prevented warning', () => {
-    const handlePublish = vi.fn()
-    const analysis = createMockAnalysis('BLOCK', 'HIGH')
-    render(
-      <DecisionHero
-        analysis={analysis}
-        isAnalyzing={false}
-        isPublishing={false}
-        onPublish={handlePublish}
-      />
-    )
-
-    expect(screen.getAllByText('BLOCK').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getByText('Publication prevented.')).toBeInTheDocument()
-    expect(screen.getByText('SEVERITY: HIGH')).toBeInTheDocument()
-    expect(screen.getByText(/EventBridge: NOT CALLED/i)).toBeInTheDocument()
-
-    const publishBtn = screen.getByRole('button', { name: /Publication prevented/i })
-    expect(publishBtn).toBeDisabled()
-  })
-
-  it('renders REVIEW state with disabled publish button', () => {
-    const handlePublish = vi.fn()
-    const analysis = createMockAnalysis('REVIEW', 'MEDIUM')
-    render(
-      <DecisionHero
-        analysis={analysis}
-        isAnalyzing={false}
-        isPublishing={false}
-        onPublish={handlePublish}
-      />
-    )
-
-    expect(screen.getAllByText('REVIEW').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getByText('Publication held pending review.')).toBeInTheDocument()
-    expect(screen.getByText('SEVERITY: MEDIUM')).toBeInTheDocument()
-    expect(screen.getByText(/EventBridge: NOT CALLED/i)).toBeInTheDocument()
-
-    const publishBtn = screen.getByRole('button', { name: /Publication held pending review/i })
-    expect(publishBtn).toBeDisabled()
-  })
-
-  it('renders Invalid Payload state when hasJsonError is true with disabled publish button', () => {
-    render(
-      <DecisionHero
-        analysis={null}
-        isAnalyzing={false}
-        isPublishing={false}
-        hasJsonError={true}
-        onPublish={vi.fn()}
-      />
-    )
-
-    expect(screen.getByText('Invalid Payload')).toBeInTheDocument()
-    expect(screen.getByText('Fix JSON syntax to analyze.')).toBeInTheDocument()
-    expect(screen.getByText('Invalid JSON')).toBeInTheDocument()
-
-    const publishBtn = screen.getByRole('button', { name: /Fix invalid JSON before publishing/i })
-    expect(publishBtn).toBeDisabled()
+  it('disables publishing while a publish is in flight', () => {
+    render(<DecisionHero {...base} isPublishing analysis={analysis('ALLOW')} />)
+    expect(screen.getByRole('button', { name: 'Publish event' })).toBeDisabled()
   })
 })
