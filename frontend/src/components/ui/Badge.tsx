@@ -1,49 +1,38 @@
 import * as React from 'react'
-import { cn } from '@/lib/utils'
+import { cn, toneFor, type Tone } from '@/lib/utils'
 
 export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
-  variant?:
-    | 'default'
-    | 'allow'
-    | 'block'
-    | 'review'
-    | 'safe'
-    | 'break'
-    | 'risk'
-    | 'neutral'
-    | 'outline'
-  size?: 'sm' | 'md'
+  tone?: Tone
 }
 
-export function Badge({
-  className,
-  variant = 'default',
-  size = 'md',
-  children,
-  ...props
-}: BadgeProps) {
-  const baseStyles = 'inline-flex items-center font-mono font-medium rounded'
+const TONES: Record<Tone, string> = {
+  neutral: 'bg-raised text-fg-muted border-line',
+  accent: 'bg-accent-tint text-accent-fg border-accent-strong/40',
+  success: 'bg-success-tint text-success border-success-line',
+  warning: 'bg-warning-tint text-warning border-warning-line',
+  danger: 'bg-danger-tint text-danger border-danger-line',
+}
 
-  const variants = {
-    default: 'bg-slate-800/80 text-slate-300 border border-slate-700/60',
-    allow: 'bg-emerald-950/40 text-emerald-400 border border-emerald-500/30',
-    safe: 'bg-emerald-950/40 text-emerald-400 border border-emerald-500/30',
-    block: 'bg-rose-950/40 text-rose-400 border border-rose-500/30',
-    break: 'bg-rose-950/40 text-rose-400 border border-rose-500/30',
-    review: 'bg-amber-950/40 text-amber-400 border border-amber-500/30',
-    risk: 'bg-amber-950/40 text-amber-400 border border-amber-500/30',
-    neutral: 'bg-slate-800/60 text-slate-400 border border-slate-700/50',
-    outline: 'bg-transparent text-slate-400 border border-slate-700/60',
-  }
-
-  const sizes = {
-    sm: 'text-[10px] px-1.5 py-0.5 tracking-wide uppercase',
-    md: 'text-xs px-2 py-0.5 tracking-wide uppercase',
-  }
-
+export function Badge({ className, tone = 'neutral', children, ...props }: BadgeProps) {
   return (
-    <span className={cn(baseStyles, variants[variant], sizes[size], className)} {...props}>
+    <span
+      className={cn(
+        'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium leading-4 border whitespace-nowrap',
+        TONES[tone],
+        className
+      )}
+      {...props}
+    >
       {children}
     </span>
+  )
+}
+
+/** Badge colored by an ALLOW/REVIEW/BLOCK, SAFE/RISK/BREAK or LOW/MEDIUM/HIGH value. */
+export function StatusBadge({ value, className }: { value: string; className?: string }) {
+  return (
+    <Badge tone={toneFor(value)} className={cn('font-mono tracking-wide', className)}>
+      {value}
+    </Badge>
   )
 }

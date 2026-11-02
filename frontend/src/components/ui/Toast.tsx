@@ -1,64 +1,96 @@
-import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react'
+import * as React from 'react'
+import { AlertCircle, CheckCircle2, Info, X } from 'lucide-react'
+import { cn } from '@/lib/utils'
+
+import { ToastContext, type ShowToast, type ToastType } from './toast-context'
 
 export interface ToastMessage {
-  id: string
+  id: number
   title: string
   description?: string
-  type?: 'success' | 'error' | 'info'
+  type: ToastType
 }
 
-interface ToastContainerProps {
-  toasts: ToastMessage[]
-  onDismiss: (id: string) => void
-}
+const MAX_VISIBLE = 3
+const DURATION_MS = 5000
 
-export function ToastContainer({ toasts, onDismiss }: ToastContainerProps) {
-  if (toasts.length === 0) return null
+/** Provides useToast() to the tree and renders the toast stack. */
+export function ToastProvider({ children }: { children: React.ReactNode }) {
+  const [toasts, setToasts] = React.useState<ToastMessage[]>([])
+  const nextId = React.useRef(1)
+  const timers = React.useRef(new Map<number, ReturnType<typeof setTimeout>>())
+
+  const dismiss = React.useCallback((id: number) => {
+    clearTimeout(timers.current.get(id))
+    timers.current.delete(id)
+    setToasts((prev) => prev.filter((t) => t.id !== id))
+  }, [])
+
+  const show = React.useCallback<ShowToast>(
+    (title, description, type = 'info') => {
+      const id = nextId.current++
+      setToasts((prev) => [...prev, { id, title, description, type }].slice(-MAX_VISIBLE))
+      timers.current.set(id, setTimeout(() => dismiss(id), DURATION_MS))
+    },
+    [dismiss]
+  )
+
+  React.useEffect(() => {
+    const pending = timers.current
+    return () => pending.forEach((timer) => clearTimeout(timer))
+  }, [])
 
   return (
+    <ToastContext.Provider value={show}>
+      {children}
+      <ToastStack toasts={toasts} onDismiss={dismiss} />
+    </ToastContext.Provider>
+  )
+}
+
+const ICONS = { success: CheckCircle2, error: AlertCircle, info: Info }
+const ICON_COLORS = { success: 'text-success', error: 'text-danger', info: 'text-accent-fg' }
+
+export function ToastStack({
+  toasts,
+  onDismiss,
+}: {
+  toasts: ToastMessage[]
+  onDismiss: (id: number) => void
+}) {
+  return (
     <div
-      className="fixed bottom-4 right-4 z-50 flex flex-col space-y-2 max-w-sm w-full pointer-events-none"
+      role="region"
       aria-live="polite"
       aria-label="Notifications"
+      className="pointer-events-none fixed inset-x-4 bottom-4 z-[60] flex flex-col items-end gap-2 sm:left-auto sm:w-96"
     >
-      {toasts.map((toast) => (
-        <div
-          key={toast.id}
-          className={`pointer-events-auto flex items-start justify-between p-3 rounded-lg border shadow-xl backdrop-blur-md transition-all font-mono text-xs ${
-            toast.type === 'success'
-              ? 'bg-emerald-950/90 border-emerald-500/40 text-emerald-200'
-              : toast.type === 'error'
-              ? 'bg-rose-950/90 border-rose-500/40 text-rose-200'
-              : 'bg-slate-900/90 border-slate-700/80 text-slate-200'
-          }`}
-        >
-          <div className="flex items-start space-x-2.5">
-            {toast.type === 'success' ? (
-              <CheckCircle2 className="h-4 w-4 text-emerald-400 mt-0.5 flex-shrink-0" />
-            ) : toast.type === 'error' ? (
-              <AlertCircle className="h-4 w-4 text-rose-400 mt-0.5 flex-shrink-0" />
-            ) : (
-              <Info className="h-4 w-4 text-blue-400 mt-0.5 flex-shrink-0" />
-            )}
-            <div>
-              <div className="font-semibold text-xs leading-none">{toast.title}</div>
+      {toasts.map((toast) => {
+        const Icon = ICONS[toast.type]
+        return (
+          <div
+            key={toast.id}
+            role={toast.type === 'error' ? 'alert' : 'status'}
+            className="pointer-events-auto flex w-full items-start gap-3 rounded-[var(--radius-card)] border border-line bg-raised p-3 shadow-[var(--shadow-overlay)] animate-fade-in"
+          >
+            <Icon className={cn('mt-0.5 h-4 w-4 shrink-0', ICON_COLORS[toast.type])} aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-fg">{toast.title}</p>
               {toast.description && (
-                <div className="text-[11px] text-slate-400 mt-1 font-sans leading-tight">
-                  {toast.description}
-                </div>
+                <p className="mt-0.5 break-words text-xs text-fg-muted">{toast.description}</p>
               )}
             </div>
+            <button
+              type="button"
+              onClick={() => onDismiss(toast.id)}
+              aria-label="Dismiss notification"
+              className="rounded p-0.5 text-fg-subtle transition-colors hover:bg-line hover:text-fg"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => onDismiss(toast.id)}
-            className="text-slate-400 hover:text-slate-200 ml-2 p-0.5 rounded hover:bg-slate-800/60 transition-colors cursor-pointer"
-            aria-label="Dismiss notification"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }

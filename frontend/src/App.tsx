@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { ToastProvider } from '@/components/ui/Toast'
 import { WorkspaceShell } from '@/components/workspace/WorkspaceShell'
 
 const queryClient = new QueryClient({
@@ -13,7 +14,9 @@ const queryClient = new QueryClient({
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <WorkspaceShell />
+      <ToastProvider>
+        <WorkspaceShell />
+      </ToastProvider>
     </QueryClientProvider>
   )
 }

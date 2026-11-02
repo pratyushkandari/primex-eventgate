@@ -3,56 +3,48 @@ import { Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'outline' | 'destructive' | 'ghost' | 'success'
-  size?: 'sm' | 'md' | 'lg'
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'success'
+  size?: 'sm' | 'md'
   isLoading?: boolean
+}
+
+const VARIANTS: Record<NonNullable<ButtonProps['variant']>, string> = {
+  primary: 'bg-accent-strong text-white hover:bg-accent-hover border border-transparent',
+  secondary: 'bg-raised text-fg border border-line hover:border-line-strong hover:bg-line/60',
+  ghost: 'text-fg-muted hover:text-fg hover:bg-raised border border-transparent',
+  danger: 'bg-danger-tint text-danger border border-danger-line hover:bg-danger-line/50',
+  success: 'bg-success-strong text-white hover:bg-success-strong-hover border border-transparent',
+}
+
+const SIZES: Record<NonNullable<ButtonProps['size']>, string> = {
+  sm: 'h-8 px-3 text-xs gap-1.5',
+  md: 'h-9 px-4 text-sm gap-2',
 }
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   (
-    {
-      className,
-      children,
-      variant = 'primary',
-      size = 'md',
-      isLoading = false,
-      disabled,
-      type = 'button',
-      ...props
-    },
+    { className, children, variant = 'primary', size = 'md', isLoading = false, disabled, type = 'button', ...props },
     ref
-  ) => {
-    const baseStyles =
-      'inline-flex items-center justify-center font-medium rounded-md transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-500 disabled:opacity-40 disabled:pointer-events-none cursor-pointer select-none'
-
-    const variants = {
-      primary: 'bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white shadow-sm',
-      secondary: 'bg-slate-800/90 hover:bg-slate-800 text-slate-200 border border-slate-700/60',
-      outline: 'border border-slate-700/80 hover:bg-slate-800/60 text-slate-300 hover:text-white',
-      destructive: 'bg-red-600 hover:bg-red-500 active:bg-red-700 text-white shadow-sm',
-      ghost: 'hover:bg-slate-800/60 text-slate-300 hover:text-white',
-      success: 'bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white shadow-sm',
-    }
-
-    const sizes = {
-      sm: 'text-xs px-2.5 py-1.5 gap-1.5',
-      md: 'text-sm px-4 py-2 gap-2',
-      lg: 'text-base px-5 py-2.5 gap-2.5',
-    }
-
-    return (
-      <button
-        ref={ref}
-        type={type}
-        className={cn(baseStyles, variants[variant], sizes[size], className)}
-        disabled={disabled || isLoading}
-        {...props}
-      >
-        {isLoading && <Loader2 className="h-4 w-4 animate-spin text-current" />}
-        {children}
-      </button>
-    )
-  }
+  ) => (
+    <button
+      ref={ref}
+      type={type}
+      disabled={disabled || isLoading}
+      aria-busy={isLoading || undefined}
+      className={cn(
+        'inline-flex shrink-0 items-center justify-center rounded-[var(--radius-control)] font-medium whitespace-nowrap',
+        'transition-colors duration-150 cursor-pointer select-none',
+        'disabled:cursor-not-allowed disabled:opacity-50',
+        VARIANTS[variant],
+        SIZES[size],
+        className
+      )}
+      {...props}
+    >
+      {isLoading && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+      {children}
+    </button>
+  )
 )
 
 Button.displayName = 'Button'

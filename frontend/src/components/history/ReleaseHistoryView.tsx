@@ -1,746 +1,501 @@
 /**
- * Release History & Audit Trail View.
- * Displays authoritative persistent records of event contract compatibility reviews,
- * policy determinations, and downstream transport publication status.
+ * Release history: every analysis and publish attempt the gate recorded, with
+ * filters, sorting, a record inspector and Markdown/JSON report downloads.
  */
 
-import React, { useState, useMemo } from 'react'
-import {
-  History,
-  ShieldCheck,
-  ShieldAlert,
-  AlertTriangle,
-  FileText,
-  Download,
-  Copy,
-  Check,
-  Search,
-  RefreshCw,
-  ExternalLink,
-  X,
-  Radio,
-  Layers,
-  CheckCircle2,
-} from 'lucide-react'
-import { useHistory } from '@/services/queries'
-import { eventGateApi } from '@/services/api'
-import type { ReleaseRecord } from '@/types/api'
+import * as React from 'react'
+import { ArrowDown, ArrowUp, Copy, Download, ExternalLink, RefreshCw, Search } from 'lucide-react'
+import { Badge, StatusBadge } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
+import { CopyButton } from '@/components/ui/CopyButton'
+import { Dialog } from '@/components/ui/Dialog'
+import { Input, Label, Select } from '@/components/ui/Field'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { EmptyState, ErrorState, SkeletonRows } from '@/components/ui/States'
+import { useToast } from '@/components/ui/toast-context'
+import type { ChangeSelection } from '@/components/workspace/useReviewSession'
+import { cn, downloadText, formatTimestamp } from '@/lib/utils'
+import { describeError, eventGateApi } from '@/services/api'
+import { useEventCatalog, useHistory } from '@/services/queries'
+import { ENVIRONMENTS, type Decision, type ReleaseRecord, type ReportFormat } from '@/types/api'
 
 interface ReleaseHistoryViewProps {
-  onSelectReview?: (eventType: string, currentVersion: number, proposedVersion: number) => void
+  onOpenReview?: (change: ChangeSelection) => void
 }
 
-export const ReleaseHistoryView: React.FC<ReleaseHistoryViewProps> = ({ onSelectReview }) => {
-  const [selectedEventType, setSelectedEventType] = useState<string>('')
-  const [selectedEnvironment, setSelectedEnvironment] = useState<string>('')
-  const [selectedDecision, setSelectedDecision] = useState<string>('')
-  const [searchQuery, setSearchQuery] = useState('')
-  const [inspectRecord, setInspectRecord] = useState<ReleaseRecord | null>(null)
-  const [copiedId, setCopiedId] = useState<string | null>(null)
-  const [isExporting, setIsExporting] = useState(false)
+type SortKey = 'timestamp' | 'decision'
+const DECISION_ORDER: Record<Decision, number> = { BLOCK: 0, REVIEW: 1, ALLOW: 2 }
 
-  const { data: records = [], isLoading, isError, refetch, isFetching } = useHistory(
-    selectedEventType || undefined
+function outcome(record: ReleaseRecord): { label: string; tone: 'success' | 'danger' | 'neutral' } {
+  if (record.published) return { label: 'Published', tone: 'success' }
+  if (record.attemptedPublish) return { label: record.error?.startsWith('Publication failed') ? 'Publish failed' : 'Prevented', tone: 'danger' }
+  return { label: 'Analyzed only', tone: 'neutral' }
+}
+
+function matchesSearch(r: ReleaseRecord, q: string) {
+  if (!q) return true
+  return [
+    r.recordId,
+    r.eventType,
+    r.requestId,
+    r.eventId,
+    r.eventBridgeEventId,
+    r.environment,
+    r.decision,
+    r.policyReason,
+    ...r.affectedConsumers,
+  ].some((v) => v?.toLowerCase().includes(q))
+}
+
+export function ReleaseHistoryView({ onOpenReview }: ReleaseHistoryViewProps) {
+  const history = useHistory()
+  const catalog = useEventCatalog()
+  const [query, setQuery] = React.useState('')
+  const [eventType, setEventType] = React.useState('')
+  const [environment, setEnvironment] = React.useState('')
+  const [decision, setDecision] = React.useState('')
+  const [sort, setSort] = React.useState<{ key: SortKey; desc: boolean }>({ key: 'timestamp', desc: true })
+  const [inspected, setInspected] = React.useState<ReleaseRecord | null>(null)
+
+  const records = React.useMemo(() => history.data ?? [], [history.data])
+  const eventTypes = React.useMemo(
+    () => [...new Set([...(catalog.data ?? []).map((c) => c.eventType), ...records.map((r) => r.eventType)])].sort(),
+    [catalog.data, records]
   )
 
-  const hasActiveFilters = Boolean(
-    selectedEventType || selectedEnvironment || selectedDecision || searchQuery.trim()
-  )
+  const filtered = React.useMemo(() => {
+    const q = query.trim().toLowerCase()
+    const rows = records.filter(
+      (r) =>
+        (!eventType || r.eventType === eventType) &&
+        (!environment || r.environment.toLowerCase() === environment) &&
+        (!decision || r.decision === decision) &&
+        matchesSearch(r, q)
+    )
+    const dir = sort.desc ? -1 : 1
+    return rows.sort((a, b) =>
+      sort.key === 'timestamp'
+        ? dir * a.timestamp.localeCompare(b.timestamp)
+        : dir * (DECISION_ORDER[b.decision] - DECISION_ORDER[a.decision]) || b.timestamp.localeCompare(a.timestamp)
+    )
+  }, [records, query, eventType, environment, decision, sort])
 
-  const handleClearFilters = () => {
-    setSelectedEventType('')
-    setSelectedEnvironment('')
-    setSelectedDecision('')
-    setSearchQuery('')
+  const hasFilters = Boolean(query.trim() || eventType || environment || decision)
+  const clearFilters = () => {
+    setQuery('')
+    setEventType('')
+    setEnvironment('')
+    setDecision('')
   }
 
-  const filteredRecords = useMemo(() => {
-    return records.filter((r) => {
-      // Event Type filter
-      if (selectedEventType && r.eventType !== selectedEventType) {
-        return false
-      }
-      // Environment filter
-      if (
-        selectedEnvironment &&
-        r.environment.toLowerCase() !== selectedEnvironment.toLowerCase()
-      ) {
-        return false
-      }
-      // Decision filter
-      if (selectedDecision && r.decision !== selectedDecision) {
-        return false
-      }
-      // Generic search
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim()
-        const matchesSearch =
-          r.recordId.toLowerCase().includes(q) ||
-          r.eventType.toLowerCase().includes(q) ||
-          (r.requestId && r.requestId.toLowerCase().includes(q)) ||
-          (r.eventId && r.eventId.toLowerCase().includes(q)) ||
-          (r.eventBridgeEventId && r.eventBridgeEventId.toLowerCase().includes(q)) ||
-          r.environment.toLowerCase().includes(q) ||
-          r.decision.toLowerCase().includes(q) ||
-          (r.policyReason && r.policyReason.toLowerCase().includes(q)) ||
-          (r.affectedConsumers && r.affectedConsumers.some((c) => c.toLowerCase().includes(q)))
-        if (!matchesSearch) return false
-      }
-      return true
-    })
-  }, [records, selectedEventType, selectedEnvironment, selectedDecision, searchQuery])
-
-  const stats = useMemo(() => {
-    const total = records.length
-    const published = records.filter((r) => r.published).length
-    const blocked = records.filter((r) => r.decision === 'BLOCK').length
-    const review = records.filter((r) => r.decision === 'REVIEW').length
-    return { total, published, blocked, review }
-  }, [records])
-
-  const handleCopy = (text: string, id: string) => {
-    navigator.clipboard.writeText(text)
-    setCopiedId(id)
-    setTimeout(() => setCopiedId(null), 2000)
+  const stats = {
+    total: records.length,
+    published: records.filter((r) => r.published).length,
+    blocked: records.filter((r) => r.decision === 'BLOCK').length,
+    review: records.filter((r) => r.decision === 'REVIEW').length,
   }
 
-  const handleDownloadMarkdown = async (record: ReleaseRecord) => {
-    try {
-      setIsExporting(true)
-      const res = await eventGateApi.getReport(record.recordId, 'markdown')
-      const blob = new Blob([res.content], { type: 'text/markdown;charset=utf-8' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `eventgate-release-${record.eventType}-v${record.proposedVersion}-${record.recordId.slice(0, 8)}.md`
-      a.click()
-      URL.revokeObjectURL(url)
-    } catch (err) {
-      console.error('Failed to download markdown report:', err)
-    } finally {
-      setIsExporting(false)
-    }
-  }
-
-  const handleDownloadJson = async (record: ReleaseRecord) => {
-    try {
-      setIsExporting(true)
-      const res = await eventGateApi.getReport(record.recordId, 'json')
-      const blob = new Blob([res.content], { type: 'application/json;charset=utf-8' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `eventgate-release-${record.eventType}-v${record.proposedVersion}-${record.recordId.slice(0, 8)}.json`
-      a.click()
-      URL.revokeObjectURL(url)
-    } catch (err) {
-      console.error('Failed to download JSON report:', err)
-    } finally {
-      setIsExporting(false)
-    }
-  }
-
-  const handleCopyMarkdownSummary = async (record: ReleaseRecord) => {
-    try {
-      const res = await eventGateApi.getReport(record.recordId, 'markdown')
-      handleCopy(res.content, `md-${record.recordId}`)
-    } catch (err) {
-      console.error('Failed to copy markdown report:', err)
-    }
-  }
+  const toggleSort = (key: SortKey) =>
+    setSort((s) => (s.key === key ? { key, desc: !s.desc } : { key, desc: true }))
 
   return (
-    <div className="flex-1 overflow-y-auto bg-neutral-950 text-neutral-200">
-      {/* Top Banner & Control Bar */}
-      <div className="border-b border-neutral-800 bg-neutral-900/50 px-6 py-5">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <History className="h-5 w-5 text-indigo-400" />
-              <h1 className="text-lg font-semibold tracking-tight text-neutral-100">
-                Release History
-              </h1>
-            </div>
-            <p className="mt-1 text-xs text-neutral-400">
-              Recorded release decisions and publication outcomes.
-            </p>
+    <div>
+      <PageHeader
+        title="Release history"
+        description="Every analysis and publish attempt, newest first. Records are written by the API and by eventgate check --persist."
+        actions={
+          <Button variant="secondary" size="sm" onClick={() => history.refetch()} isLoading={history.isFetching}>
+            {!history.isFetching && <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />}
+            Refresh
+          </Button>
+        }
+      />
+
+      <dl className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+        {(
+          [
+            ['Recorded', stats.total, 'text-fg'],
+            ['Published', stats.published, 'text-success'],
+            ['Blocked', stats.blocked, 'text-danger'],
+            ['Held for review', stats.review, 'text-warning'],
+          ] as const
+        ).map(([label, value, color]) => (
+          <div key={label} className="rounded-[var(--radius-card)] border border-line bg-surface px-4 py-3">
+            <dt className="text-xs text-fg-subtle">{label}</dt>
+            <dd className={cn('mt-1 text-2xl font-semibold tabular-nums', color)}>{history.isPending ? '-' : value}</dd>
           </div>
+        ))}
+      </dl>
 
-          <div className="flex flex-wrap items-center gap-2.5">
-            {/* Search Input */}
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-500" />
-              <input
-                type="text"
-                placeholder="Search audit records..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-8 w-56 rounded border border-neutral-800 bg-neutral-900 pl-8 pr-3 text-xs text-neutral-200 placeholder-neutral-500 focus:border-indigo-500 focus:outline-none"
-              />
-            </div>
-
-            {/* Event Filter */}
-            <select
-              value={selectedEventType}
-              onChange={(e) => setSelectedEventType(e.target.value)}
-              className="h-8 rounded border border-neutral-800 bg-neutral-900 px-2.5 text-xs text-neutral-200 focus:border-indigo-500 focus:outline-none"
-              aria-label="Filter by Event Type"
-            >
-              <option value="">All Events</option>
-              <option value="OrderPlaced">OrderPlaced</option>
-              <option value="PaymentCompleted">PaymentCompleted</option>
-              <option value="UserCreated">UserCreated</option>
-            </select>
-
-            {/* Environment Filter */}
-            <select
-              value={selectedEnvironment}
-              onChange={(e) => setSelectedEnvironment(e.target.value)}
-              className="h-8 rounded border border-neutral-800 bg-neutral-900 px-2.5 text-xs text-neutral-200 focus:border-indigo-500 focus:outline-none"
-              aria-label="Filter by Environment"
-            >
-              <option value="">All Environments</option>
-              <option value="development">development</option>
-              <option value="staging">staging</option>
-              <option value="production">production</option>
-            </select>
-
-            {/* Decision Filter */}
-            <select
-              value={selectedDecision}
-              onChange={(e) => setSelectedDecision(e.target.value)}
-              className="h-8 rounded border border-neutral-800 bg-neutral-900 px-2.5 text-xs text-neutral-200 focus:border-indigo-500 focus:outline-none"
-              aria-label="Filter by Decision"
-            >
-              <option value="">All Decisions</option>
-              <option value="ALLOW">ALLOW</option>
-              <option value="REVIEW">REVIEW</option>
-              <option value="BLOCK">BLOCK</option>
-            </select>
-
-            {/* Clear Filters */}
-            {hasActiveFilters && (
-              <button
-                onClick={handleClearFilters}
-                className="flex h-8 items-center gap-1 rounded border border-neutral-800 bg-neutral-900 px-2.5 text-xs font-medium text-neutral-400 hover:border-neutral-700 hover:text-neutral-200 focus:outline-none"
-                title="Clear all filters"
-                aria-label="Clear filters"
-              >
-                <X className="h-3.5 w-3.5" />
-                <span>Clear filters</span>
-              </button>
-            )}
-
-            {/* Refresh */}
-            <button
-              onClick={() => refetch()}
-              disabled={isFetching}
-              className="flex h-8 items-center gap-1.5 rounded border border-neutral-800 bg-neutral-900 px-3 text-xs font-medium text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100 focus:outline-none disabled:opacity-50"
-              title="Refresh history"
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
-              <span>Refresh</span>
-            </button>
+      <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_repeat(3,11rem)_auto] lg:items-end">
+        <div>
+          <Label htmlFor="history-search">Search</Label>
+          <div className="relative">
+            <Search className="pointer-events-none absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2 text-fg-subtle" aria-hidden="true" />
+            <Input
+              id="history-search"
+              placeholder="ID, event, consumer or reason"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="pl-8"
+            />
           </div>
         </div>
-
-        {/* Summary Metric Strip */}
-        {/* Summary Metric Strip */}
-        <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <div className="rounded border border-neutral-800/80 bg-neutral-900/60 p-3">
-            <span className="text-[11px] font-medium text-neutral-400">Evaluations</span>
-            <div className="mt-1 flex items-baseline gap-2">
-              <span className="text-xl font-bold text-neutral-100">{stats.total}</span>
-              <span className="text-[10px] text-neutral-500">all recorded decisions</span>
-            </div>
-          </div>
-          <div className="rounded border border-emerald-900/30 bg-emerald-950/10 p-3">
-            <span className="text-[11px] font-medium text-emerald-400">Published</span>
-            <div className="mt-1 flex items-baseline gap-2">
-              <span className="text-xl font-bold text-emerald-300">{stats.published}</span>
-              <span className="text-[10px] text-emerald-500/80">successful transport</span>
-            </div>
-          </div>
-          <div className="rounded border border-rose-900/30 bg-rose-950/10 p-3">
-            <span className="text-[11px] font-medium text-rose-400">Blocked</span>
-            <div className="mt-1 flex items-baseline gap-2">
-              <span className="text-xl font-bold text-rose-300">{stats.blocked}</span>
-              <span className="text-[10px] text-rose-500/80">publication prevented</span>
-            </div>
-          </div>
-          <div className="rounded border border-amber-900/30 bg-amber-950/10 p-3">
-            <span className="text-[11px] font-medium text-amber-400">Review</span>
-            <div className="mt-1 flex items-baseline gap-2">
-              <span className="text-xl font-bold text-amber-300">{stats.review}</span>
-              <span className="text-[10px] text-amber-500/80">publication held</span>
-            </div>
-          </div>
+        <div>
+          <Label htmlFor="history-event">Event type</Label>
+          <Select id="history-event" value={eventType} onChange={(e) => setEventType(e.target.value)}>
+            <option value="">All events</option>
+            {eventTypes.map((et) => (
+              <option key={et} value={et}>
+                {et}
+              </option>
+            ))}
+          </Select>
         </div>
+        <div>
+          <Label htmlFor="history-env">Environment</Label>
+          <Select id="history-env" value={environment} onChange={(e) => setEnvironment(e.target.value)}>
+            <option value="">All environments</option>
+            {ENVIRONMENTS.map((env) => (
+              <option key={env} value={env}>
+                {env}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div>
+          <Label htmlFor="history-decision">Decision</Label>
+          <Select id="history-decision" value={decision} onChange={(e) => setDecision(e.target.value)}>
+            <option value="">All decisions</option>
+            <option value="ALLOW">ALLOW</option>
+            <option value="REVIEW">REVIEW</option>
+            <option value="BLOCK">BLOCK</option>
+          </Select>
+        </div>
+        <Button variant="ghost" size="md" onClick={clearFilters} disabled={!hasFilters}>
+          Clear filters
+        </Button>
       </div>
 
-      {/* Main Table Area */}
-      <div className="p-6">
-        {isLoading ? (
-          <div className="flex h-64 items-center justify-center">
-            <div className="flex items-center gap-2 text-xs text-neutral-400">
-              <RefreshCw className="h-4 w-4 animate-spin text-indigo-400" />
-              <span>Loading release history audit records...</span>
-            </div>
-          </div>
-        ) : isError ? (
-          <div className="rounded border border-rose-900/40 bg-rose-950/20 p-6 text-center">
-            <ShieldAlert className="mx-auto h-8 w-8 text-rose-400" />
-            <h3 className="mt-2 text-sm font-semibold text-rose-200">Release history is currently unavailable.</h3>
-            <p className="mt-1 text-xs text-rose-300/80">
-              Check the release API connection and retry.
-            </p>
-            <button
-              onClick={() => refetch()}
-              className="mt-4 rounded bg-neutral-800 px-3 py-1.5 text-xs text-neutral-200 hover:bg-neutral-700 cursor-pointer"
-            >
-              Retry
-            </button>
-          </div>
-        ) : filteredRecords.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-neutral-800 bg-neutral-900/20 p-12 text-center">
-            <History className="mx-auto h-10 w-10 text-neutral-600" />
-            <h3 className="mt-3 text-sm font-medium text-neutral-300">
-              {hasActiveFilters ? 'No release records match the current filters.' : 'No release records yet.'}
-            </h3>
-            <p className="mx-auto mt-1 max-w-sm text-xs text-neutral-500">
-              {hasActiveFilters
-                ? 'Try adjusting or clearing your active filter criteria.'
-                : 'Recorded release decisions and publication outcomes will appear here after events are analyzed or published.'}
-            </p>
-            {hasActiveFilters && (
-              <button
-                onClick={handleClearFilters}
-                className="mt-4 inline-flex items-center gap-1.5 rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700 cursor-pointer"
-              >
-                <X className="h-3.5 w-3.5" />
-                <span>Clear filters</span>
-              </button>
-            )}
-          </div>
-        ) : (
-          <div>
-            {hasActiveFilters && (
-              <div className="mb-2.5 flex items-center justify-between text-xs text-neutral-400">
-                <span>
-                  Showing <strong className="text-neutral-200">{filteredRecords.length}</strong> matching records (of {records.length} total)
-                </span>
-              </div>
-            )}
-            <div className="overflow-hidden rounded border border-neutral-800 bg-neutral-900/40">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs text-neutral-300">
-                <thead className="border-b border-neutral-800 bg-neutral-900/80 text-[11px] font-semibold text-neutral-400">
-                  <tr>
-                    <th scope="col" className="py-3 pl-4 pr-3">Record</th>
-                    <th scope="col" className="px-3 py-3">Event</th>
-                    <th scope="col" className="px-3 py-3">Version Change</th>
-                    <th scope="col" className="px-3 py-3">Environment</th>
-                    <th scope="col" className="px-3 py-3">Compatibility</th>
-                    <th scope="col" className="px-3 py-3">Decision</th>
-                    <th scope="col" className="px-3 py-3">Affected Consumers</th>
-                    <th scope="col" className="px-3 py-3">Timestamp</th>
-                    <th scope="col" className="px-3 py-3">Publication Status</th>
-                    <th scope="col" className="py-3 pl-3 pr-4 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-neutral-800/60 font-mono">
-                  {filteredRecords.map((record) => (
-                    <tr
-                      key={record.recordId}
-                      className="group transition-colors hover:bg-neutral-800/40"
-                    >
-                      {/* Record ID */}
-                      <td className="whitespace-nowrap py-3 pl-4 pr-3">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-semibold text-neutral-200">
-                            {record.recordId.slice(0, 8)}…
-                          </span>
-                          <button
-                            onClick={() => handleCopy(record.recordId, `rec-${record.recordId}`)}
-                            className="text-neutral-500 hover:text-neutral-300"
-                            title="Copy full Record ID"
-                          >
-                            {copiedId === `rec-${record.recordId}` ? (
-                              <Check className="h-3 w-3 text-emerald-400" />
-                            ) : (
-                              <Copy className="h-3 w-3" />
-                            )}
-                          </button>
-                        </div>
-                      </td>
-
-                      {/* Event Type */}
-                      <td className="whitespace-nowrap px-3 py-3 font-sans font-medium text-neutral-200">
-                        {record.eventType}
-                      </td>
-
-                      {/* Version Transition */}
-                      <td className="whitespace-nowrap px-3 py-3">
-                        <span className="rounded bg-neutral-800 px-1.5 py-0.5 text-[11px] text-neutral-300">
-                          v{record.currentVersion}
-                        </span>
-                        <span className="mx-1 text-neutral-600">→</span>
-                        <span className="rounded bg-neutral-800 px-1.5 py-0.5 text-[11px] font-bold text-neutral-100">
-                          v{record.proposedVersion}
-                        </span>
-                      </td>
-
-                      {/* Environment */}
-                      <td className="whitespace-nowrap px-3 py-3 font-sans">
-                        <span
-                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium tracking-wide uppercase ${
-                            record.environment === 'production'
-                              ? 'border border-amber-800/50 bg-amber-950/30 text-amber-300'
-                              : record.environment === 'staging'
-                              ? 'border border-purple-800/50 bg-purple-950/30 text-purple-300'
-                              : 'border border-sky-800/50 bg-sky-950/30 text-sky-300'
-                          }`}
-                        >
-                          {record.environment}
-                        </span>
-                      </td>
-
-                      {/* Compatibility Result */}
-                      <td className="whitespace-nowrap px-3 py-3 font-sans">
-                        <span
-                          className={`inline-flex items-center gap-1 font-semibold ${
-                            record.compatibilityResult === 'SAFE'
-                              ? 'text-emerald-400'
-                              : record.compatibilityResult === 'BREAK'
-                              ? 'text-rose-400'
-                              : 'text-amber-400'
-                          }`}
-                        >
-                          {record.compatibilityResult === 'SAFE' && <ShieldCheck className="h-3.5 w-3.5" />}
-                          {record.compatibilityResult === 'BREAK' && <ShieldAlert className="h-3.5 w-3.5" />}
-                          {record.compatibilityResult === 'RISK' && <AlertTriangle className="h-3.5 w-3.5" />}
-                          {record.compatibilityResult}
-                        </span>
-                      </td>
-
-                      {/* Policy Decision */}
-                      <td className="whitespace-nowrap px-3 py-3 font-sans">
-                        <span
-                          className={`inline-flex items-center rounded px-2 py-0.5 text-[11px] font-bold ${
-                            record.decision === 'ALLOW'
-                              ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/60'
-                              : record.decision === 'BLOCK'
-                              ? 'bg-rose-950/80 text-rose-300 border border-rose-800/60'
-                              : 'bg-amber-950/80 text-amber-300 border border-amber-800/60'
-                          }`}
-                        >
-                          {record.decision}
-                        </span>
-                      </td>
-
-                      {/* Publication Status */}
-                      <td className="whitespace-nowrap px-3 py-3 font-sans">
-                        {record.published ? (
-                          <div className="flex items-center gap-1 text-emerald-400">
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                            <span className="text-[11px] font-medium">Published</span>
-                          </div>
-                        ) : record.attemptedPublish ? (
-                          <div className="flex items-center gap-1 text-rose-400">
-                            <ShieldAlert className="h-3.5 w-3.5" />
-                            <span className="text-[11px] font-medium">Prevented</span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1 text-neutral-500">
-                            <Layers className="h-3.5 w-3.5" />
-                            <span className="text-[11px]">Evaluated</span>
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Timestamp */}
-                      <td className="whitespace-nowrap px-3 py-3 text-[11px] text-neutral-400">
-                        {new Date(record.timestamp).toLocaleString(undefined, {
-                          month: 'short',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </td>
-
-                      {/* Actions */}
-                      <td className="whitespace-nowrap py-2.5 pl-3 pr-4 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => setInspectRecord(record)}
-                            aria-label={`Inspect release audit for ${record.eventType} v${record.proposedVersion}`}
-                            className="inline-flex h-8 items-center justify-center rounded border border-neutral-800 bg-neutral-900 px-2.5 text-[11px] font-sans font-medium text-neutral-300 hover:border-neutral-700 hover:text-neutral-100 cursor-pointer"
-                          >
-                            Inspect
-                          </button>
-                          <button
-                            onClick={() => handleCopyMarkdownSummary(record)}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded border border-transparent hover:border-neutral-800 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 cursor-pointer"
-                            title="Copy Markdown Summary"
-                            aria-label="Copy Markdown Summary"
-                          >
-                            {copiedId === `md-${record.recordId}` ? (
-                              <Check className="h-3.5 w-3.5 text-emerald-400" />
-                            ) : (
-                              <FileText className="h-3.5 w-3.5" />
-                            )}
-                          </button>
-                          <button
-                            onClick={() => handleDownloadMarkdown(record)}
-                            disabled={isExporting}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded border border-transparent hover:border-neutral-800 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 cursor-pointer disabled:opacity-40"
-                            title="Download Markdown Report"
-                            aria-label="Download Markdown Report"
-                          >
-                            <Download className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
+      {history.isPending ? (
+        <SkeletonRows rows={6} label="Loading release history" />
+      ) : history.isError ? (
+        <ErrorState
+          title="Could not load release history"
+          error={history.error}
+          hint="Check that the API is reachable, then retry."
+          onRetry={() => history.refetch()}
+        />
+      ) : records.length === 0 ? (
+        <EmptyState title="No releases recorded yet">
+          Analyze a change on the Review page; every analysis and publish attempt is recorded here.
+        </EmptyState>
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          title="No records match these filters"
+          action={
+            <Button variant="secondary" size="sm" onClick={clearFilters}>
+              Clear filters
+            </Button>
+          }
+        />
+      ) : (
+        <>
+          <p className="mb-2 text-xs text-fg-subtle" aria-live="polite">
+            Showing {filtered.length} of {records.length} records
+          </p>
+          <HistoryTable records={filtered} sort={sort} onSort={toggleSort} onInspect={setInspected} />
+          <HistoryCards records={filtered} onInspect={setInspected} />
+        </>
       )}
-      </div>
 
-      {/* Record Inspection Slide-Over Drawer */}
-      {inspectRecord && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-xs">
-          <div className="flex h-full w-full max-w-2xl flex-col border-l border-neutral-800 bg-neutral-900 p-6 shadow-2xl">
-            {/* Drawer Header */}
-            <div className="flex items-start justify-between border-b border-neutral-800 pb-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`rounded px-2 py-0.5 text-xs font-bold ${
-                      inspectRecord.decision === 'ALLOW'
-                        ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
-                        : inspectRecord.decision === 'BLOCK'
-                        ? 'bg-rose-950 text-rose-300 border border-rose-800'
-                        : 'bg-amber-950 text-amber-300 border border-amber-800'
-                    }`}
-                  >
-                    {inspectRecord.decision}
-                  </span>
-                  <h2 className="text-sm font-semibold text-neutral-100">
-                    Release Audit Review: {inspectRecord.eventType} v{inspectRecord.proposedVersion}
-                  </h2>
-                </div>
-                <p className="mt-1 font-mono text-xs text-neutral-400">
-                  Record ID: {inspectRecord.recordId}
-                </p>
-              </div>
-
-              <button
-                onClick={() => setInspectRecord(null)}
-                className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
-                aria-label="Close Inspector"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            {/* Drawer Content */}
-            <div className="flex-1 space-y-5 overflow-y-auto py-4 text-xs">
-              {/* Overview Details */}
-              <div className="grid grid-cols-2 gap-3 rounded border border-neutral-800 bg-neutral-950/60 p-3.5">
-                <div>
-                  <span className="text-[11px] text-neutral-500">Event Type</span>
-                  <div className="font-semibold text-neutral-200">{inspectRecord.eventType}</div>
-                </div>
-                <div>
-                  <span className="text-[11px] text-neutral-500">Transition</span>
-                  <div className="font-mono text-neutral-200">
-                    v{inspectRecord.currentVersion} → v{inspectRecord.proposedVersion}
-                  </div>
-                </div>
-                <div>
-                  <span className="text-[11px] text-neutral-500">Environment</span>
-                  <div className="font-medium text-neutral-200 uppercase">{inspectRecord.environment}</div>
-                </div>
-                <div>
-                  <span className="text-[11px] text-neutral-500">Timestamp</span>
-                  <div className="text-neutral-300">
-                    {new Date(inspectRecord.timestamp).toUTCString()}
-                  </div>
-                </div>
-                <div>
-                  <span className="text-[11px] text-neutral-500">Release Policy</span>
-                  <div className="text-neutral-300">{inspectRecord.policyName}</div>
-                </div>
-                <div>
-                  <span className="text-[11px] text-neutral-500">Policy Reason</span>
-                  <div className="text-neutral-300">{inspectRecord.policyReason}</div>
-                </div>
-              </div>
-
-              {/* Publication / Transport Traceability */}
-              <div className="rounded border border-neutral-800 bg-neutral-950/60 p-3.5">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium text-neutral-200">EventBridge Transport Status</span>
-                  {inspectRecord.published ? (
-                    <span className="flex items-center gap-1 text-emerald-400">
-                      <Radio className="h-3.5 w-3.5 animate-pulse" />
-                      <span className="font-semibold">Published to EventBridge</span>
-                    </span>
-                  ) : inspectRecord.decision === 'BLOCK' ? (
-                    <span className="flex items-center gap-1 text-rose-400">
-                      <ShieldAlert className="h-3.5 w-3.5" />
-                      <span className="font-semibold">Prevented before EventBridge</span>
-                    </span>
-                  ) : inspectRecord.decision === 'REVIEW' ? (
-                    <span className="flex items-center gap-1 text-amber-400">
-                      <AlertTriangle className="h-3.5 w-3.5" />
-                      <span className="font-semibold">Held before EventBridge</span>
-                    </span>
-                  ) : (
-                    <span className="text-neutral-400 font-medium">Evaluation only — not published</span>
-                  )}
-                </div>
-
-                <div className="mt-3 space-y-1.5 font-mono text-[11px]">
-                  {inspectRecord.eventId && (
-                    <div className="flex justify-between">
-                      <span className="text-neutral-500">Event ID:</span>
-                      <span className="text-neutral-300">{inspectRecord.eventId}</span>
-                    </div>
-                  )}
-                  {inspectRecord.eventBridgeEventId && (
-                    <div className="flex justify-between">
-                      <span className="text-neutral-500">EventBridge ID:</span>
-                      <span className="text-indigo-400">{inspectRecord.eventBridgeEventId}</span>
-                    </div>
-                  )}
-                  {inspectRecord.publishedAt && (
-                    <div className="flex justify-between">
-                      <span className="text-neutral-500">Published At:</span>
-                      <span className="text-neutral-300">{inspectRecord.publishedAt}</span>
-                    </div>
-                  )}
-                  {inspectRecord.error && (
-                    <div className="mt-2 rounded bg-rose-950/40 p-2 text-rose-300 border border-rose-900/30">
-                      {inspectRecord.error}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Downstream Consumers */}
-              <div>
-                <h3 className="mb-2 text-[11px] font-semibold tracking-wide text-neutral-400 uppercase">
-                  Downstream Impact ({inspectRecord.affectedConsumers.length} affected)
-                </h3>
-                {inspectRecord.affectedConsumers.length === 0 ? (
-                  <div className="rounded border border-emerald-900/30 bg-emerald-950/20 p-3 text-emerald-300">
-                    ✓ Zero downstream consumers broken by this release.
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {inspectRecord.affectedConsumers.map((c) => (
-                      <span
-                        key={c}
-                        className="rounded border border-rose-900/40 bg-rose-950/30 px-2.5 py-1 font-mono text-xs text-rose-300"
-                      >
-                        {c}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Findings Summary */}
-              {inspectRecord.findingsSummary.length > 0 && (
-                <div>
-                  <h3 className="mb-2 text-[11px] font-semibold tracking-wide text-neutral-400 uppercase">
-                    Diagnostic Schema Findings
-                  </h3>
-                  <div className="overflow-hidden rounded border border-neutral-800">
-                    <table className="w-full text-left text-[11px]">
-                      <thead className="bg-neutral-800/80 text-neutral-400">
-                        <tr>
-                          <th className="p-2">Consumer</th>
-                          <th className="p-2">Field</th>
-                          <th className="p-2">Status</th>
-                          <th className="p-2">Rule</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-neutral-800">
-                        {inspectRecord.findingsSummary.map((f, idx) => (
-                          <tr key={idx} className="hover:bg-neutral-800/40">
-                            <td className="p-2 font-mono text-neutral-300">{f.consumerId}</td>
-                            <td className="p-2 font-mono text-neutral-200">{f.field}</td>
-                            <td className="p-2">
-                              <span
-                                className={`font-semibold ${
-                                  f.status === 'BREAK'
-                                    ? 'text-rose-400'
-                                    : f.status === 'RISK'
-                                    ? 'text-amber-400'
-                                    : 'text-emerald-400'
-                                }`}
-                              >
-                                {f.status}
-                              </span>
-                            </td>
-                            <td className="p-2 font-mono text-neutral-400">{f.ruleId}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Drawer Footer Actions */}
-            <div className="flex flex-wrap items-center justify-between border-t border-neutral-800 pt-4">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => handleDownloadMarkdown(inspectRecord)}
-                  disabled={isExporting}
-                  className="flex items-center gap-1.5 rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs text-neutral-200 hover:bg-neutral-700"
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  <span>Download .md</span>
-                </button>
-                <button
-                  onClick={() => handleDownloadJson(inspectRecord)}
-                  disabled={isExporting}
-                  className="flex items-center gap-1.5 rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs text-neutral-200 hover:bg-neutral-700"
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  <span>Download .json</span>
-                </button>
-              </div>
-
-              {onSelectReview && (
-                <button
-                  onClick={() => {
-                    onSelectReview(
-                      inspectRecord.eventType,
-                      inspectRecord.currentVersion,
-                      inspectRecord.proposedVersion
-                    )
-                    setInspectRecord(null)
-                  }}
-                  className="flex items-center gap-1.5 rounded bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500"
-                >
-                  <span>Open in Review Workspace</span>
-                  <ExternalLink className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <RecordInspector record={inspected} onClose={() => setInspected(null)} onOpenReview={onOpenReview} />
     </div>
+  )
+}
+
+function SortHeader({
+  label,
+  sortKey,
+  sort,
+  onSort,
+}: {
+  label: string
+  sortKey: SortKey
+  sort: { key: SortKey; desc: boolean }
+  onSort: (key: SortKey) => void
+}) {
+  const active = sort.key === sortKey
+  const Icon = sort.desc ? ArrowDown : ArrowUp
+  return (
+    <th scope="col" aria-sort={active ? (sort.desc ? 'descending' : 'ascending') : 'none'} className="px-3 py-2 font-medium">
+      <button type="button" onClick={() => onSort(sortKey)} className="inline-flex items-center gap-1 hover:text-fg">
+        {label}
+        {active && <Icon className="h-3 w-3" aria-hidden="true" />}
+      </button>
+    </th>
+  )
+}
+
+function HistoryTable({
+  records,
+  sort,
+  onSort,
+  onInspect,
+}: {
+  records: ReleaseRecord[]
+  sort: { key: SortKey; desc: boolean }
+  onSort: (key: SortKey) => void
+  onInspect: (r: ReleaseRecord) => void
+}) {
+  return (
+    <div
+      tabIndex={0}
+      role="region"
+      aria-label="Release history table"
+      className="relative hidden overflow-x-auto rounded-[var(--radius-card)] border border-line bg-surface md:block"
+    >
+      <table className="w-full min-w-[56rem] text-left text-sm">
+        <caption className="sr-only">Release history records</caption>
+        <thead className="border-b border-line text-xs text-fg-subtle">
+          <tr>
+            <SortHeader label="Time" sortKey="timestamp" sort={sort} onSort={onSort} />
+            <th scope="col" className="px-3 py-2 font-medium">Change</th>
+            <th scope="col" className="px-3 py-2 font-medium">Environment</th>
+            <th scope="col" className="px-3 py-2 font-medium">Compatibility</th>
+            <SortHeader label="Decision" sortKey="decision" sort={sort} onSort={onSort} />
+            <th scope="col" className="px-3 py-2 font-medium">Affected consumers</th>
+            <th scope="col" className="px-3 py-2 font-medium">Outcome</th>
+            <th scope="col" className="px-3 py-2 font-medium">
+              <span className="sr-only">Actions</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {records.map((r) => {
+            const o = outcome(r)
+            return (
+              <tr key={r.recordId} className="border-b border-line/60 last:border-0 hover:bg-raised/50">
+                <td className="px-3 py-2.5 whitespace-nowrap text-fg-muted">{formatTimestamp(r.timestamp)}</td>
+                <td className="px-3 py-2.5">
+                  <span className="text-fg">{r.eventType}</span>{' '}
+                  <span className="font-mono text-fg-muted">
+                    v{r.currentVersion}→v{r.proposedVersion}
+                  </span>
+                </td>
+                <td className="px-3 py-2.5 text-fg-muted">{r.environment}</td>
+                <td className="px-3 py-2.5">
+                  <StatusBadge value={r.compatibilityResult} />
+                </td>
+                <td className="px-3 py-2.5">
+                  <StatusBadge value={r.decision} />
+                </td>
+                <td className="px-3 py-2.5 font-mono text-xs text-fg-muted">
+                  {r.affectedConsumers.length ? r.affectedConsumers.join(', ') : <span className="font-sans text-fg-subtle">None</span>}
+                </td>
+                <td className="px-3 py-2.5">
+                  <Badge tone={o.tone}>{o.label}</Badge>
+                </td>
+                <td className="px-3 py-2.5 text-right">
+                  <Button variant="secondary" size="sm" onClick={() => onInspect(r)}>
+                    Inspect <span className="sr-only">record {r.recordId}</span>
+                  </Button>
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function HistoryCards({ records, onInspect }: { records: ReleaseRecord[]; onInspect: (r: ReleaseRecord) => void }) {
+  return (
+    <ul className="space-y-2 md:hidden" aria-label="Release history records">
+      {records.map((r) => {
+        const o = outcome(r)
+        return (
+          <li key={r.recordId} className="rounded-[var(--radius-card)] border border-line bg-surface p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm text-fg">{r.eventType}</span>
+              <span className="font-mono text-sm text-fg-muted">
+                v{r.currentVersion}→v{r.proposedVersion}
+              </span>
+              <StatusBadge value={r.decision} className="ml-auto" />
+            </div>
+            <p className="mt-1 text-xs text-fg-subtle">
+              {r.environment} · {formatTimestamp(r.timestamp)} · {o.label}
+            </p>
+            {r.affectedConsumers.length > 0 && (
+              <p className="mt-1 font-mono text-xs text-fg-muted">{r.affectedConsumers.join(', ')}</p>
+            )}
+            <Button variant="secondary" size="sm" className="mt-2 w-full" onClick={() => onInspect(r)}>
+              Inspect
+            </Button>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
+function RecordInspector({
+  record,
+  onClose,
+  onOpenReview,
+}: {
+  record: ReleaseRecord | null
+  onClose: () => void
+  onOpenReview?: (change: ChangeSelection) => void
+}) {
+  const toast = useToast()
+  const [busy, setBusy] = React.useState<null | 'copy' | ReportFormat>(null)
+
+  const download = async (format: ReportFormat) => {
+    if (!record) return
+    setBusy(format)
+    try {
+      const report = await eventGateApi.getReport(record.recordId, format)
+      const ext = format === 'json' ? 'json' : 'md'
+      downloadText(
+        `eventgate-${record.eventType}-v${record.proposedVersion}-${record.recordId.slice(0, 8)}.${ext}`,
+        report.content,
+        format === 'json' ? 'application/json' : 'text/markdown'
+      )
+      toast('Report downloaded', `Saved as .${ext}`, 'success')
+    } catch (err) {
+      toast('Could not download the report', describeError(err), 'error')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const copyMarkdown = async () => {
+    if (!record) return
+    setBusy('copy')
+    try {
+      const report = await eventGateApi.getReport(record.recordId, 'markdown')
+      await navigator.clipboard.writeText(report.content)
+      toast('Report copied', 'Markdown report copied to the clipboard.', 'success')
+    } catch (err) {
+      toast('Could not copy the report', describeError(err), 'error')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const ids: Array<[string, string | null | undefined]> = record
+    ? [
+        ['Record ID', record.recordId],
+        ['Analysis ID', record.analysisId],
+        ['Request ID', record.requestId],
+        ['Event ID', record.eventId],
+        ['Bus event ID', record.eventBridgeEventId],
+      ]
+    : []
+
+  return (
+    <Dialog
+      open={record !== null}
+      onClose={onClose}
+      variant="drawer"
+      title={record ? `${record.eventType} v${record.currentVersion} → v${record.proposedVersion}` : ''}
+      description={record ? `${record.environment} · ${formatTimestamp(record.timestamp)}` : undefined}
+      footer={
+        record && (
+          <>
+            <Button variant="secondary" size="sm" onClick={copyMarkdown} isLoading={busy === 'copy'} disabled={busy !== null}>
+              {busy !== 'copy' && <Copy className="h-3.5 w-3.5" aria-hidden="true" />}
+              Copy Markdown
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => download('json')} isLoading={busy === 'json'} disabled={busy !== null}>
+              {busy !== 'json' && <Download className="h-3.5 w-3.5" aria-hidden="true" />}
+              JSON
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => download('markdown')} isLoading={busy === 'markdown'} disabled={busy !== null}>
+              {busy !== 'markdown' && <Download className="h-3.5 w-3.5" aria-hidden="true" />}
+              Markdown
+            </Button>
+            {onOpenReview && (
+              <Button
+                size="sm"
+                onClick={() => {
+                  onOpenReview({
+                    eventType: record.eventType,
+                    currentVersion: record.currentVersion,
+                    proposedVersion: record.proposedVersion,
+                  })
+                  onClose()
+                }}
+              >
+                <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                Open in Review
+              </Button>
+            )}
+          </>
+        )
+      }
+    >
+      {record && (
+        <div className="space-y-6 text-sm">
+          <section className="flex flex-wrap items-center gap-2">
+            <StatusBadge value={record.compatibilityResult} />
+            <StatusBadge value={record.decision} />
+            <Badge tone={outcome(record).tone}>{outcome(record).label}</Badge>
+          </section>
+
+          <section>
+            <h3 className="mb-1 text-xs font-medium text-fg-subtle">Policy</h3>
+            <p className="text-fg">{record.policyName}</p>
+            <p className="mt-1 text-fg-muted">{record.policyReason}</p>
+            {record.error && <p className="mt-2 text-danger">{record.error}</p>}
+          </section>
+
+          <section>
+            <h3 className="mb-1 text-xs font-medium text-fg-subtle">Identifiers</h3>
+            <dl className="divide-y divide-line/70">
+              {ids
+                .filter(([, v]) => v)
+                .map(([label, value]) => (
+                  <div key={label} className="flex items-center gap-2 py-1.5">
+                    <dt className="w-28 shrink-0 text-xs text-fg-subtle">{label}</dt>
+                    <dd className="min-w-0 flex-1 truncate font-mono text-xs text-fg" title={value ?? ''}>
+                      {value}
+                    </dd>
+                    <CopyButton value={value as string} label={`Copy ${label.toLowerCase()}`} />
+                  </div>
+                ))}
+              {record.publishedAt && (
+                <div className="flex items-center gap-2 py-1.5">
+                  <dt className="w-28 shrink-0 text-xs text-fg-subtle">Published at</dt>
+                  <dd className="text-xs text-fg">{formatTimestamp(record.publishedAt)}</dd>
+                </div>
+              )}
+            </dl>
+          </section>
+
+          <section>
+            <h3 className="mb-2 text-xs font-medium text-fg-subtle">Findings ({record.findingsSummary.length})</h3>
+            {record.findingsSummary.length === 0 ? (
+              <p className="text-fg-subtle">No consumers were registered for this event.</p>
+            ) : (
+              <ul className="space-y-2">
+                {record.findingsSummary.map((f) => (
+                  <li key={`${f.consumerId}-${f.ruleId}-${f.field}`} className="rounded-[var(--radius-control)] border border-line p-2.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusBadge value={f.status} />
+                      <span className="font-mono text-fg">{f.consumerId}</span>
+                      {f.field !== '*' && <span className="font-mono text-fg-muted">{f.field}</span>}
+                    </div>
+                    <p className="mt-1 text-fg-muted">{f.reason}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
+      )}
+    </Dialog>
   )
 }

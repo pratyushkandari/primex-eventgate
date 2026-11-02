@@ -1,11 +1,11 @@
 /**
- * SchemaDiff — PR-style visual diff of schema changes between contract versions.
- * Shows added fields (+), removed fields (-), type changes (→), and requiredness changes.
+ * Field-level diff between the current and proposed contract, one row per
+ * change. Selecting a row highlights the consumers that read that field.
  */
-
+import { EmptyState } from '@/components/ui/States'
+import { Badge } from '@/components/ui/Badge'
+import { cn } from '@/lib/utils'
 import type { ChangeSet, ConsumerFinding } from '@/types/api'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
-import { GitPullRequest } from 'lucide-react'
 
 interface SchemaDiffProps {
   changeSet: ChangeSet
@@ -14,201 +14,75 @@ interface SchemaDiffProps {
   onSelectField?: (field: string | null) => void
 }
 
-export function SchemaDiff({
-  changeSet,
-  findings = [],
-  selectedField = null,
-  onSelectField,
-}: SchemaDiffProps) {
-  const { addedFields, removedFields, typeChanges, requirednessChanges } = changeSet
+interface DiffRow {
+  field: string
+  kind: 'added' | 'removed' | 'type' | 'requiredness'
+  detail: string
+}
 
-  const hasChanges =
-    addedFields.length > 0 ||
-    removedFields.length > 0 ||
-    typeChanges.length > 0 ||
-    requirednessChanges.length > 0
+const MARKERS = { added: '+', removed: '−', type: '~', requiredness: '~' }
+const MARKER_COLORS = {
+  added: 'text-success',
+  removed: 'text-danger',
+  type: 'text-warning',
+  requiredness: 'text-warning',
+}
 
-  if (!hasChanges) {
-    return (
-      <Card className="border-slate-800 bg-[#0c1220]/80">
-        <CardHeader className="py-3 px-4">
-          <CardTitle className="text-xs font-mono uppercase tracking-wider text-slate-300 flex items-center space-x-2">
-            <GitPullRequest className="h-3.5 w-3.5 text-blue-400" />
-            <span>Schema Diff</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-4">
-          <p className="text-xs text-slate-500 font-mono text-center py-3">
-            No schema changes detected between versions.
-          </p>
-        </CardContent>
-      </Card>
-    )
-  }
+function rowsFor(changeSet: ChangeSet): DiffRow[] {
+  return [
+    ...changeSet.addedFields.map((field) => ({ field, kind: 'added' as const, detail: 'added' })),
+    ...changeSet.removedFields.map((field) => ({ field, kind: 'removed' as const, detail: 'removed' })),
+    ...changeSet.typeChanges.map((tc) => ({
+      field: tc.field,
+      kind: 'type' as const,
+      detail: `${tc.fromType} → ${tc.toType}`,
+    })),
+    ...changeSet.requirednessChanges.map((rc) => ({
+      field: rc.field,
+      kind: 'requiredness' as const,
+      detail: `${rc.fromRequired ? 'required' : 'optional'} → ${rc.toRequired ? 'required' : 'optional'}`,
+    })),
+  ]
+}
 
-  const handleFieldClick = (field: string) => {
-    if (!onSelectField) return
-    onSelectField(selectedField === field ? null : field)
-  }
-
-  const getFindingForField = (field: string) => {
-    return findings.find((f) => f.field === field)
+export function SchemaDiff({ changeSet, findings = [], selectedField = null, onSelectField }: SchemaDiffProps) {
+  const rows = rowsFor(changeSet)
+  if (rows.length === 0) {
+    return <EmptyState title="No schema changes">The two versions declare identical fields.</EmptyState>
   }
 
   return (
-    <Card className="border-slate-800 bg-[#0c1220]/80">
-      <CardHeader className="py-3 px-4 border-b border-slate-800/80">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-xs font-mono uppercase tracking-wider text-slate-300 flex items-center space-x-2">
-            <GitPullRequest className="h-3.5 w-3.5 text-blue-400" />
-            <span>Schema Diff</span>
-          </CardTitle>
-          <div className="flex items-center space-x-2 text-[10px] font-mono text-slate-500 uppercase">
-            {addedFields.length > 0 && (
-              <span className="text-emerald-400">+{addedFields.length} ADDED</span>
-            )}
-            {removedFields.length > 0 && (
-              <span className="text-rose-400">−{removedFields.length} REMOVED</span>
-            )}
-            {typeChanges.length > 0 && (
-              <span className="text-amber-400">{typeChanges.length} TYPE CHANGE{typeChanges.length !== 1 ? 'S' : ''}</span>
-            )}
-            {requirednessChanges.length > 0 && (
-              <span className="text-blue-400">{requirednessChanges.length} REQUIREDNESS CHANGE{requirednessChanges.length !== 1 ? 'S' : ''}</span>
-            )}
-          </div>
-        </div>
-      </CardHeader>
-
-      <CardContent className="p-0">
-        <div className="divide-y divide-slate-800/60 font-mono text-xs">
-          {/* Added fields */}
-          {addedFields.map((field) => {
-            const finding = getFindingForField(field)
-            return (
-              <button
-                key={`add-${field}`}
-                type="button"
-                onClick={() => handleFieldClick(field)}
-                className={`w-full text-left px-4 py-2.5 flex items-center justify-between space-x-3 transition-colors cursor-pointer ${
-                  selectedField === field
-                    ? 'bg-emerald-950/30 ring-1 ring-inset ring-emerald-500/40'
-                    : 'hover:bg-slate-900/60'
-                }`}
-              >
-                <div className="flex items-center space-x-3">
-                  <span className="text-emerald-400 font-bold w-4 text-center flex-shrink-0">+</span>
-                  <span className="text-emerald-300 font-medium">{field}</span>
-                  <span className="text-slate-500 text-[10px] uppercase font-bold tracking-wider">ADDED</span>
-                </div>
-                {finding && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded border border-emerald-500/30 bg-emerald-950/40 text-emerald-300">
-                    impacts {finding.consumerId}
-                  </span>
-                )}
-              </button>
-            )
-          })}
-
-          {/* Removed fields */}
-          {removedFields.map((field) => {
-            const finding = getFindingForField(field)
-            return (
-              <button
-                key={`rem-${field}`}
-                type="button"
-                onClick={() => handleFieldClick(field)}
-                className={`w-full text-left px-4 py-2.5 flex items-center justify-between space-x-3 transition-colors cursor-pointer ${
-                  selectedField === field
-                    ? 'bg-rose-950/30 ring-1 ring-inset ring-rose-500/40'
-                    : 'hover:bg-slate-900/60'
-                }`}
-              >
-                <div className="flex items-center space-x-3">
-                  <span className="text-rose-400 font-bold w-4 text-center flex-shrink-0">−</span>
-                  <span className="text-rose-300 font-medium line-through decoration-rose-500/50">{field}</span>
-                  <span className="text-rose-400 text-[10px] uppercase font-bold tracking-wider bg-rose-950/40 px-1 rounded border border-rose-500/30">REMOVED</span>
-                </div>
-                {finding && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded border border-amber-500/40 bg-amber-950/60 text-amber-300 font-semibold">
-                    impacts {finding.consumerId} ({finding.status})
-                  </span>
-                )}
-              </button>
-            )
-          })}
-
-          {/* Type changes */}
-          {typeChanges.map((tc) => {
-            const finding = getFindingForField(tc.field)
-            return (
-              <button
-                key={`type-${tc.field}`}
-                type="button"
-                onClick={() => handleFieldClick(tc.field)}
-                className={`w-full text-left px-4 py-2.5 flex items-center justify-between space-x-3 transition-colors cursor-pointer ${
-                  selectedField === tc.field
-                    ? 'bg-amber-950/30 ring-1 ring-inset ring-amber-500/40'
-                    : 'hover:bg-slate-900/60'
-                }`}
-              >
-                <div className="flex items-center space-x-3">
-                  <span className="text-amber-400 font-bold w-4 text-center flex-shrink-0">~</span>
-                  <span className="text-amber-300 font-medium">{tc.field}</span>
-                  <span className="text-amber-400 text-[10px] uppercase font-bold tracking-wider bg-amber-950/40 px-1 rounded border border-amber-500/30">TYPE CHANGE</span>
-                  <span className="text-slate-400 text-[10px]">
-                    <span className="text-rose-400 font-bold">{tc.fromType}</span>
-                    <span className="text-slate-600 mx-1">→</span>
-                    <span className="text-emerald-400 font-bold">{tc.toType}</span>
-                  </span>
-                </div>
-                {finding && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded border border-rose-500/40 bg-rose-950/60 text-rose-300 font-semibold">
-                    impacts {finding.consumerId} ({finding.status})
-                  </span>
-                )}
-              </button>
-            )
-          })}
-
-          {/* Requiredness changes */}
-          {requirednessChanges.map((rc) => {
-            const finding = getFindingForField(rc.field)
-            return (
-              <button
-                key={`req-${rc.field}`}
-                type="button"
-                onClick={() => handleFieldClick(rc.field)}
-                className={`w-full text-left px-4 py-2.5 flex items-center justify-between space-x-3 transition-colors cursor-pointer ${
-                  selectedField === rc.field
-                    ? 'bg-blue-950/30 ring-1 ring-inset ring-blue-500/40'
-                    : 'hover:bg-slate-900/60'
-                }`}
-              >
-                <div className="flex items-center space-x-3">
-                  <span className="text-blue-400 font-bold w-4 text-center flex-shrink-0">⇄</span>
-                  <span className="text-blue-300 font-medium">{rc.field}</span>
-                  <span className="text-blue-400 text-[10px] uppercase font-bold tracking-wider bg-blue-950/40 px-1 rounded border border-blue-500/30">REQUIREDNESS CHANGE</span>
-                  <span className="text-slate-400 text-[10px]">
-                    <span className={rc.fromRequired ? 'text-amber-400' : 'text-slate-500'}>
-                      {rc.fromRequired ? 'required' : 'optional'}
-                    </span>
-                    <span className="text-slate-600 mx-1">→</span>
-                    <span className={rc.toRequired ? 'text-amber-400' : 'text-slate-500'}>
-                      {rc.toRequired ? 'required' : 'optional'}
-                    </span>
-                  </span>
-                </div>
-                {finding && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded border border-blue-500/40 bg-blue-950/60 text-blue-300">
-                    impacts {finding.consumerId}
-                  </span>
-                )}
-              </button>
-            )
-          })}
-        </div>
-      </CardContent>
-    </Card>
+    <ul className="divide-y divide-line overflow-hidden rounded-[var(--radius-control)] border border-line font-mono text-sm">
+      {rows.map((row) => {
+        const affected = findings.filter((f) => f.field === row.field && f.status !== 'SAFE')
+        const selected = selectedField === row.field
+        return (
+          <li key={`${row.kind}-${row.field}`}>
+            <button
+              type="button"
+              aria-pressed={selected}
+              onClick={() => onSelectField?.(selected ? null : row.field)}
+              className={cn(
+                'flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-left transition-colors duration-150',
+                selected ? 'bg-accent-tint' : 'hover:bg-raised'
+              )}
+            >
+              <span className={cn('w-3 text-center font-bold', MARKER_COLORS[row.kind])} aria-hidden="true">
+                {MARKERS[row.kind]}
+              </span>
+              <span className={cn('text-fg', row.kind === 'removed' && 'line-through decoration-danger/60')}>
+                {row.field}
+              </span>{' '}
+              <span className="font-sans text-xs text-fg-subtle">{row.detail}</span>
+              {affected.length > 0 && (
+                <Badge tone={affected.some((f) => f.status === 'BREAK') ? 'danger' : 'warning'} className="ml-auto font-sans">
+                  affects {affected.map((f) => f.consumerId).join(', ')}
+                </Badge>
+              )}
+            </button>
+          </li>
+        )
+      })}
+    </ul>
   )
 }

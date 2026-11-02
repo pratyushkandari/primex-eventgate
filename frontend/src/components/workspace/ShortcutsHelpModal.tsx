@@ -1,147 +1,70 @@
-import * as React from 'react'
-import { X, Keyboard, ShieldCheck, Terminal, Cpu } from 'lucide-react'
+import { Dialog } from '@/components/ui/Dialog'
 
 interface ShortcutsHelpModalProps {
   isOpen: boolean
   onClose: () => void
 }
 
+const SHORTCUTS: Array<[string, string]> = [
+  ['Ctrl K / ⌘ K', 'Open the command palette'],
+  ['Ctrl Enter / ⌘ Enter', 'Analyze the current change (Review page)'],
+  ['?', 'Open this help'],
+  ['Esc', 'Close a dialog, drawer or palette'],
+  ['Tab (in the payload editor)', 'Insert two spaces; press Esc first to move focus instead'],
+]
+
+const RULES: Array<[string, string, string]> = [
+  ['EVT001', 'BREAK', 'A field the consumer reads changed to an incompatible type'],
+  ['EVT003', 'BREAK', 'A field the consumer requires is missing from the proposed contract'],
+  ['EVT004', 'BREAK', 'A field the consumer reads changed between required and optional'],
+  ['EVT006', 'RISK', 'An optional field the consumer reads was removed'],
+  ['EVT005', 'SAFE', 'Only optional fields the consumer does not read were added'],
+  ['EVT008', 'SAFE', 'No change touches the fields the consumer reads'],
+]
+
 export function ShortcutsHelpModal({ isOpen, onClose }: ShortcutsHelpModalProps) {
-  React.useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose()
-      }
-    }
-    if (isOpen) {
-      window.addEventListener('keydown', handleKeyDown)
-    }
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, onClose])
-
-  if (!isOpen) return null
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Keyboard Shortcuts and System Reference"
-    >
-      <div
-        className="bg-[#0c121e] border border-slate-700 rounded-xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto font-mono text-slate-200 p-5 space-y-5 animate-in zoom-in-95 duration-150"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-          <div className="flex items-center space-x-2.5">
-            <div className="p-1.5 rounded bg-blue-500/10 border border-blue-500/30 text-blue-400">
-              <Keyboard className="h-4 w-4" />
-            </div>
-            <div>
-              <h2 className="text-sm font-bold text-slate-100">EventGate Reference & Shortcuts</h2>
-              <span className="text-[10px] text-slate-400">Enterprise Release Control Plane</span>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-slate-400 hover:text-slate-200 p-1 rounded hover:bg-slate-800 transition-colors"
-            aria-label="Close modal"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        {/* Keyboard Shortcuts Section */}
-        <div className="space-y-2">
-          <div className="flex items-center space-x-2 text-xs font-semibold text-slate-300">
-            <Terminal className="h-3.5 w-3.5 text-blue-400" />
-            <span>Keyboard Ergonomics</span>
-          </div>
-
-          <div className="bg-[#080c14] border border-slate-800 rounded-lg divide-y divide-slate-800/80 text-xs">
-            <div className="flex items-center justify-between p-2.5 px-3">
-              <span className="text-slate-300 font-sans">Open Command Palette</span>
-              <kbd className="bg-slate-900 border border-slate-700 px-2 py-0.5 rounded text-[11px] text-slate-300">
-                ⌘K / Ctrl+K
-              </kbd>
-            </div>
-            <div className="flex items-center justify-between p-2.5 px-3">
-              <span className="text-slate-300 font-sans">Trigger Compatibility Analysis</span>
-              <kbd className="bg-slate-900 border border-slate-700 px-2 py-0.5 rounded text-[11px] text-slate-300">
-                ⌘↵ / Ctrl+Enter
-              </kbd>
-            </div>
-            <div className="flex items-center justify-between p-2.5 px-3">
-              <span className="text-slate-300 font-sans">Dismiss modal / drawer / palette</span>
-              <kbd className="bg-slate-900 border border-slate-700 px-2 py-0.5 rounded text-[11px] text-slate-300">
-                Escape
-              </kbd>
-            </div>
-            <div className="flex items-center justify-between p-2.5 px-3">
-              <span className="text-slate-300 font-sans">Indent 2 spaces in JSON editor</span>
-              <kbd className="bg-slate-900 border border-slate-700 px-2 py-0.5 rounded text-[11px] text-slate-300">
-                Tab
-              </kbd>
-            </div>
-          </div>
-        </div>
-
-        {/* Compatibility Rules Section */}
-        <div className="space-y-2">
-          <div className="flex items-center space-x-2 text-xs font-semibold text-slate-300">
-            <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
-            <span>Compatibility Rule Matrix</span>
-          </div>
-
-          <div className="bg-[#080c14] border border-slate-800 rounded-lg p-3 space-y-2 text-[11px]">
-            <div className="flex items-start justify-between gap-2 pb-1.5 border-b border-slate-800/60">
-              <span className="font-bold text-rose-400">EVT001 — Field Type Changed</span>
-              <span className="text-slate-300 text-right font-sans">
-                Incompatible type mutation (e.g. string → object breaks deserializer)
-              </span>
-            </div>
-            <div className="flex items-start justify-between gap-2 pb-1.5 border-b border-slate-800/60">
-              <span className="font-bold text-amber-400">EVT006 — Optional Field Removed</span>
-              <span className="text-slate-300 text-right font-sans">
-                Field removed while registered downstream consumers depend on it
-              </span>
-            </div>
-            <div className="flex items-start justify-between gap-2">
-              <span className="font-bold text-emerald-400">EVT008 — Consumer Unaffected</span>
-              <span className="text-slate-300 text-right font-sans">
-                Additive backward-compatible modification (safe forward evolution)
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Enforcement Path Section */}
-        <div className="space-y-2">
-          <div className="flex items-center space-x-2 text-xs font-semibold text-slate-300">
-            <Cpu className="h-3.5 w-3.5 text-purple-400" />
-            <span>Enforcement Path</span>
-          </div>
-
-          <p className="text-xs text-slate-400 font-sans leading-relaxed bg-[#080c14] border border-slate-800 rounded-lg p-3">
-            EventGate evaluates release requests before invoking EventBridge. The proposed schema is verified against registered consumer contracts. When a release evaluates to BLOCK, EventGate returns HTTP 409 and does not invoke EventBridge. When evaluated to REVIEW, publication is held pending review.
+    <Dialog open={isOpen} onClose={onClose} title="Keyboard shortcuts and rules" size="lg">
+      <div className="space-y-6 text-sm">
+        <section>
+          <h3 className="mb-2 text-xs font-medium text-fg-subtle">Shortcuts</h3>
+          <dl className="divide-y divide-line rounded-[var(--radius-control)] border border-line">
+            {SHORTCUTS.map(([keys, action]) => (
+              <div key={keys} className="flex items-center justify-between gap-4 px-3 py-2">
+                <dt className="text-fg-muted">{action}</dt>
+                <dd>
+                  <kbd className="rounded border border-line bg-raised px-1.5 py-0.5 text-xs text-fg">{keys}</kbd>
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+        <section>
+          <h3 className="mb-2 text-xs font-medium text-fg-subtle">Compatibility rules</h3>
+          <table className="w-full text-left">
+            <thead className="text-xs text-fg-subtle">
+              <tr className="border-b border-line">
+                <th scope="col" className="py-1.5 pr-3 font-medium">Rule</th>
+                <th scope="col" className="py-1.5 pr-3 font-medium">Result</th>
+                <th scope="col" className="py-1.5 font-medium">When</th>
+              </tr>
+            </thead>
+            <tbody>
+              {RULES.map(([id, status, when]) => (
+                <tr key={id} className="border-b border-line/60">
+                  <td className="py-1.5 pr-3 font-mono text-fg">{id}</td>
+                  <td className="py-1.5 pr-3 font-mono text-fg-muted">{status}</td>
+                  <td className="py-1.5 text-fg-muted">{when}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="mt-2 text-fg-subtle">
+            Any BREAK blocks the release everywhere. A RISK needs review in staging and production and is allowed
+            with a warning in development. An event with no registered consumers needs review.
           </p>
-        </div>
-
-        {/* Footer */}
-        <div className="pt-2 border-t border-slate-800 flex justify-end">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs transition-colors cursor-pointer"
-          >
-            Got it
-          </button>
-        </div>
+        </section>
       </div>
-    </div>
+    </Dialog>
   )
 }
