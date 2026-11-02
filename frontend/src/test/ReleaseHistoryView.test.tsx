@@ -5,6 +5,7 @@ import { eventGateApi } from '@/services/api'
 import { EventGateApiError } from '@/types/api'
 import { finding, mockApi, record } from './fixtures'
 import { renderWithProviders } from './render'
+import { setViewportWide } from './setup'
 
 vi.mock('@/services/api', async (importOriginal) => {
   const { mockApi } = await import('./fixtures')
@@ -156,5 +157,28 @@ describe('Release history', () => {
     await screen.findByRole('table')
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
     await waitFor(() => expect(eventGateApi.listHistory).toHaveBeenCalledTimes(2))
+  })
+
+  it('pages long histories 25 at a time', async () => {
+    vi.mocked(eventGateApi.listHistory).mockResolvedValue(
+      Array.from({ length: 30 }, (_, i) => record({ recordId: `r-${i}`, timestamp: `2026-11-02T08:${String(i).padStart(2, '0')}:00+00:00` }))
+    )
+    renderWithProviders(<ReleaseHistoryView />)
+    await screen.findByRole('table')
+    expect(rowIds()).toHaveLength(25)
+    expect(screen.getByText('Showing 25 of 30 matching records (30 loaded)')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Show 5 more' }))
+    expect(rowIds()).toHaveLength(30)
+    expect(screen.queryByRole('button', { name: /more$/ })).toBeNull()
+  })
+
+  it('shows a card list instead of the table on narrow screens', async () => {
+    setViewportWide(false)
+    renderWithProviders(<ReleaseHistoryView />)
+    const list = await screen.findByRole('list', { name: 'Release history records' })
+    expect(screen.queryByRole('table')).toBeNull()
+    expect(within(list).getAllByRole('listitem')).toHaveLength(3)
+    fireEvent.click(within(list).getAllByRole('button', { name: 'Inspect' })[0])
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 })

@@ -2,6 +2,8 @@
  * App shell: header, page routing, global keyboard shortcuts, command palette
  * and help dialog. Owns the release-target environment and the Review session
  * so other pages can open a change in Review without losing it on navigation.
+ * Pages are bundled eagerly (they are small); only the dependency graph, which
+ * pulls in @xyflow/react, is loaded on demand.
  */
 
 import * as React from 'react'
@@ -19,33 +21,21 @@ import {
   Sparkles,
   Terminal,
 } from 'lucide-react'
+import { ContractsHub } from '@/components/contracts/ContractsHub'
+import { DeveloperToolsView } from '@/components/devtools/DeveloperToolsView'
+import { ReleaseHistoryView } from '@/components/history/ReleaseHistoryView'
 import { Header } from '@/components/layout/Header'
+import { PoliciesView } from '@/components/policies/PoliciesView'
+import { SettingsView } from '@/components/settings/SettingsView'
 import { CommandPalette, type CommandItem } from '@/components/workspace/CommandPalette'
 import { ShortcutsHelpModal } from '@/components/workspace/ShortcutsHelpModal'
 import { ReviewWorkspace } from '@/components/workspace/ReviewWorkspace'
 import { useReviewSession, type ChangeSelection } from '@/components/workspace/useReviewSession'
-import { Spinner } from '@/components/ui/States'
 import { API_CONFIG } from '@/config/env'
 import { SCENARIO_LIST } from '@/data/scenarios'
 import { ROUTE_LABELS, useHashRoute, type Route } from '@/lib/route'
 import { useRuntimeConfig } from '@/services/queries'
 import { ENVIRONMENTS, type Environment } from '@/types/api'
-
-const ContractsHub = React.lazy(() =>
-  import('@/components/contracts/ContractsHub').then((m) => ({ default: m.ContractsHub }))
-)
-const ReleaseHistoryView = React.lazy(() =>
-  import('@/components/history/ReleaseHistoryView').then((m) => ({ default: m.ReleaseHistoryView }))
-)
-const DeveloperToolsView = React.lazy(() =>
-  import('@/components/devtools/DeveloperToolsView').then((m) => ({ default: m.DeveloperToolsView }))
-)
-const PoliciesView = React.lazy(() =>
-  import('@/components/policies/PoliciesView').then((m) => ({ default: m.PoliciesView }))
-)
-const SettingsView = React.lazy(() =>
-  import('@/components/settings/SettingsView').then((m) => ({ default: m.SettingsView }))
-)
 
 function isTypingTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false
@@ -197,8 +187,7 @@ export function WorkspaceShell() {
       />
 
       <main id="main" className="mx-auto w-full max-w-screen-2xl flex-1 px-4 py-5 sm:px-6">
-        <React.Suspense fallback={<Spinner label="Loading page" className="py-10" />}>
-          {route === 'review' && (
+        {route === 'review' && (
             <ReviewWorkspace
               session={session}
               environment={environment}
@@ -212,7 +201,6 @@ export function WorkspaceShell() {
           {route === 'devtools' && <DeveloperToolsView onOpenReview={openInReview} environment={environment} />}
           {route === 'policies' && <PoliciesView />}
           {route === 'settings' && <SettingsView />}
-        </React.Suspense>
       </main>
 
       <footer className="border-t border-line py-3 text-xs text-fg-subtle">

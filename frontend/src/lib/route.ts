@@ -38,3 +38,16 @@ export function useHashRoute(): [Route, (route: Route) => void] {
 
   return [route, navigate]
 }
+
+/** True while the media query matches; re-renders when it changes. */
+export function useMediaQuery(query: string): boolean {
+  const subscribe = React.useCallback(
+    (notify: () => void) => {
+      const mql = window.matchMedia(query)
+      mql.addEventListener('change', notify)
+      return () => mql.removeEventListener('change', notify)
+    },
+    [query]
+  )
+  return React.useSyncExternalStore(subscribe, () => window.matchMedia(query).matches, () => false)
+}

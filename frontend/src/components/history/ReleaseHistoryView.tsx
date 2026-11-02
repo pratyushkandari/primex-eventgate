@@ -14,6 +14,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { EmptyState, ErrorState, SkeletonRows } from '@/components/ui/States'
 import { useToast } from '@/components/ui/toast-context'
 import type { ChangeSelection } from '@/components/workspace/useReviewSession'
+import { useMediaQuery } from '@/lib/route'
 import { cn, downloadText, formatTimestamp } from '@/lib/utils'
 import { describeError, eventGateApi } from '@/services/api'
 import { useEventCatalog, useHistory } from '@/services/queries'
@@ -24,6 +25,7 @@ interface ReleaseHistoryViewProps {
 }
 
 type SortKey = 'timestamp' | 'decision'
+const PAGE_SIZE = 25
 const DECISION_ORDER: Record<Decision, number> = { BLOCK: 0, REVIEW: 1, ALLOW: 2 }
 
 function outcome(record: ReleaseRecord): { label: string; tone: 'success' | 'danger' | 'neutral' } {
@@ -56,6 +58,10 @@ export function ReleaseHistoryView({ onOpenReview }: ReleaseHistoryViewProps) {
   const [decision, setDecision] = React.useState('')
   const [sort, setSort] = React.useState<{ key: SortKey; desc: boolean }>({ key: 'timestamp', desc: true })
   const [inspected, setInspected] = React.useState<ReleaseRecord | null>(null)
+  const [visibleCount, setVisibleCount] = React.useState(PAGE_SIZE)
+  // Render one layout instead of hiding the other with CSS: long histories
+  // otherwise double the DOM and dominate render time on phones.
+  const wide = useMediaQuery('(min-width: 768px)')
 
   const records = React.useMemo(() => history.data ?? [], [history.data])
   const eventTypes = React.useMemo(
@@ -80,6 +86,7 @@ export function ReleaseHistoryView({ onOpenReview }: ReleaseHistoryViewProps) {
     )
   }, [records, query, eventType, environment, decision, sort])
 
+  const shown = filtered.slice(0, visibleCount)
   const hasFilters = Boolean(query.trim() || eventType || environment || decision)
   const clearFilters = () => {
     setQuery('')
@@ -202,10 +209,18 @@ export function ReleaseHistoryView({ onOpenReview }: ReleaseHistoryViewProps) {
       ) : (
         <>
           <p className="mb-2 text-xs text-fg-subtle" aria-live="polite">
-            Showing {filtered.length} of {records.length} records
+            Showing {shown.length} of {filtered.length} matching records ({records.length} loaded)
           </p>
-          <HistoryTable records={filtered} sort={sort} onSort={toggleSort} onInspect={setInspected} />
-          <HistoryCards records={filtered} onInspect={setInspected} />
+          {wide ? (
+            <HistoryTable records={shown} sort={sort} onSort={toggleSort} onInspect={setInspected} />
+          ) : (
+            <HistoryCards records={shown} onInspect={setInspected} />
+          )}
+          {shown.length < filtered.length && (
+            <Button variant="secondary" className="mt-3 w-full" onClick={() => setVisibleCount((n) => n + PAGE_SIZE)}>
+              Show {Math.min(PAGE_SIZE, filtered.length - shown.length)} more
+            </Button>
+          )}
         </>
       )}
 
@@ -253,7 +268,7 @@ function HistoryTable({
       tabIndex={0}
       role="region"
       aria-label="Release history table"
-      className="relative hidden overflow-x-auto rounded-[var(--radius-card)] border border-line bg-surface md:block"
+      className="relative overflow-x-auto rounded-[var(--radius-card)] border border-line bg-surface"
     >
       <table className="w-full min-w-[56rem] text-left text-sm">
         <caption className="sr-only">Release history records</caption>
@@ -312,7 +327,7 @@ function HistoryTable({
 
 function HistoryCards({ records, onInspect }: { records: ReleaseRecord[]; onInspect: (r: ReleaseRecord) => void }) {
   return (
-    <ul className="space-y-2 md:hidden" aria-label="Release history records">
+    <ul className="space-y-2" aria-label="Release history records">
       {records.map((r) => {
         const o = outcome(r)
         return (

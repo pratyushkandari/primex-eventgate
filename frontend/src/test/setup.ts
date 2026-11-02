@@ -10,7 +10,24 @@ class ResizeObserverMock {
 }
 globalThis.ResizeObserver ??= ResizeObserverMock as unknown as typeof ResizeObserver
 
+// jsdom has no matchMedia. Tests run at a desktop width unless they override it.
+export function setViewportWide(wide: boolean) {
+  window.matchMedia = (query: string) =>
+    ({
+      matches: wide && /min-width/.test(query),
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }) as MediaQueryList
+}
+setViewportWide(true)
+
 afterEach(() => {
+  setViewportWide(true)
   cleanup()
   window.location.hash = ''
 })
