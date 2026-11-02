@@ -110,3 +110,37 @@ def test_records_created_later_get_later_timestamps():
     time.sleep(0.01)
     second = _record("b")
     assert second.timestamp > first.timestamp
+
+
+def test_failed_write_leaves_store_consistent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    repo = JsonReleaseReviewRepository(tmp_path / "history.json")
+    repo.save_review(_record("kept"))
+
+    def broken(_payload):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(repo, "_write_all", broken)
+    with pytest.raises(OSError):
+        repo.save_review(_record("lost"))
+
+    assert [r.record_id for r in repo.list_reviews()] == ["kept"]
+
+
+def test_external_changes_to_the_file_are_picked_up(tmp_path: Path):
+    path = tmp_path / "history.json"
+    writer, reader = JsonReleaseReviewRepository(path), JsonReleaseReviewRepository(path)
+    writer.save_review(_record("a"))
+    assert len(reader.list_reviews()) == 1
+    writer.save_review(_record("b"))
+    assert len(reader.list_reviews()) == 2
+
+
+def test_save_cost_stays_flat_as_history_grows(tmp_path: Path):
+    """Regression: each save rewrote the file with indent=2 and took ~0.5 s at ~600 records."""
+    repo = JsonReleaseReviewRepository(tmp_path / "history.json")
+    for i in range(600):
+        repo.save_review(_record(f"r-{i}"))
+    start = time.perf_counter()
+    for i in range(20):
+        repo.save_review(_record(f"late-{i}"))
+    assert (time.perf_counter() - start) / 20 < 0.1

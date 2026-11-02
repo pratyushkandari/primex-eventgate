@@ -5,6 +5,10 @@ that is then renamed over the original, and a process-wide lock serializes
 read-modify-write cycles, because FastAPI runs sync routes on a thread pool.
 A file that exists but cannot be parsed raises instead of being treated as
 empty, so a bad read can never cause the next save to overwrite the history.
+
+Parsed records are cached and reused while the file's mtime and size are
+unchanged, and the file is written as one compact JSON string; rewriting it
+with json.dump(indent=2) made each save cost ~0.5 s at a few hundred records.
 """
 
 from __future__ import annotations
@@ -41,41 +45,59 @@ class JsonReleaseReviewRepository:
     def __init__(self, history_file: Path):
         self._file_path = Path(history_file).resolve()
         self._lock = _lock_for(self._file_path)
+        self._cache: list[dict[str, Any]] = []
+        self._cache_stamp: tuple[int, int] | None = None
+
+    def _stamp(self) -> tuple[int, int] | None:
+        try:
+            stat = self._file_path.stat()
+        except FileNotFoundError:
+            return None
+        return (stat.st_mtime_ns, stat.st_size)
 
     def _read_all(self) -> list[dict[str, Any]]:
-        if not self._file_path.exists():
-            return []
+        """Return the raw records. The list is the cache itself: copy before changing it."""
+        stamp = self._stamp()
+        if stamp is None:
+            self._cache, self._cache_stamp = [], None
+            return self._cache
+        if stamp == self._cache_stamp:
+            return self._cache
+
         text = self._file_path.read_text(encoding="utf-8")
-        if not text.strip():
-            return []
-        try:
-            data = json.loads(text)
-        except json.JSONDecodeError as exc:
-            raise HistoryStoreCorruptedError(
-                f"History file {self._file_path} is not valid JSON: {exc}"
-            ) from exc
+        data: Any = []
+        if text.strip():
+            try:
+                data = json.loads(text)
+            except json.JSONDecodeError as exc:
+                raise HistoryStoreCorruptedError(
+                    f"History file {self._file_path} is not valid JSON: {exc}"
+                ) from exc
         if not isinstance(data, list):
             raise HistoryStoreCorruptedError(f"History file {self._file_path} is not a list.")
+        self._cache, self._cache_stamp = data, stamp
         return data
 
     def _write_all(self, records: list[dict[str, Any]]) -> None:
         self._file_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = json.dumps(records, separators=(",", ":"))
         fd, tmp_name = tempfile.mkstemp(
             dir=self._file_path.parent, prefix=".history-", suffix=".tmp"
         )
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                json.dump(records, handle, indent=2)
+                handle.write(payload)
             os.replace(tmp_name, self._file_path)
         except BaseException:
             Path(tmp_name).unlink(missing_ok=True)
             raise
+        self._cache, self._cache_stamp = records, self._stamp()
 
     def save_review(self, record: ReleaseRecord) -> ReleaseRecord:
         """Insert the record, or replace the one with the same record_id."""
         target = record.to_dict()
         with self._lock:
-            records = self._read_all()
+            records = list(self._read_all())
             for idx, existing in enumerate(records):
                 if existing.get("record_id") == record.record_id:
                     records[idx] = target
