@@ -233,3 +233,132 @@ class TestReports:
         first = client.get(f"/api/v1/history/{_analyze(client, 2)}").json()["timestamp"]
         second = client.get(f"/api/v1/history/{_analyze(client, 3)}").json()["timestamp"]
         assert first != second
+
+
+class TestInputLimits:
+    @pytest.mark.parametrize("limit, status", [(0, 422), (1, 200), (200, 200), (201, 422)])
+    def test_history_limit_bounds(self, client: TestClient, limit: int, status: int):
+        resp = client.get("/api/v1/history", params={"limit": limit})
+        assert resp.status_code == status
+        if status == 422:
+            assert resp.json()["error"]["details"][0]["field"] == "query.limit"
+
+    def test_history_limit_caps_the_result(self, client: TestClient):
+        for proposed in (2, 3, 4):
+            _analyze(client, proposed)
+        assert len(client.get("/api/v1/history", params={"limit": 2}).json()) == 2
+
+    def test_history_event_filter_ignores_surrounding_whitespace(self, client: TestClient):
+        _analyze(client, 2)
+        resp = client.get("/api/v1/history", params={"eventType": "  OrderPlaced  "})
+        assert [r["eventType"] for r in resp.json()] == ["OrderPlaced"]
+
+    def test_long_request_id_is_truncated_to_128_characters(self, client: TestClient):
+        resp = client.get("/health", headers={"X-Request-ID": "a" * 300})
+        assert resp.headers["X-Request-ID"] == "a" * 128
+
+    def test_empty_event_type_is_a_validation_error(self, client: TestClient):
+        resp = client.post(
+            "/api/v1/analyze", json={"eventType": "", "currentVersion": 1, "proposedVersion": 2}
+        )
+        assert resp.status_code == 422
+        assert resp.json()["error"]["details"][0]["field"] == "eventType"
+
+    def test_blank_event_type_is_rejected_by_the_service(self, client: TestClient):
+        resp = client.post(
+            "/api/v1/analyze", json={"eventType": "   ", "currentVersion": 1, "proposedVersion": 2}
+        )
+        assert resp.status_code == 400
+        assert resp.json()["error"]["code"] == "INVALID_ANALYSIS_REQUEST"
+
+    @pytest.mark.parametrize("field", ["currentVersion", "proposedVersion"])
+    def test_versions_below_one_are_rejected(self, client: TestClient, field: str):
+        body = {"eventType": "OrderPlaced", "currentVersion": 1, "proposedVersion": 2, field: 0}
+        resp = client.post("/api/v1/analyze", json=body)
+        assert resp.status_code == 422
+        assert resp.json()["error"]["details"][0]["field"] == field
+
+    @pytest.mark.parametrize("payload", [[1, 2], "text", 5, None])
+    def test_non_object_payload_is_a_validation_error(self, client: TestClient, payload):
+        resp = client.post(
+            "/api/v1/events/publish",
+            json={
+                "eventType": "OrderPlaced",
+                "currentVersion": 1,
+                "proposedVersion": 2,
+                "payload": payload,
+            },
+        )
+        assert resp.status_code == 422
+        assert resp.json()["error"]["code"] == "VALIDATION_ERROR"
+
+    def test_publish_for_unknown_event_type_is_404(self, client: TestClient):
+        resp = client.post(
+            "/api/v1/events/publish",
+            json={
+                "eventType": "NoSuchEvent",
+                "currentVersion": 1,
+                "proposedVersion": 2,
+                "payload": {},
+            },
+        )
+        assert resp.status_code == 404
+        assert resp.json()["error"]["code"] == "CONTRACT_NOT_FOUND"
+
+    def test_publishing_twice_with_one_analysis_keeps_one_record(self, client: TestClient):
+        analysis_id = _analyze(client, 2)
+        body = {
+            "eventType": "OrderPlaced",
+            "currentVersion": 1,
+            "proposedVersion": 2,
+            "analysisId": analysis_id,
+            "payload": SAFE_PAYLOAD,
+        }
+        first = client.post("/api/v1/events/publish", json=body).json()["eventId"]
+        second = client.post("/api/v1/events/publish", json=body).json()["eventId"]
+
+        assert first != second
+        records = client.get("/api/v1/history").json()
+        assert len(records) == 1
+        assert records[0]["eventId"] == second
+
+
+class TestHistoryIsBestEffort:
+    def test_analysis_succeeds_when_history_cannot_be_written(self, client: TestClient):
+        from eventgate.api.dependencies import get_history_service
+
+        class BrokenHistory:
+            def record_evaluation(self, **kwargs):
+                raise OSError("disk full")
+
+        app.dependency_overrides[get_history_service] = lambda: BrokenHistory()
+        try:
+            resp = client.post(
+                "/api/v1/analyze",
+                json={"eventType": "OrderPlaced", "currentVersion": 1, "proposedVersion": 2},
+            )
+        finally:
+            app.dependency_overrides.clear()
+        assert resp.status_code == 200
+        assert resp.json()["decision"] == "ALLOW"
+
+    def test_publish_succeeds_when_history_cannot_be_written(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ):
+        from eventgate.application.services.release_history_service import ReleaseHistoryService
+
+        def broken(self, **kwargs):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(ReleaseHistoryService, "record_publish", broken)
+        resp = client.post(
+            "/api/v1/events/publish",
+            json={
+                "eventType": "OrderPlaced",
+                "currentVersion": 1,
+                "proposedVersion": 2,
+                "payload": SAFE_PAYLOAD,
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json()["published"] is True

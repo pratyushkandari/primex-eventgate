@@ -112,3 +112,13 @@ class TestConsumerContract:
                 event_type="",
                 expected_fields={},
             )
+
+
+def test_event_contract_fields_must_be_a_dict():
+    with pytest.raises(InvalidContractError, match="fields must be a dictionary"):
+        EventContract(event_type="OrderPlaced", version=1, fields=[])  # type: ignore[arg-type]
+
+
+def test_consumer_contract_fields_must_be_a_dict():
+    with pytest.raises(InvalidContractError, match="expected fields must be a dictionary"):
+        ConsumerContract(consumer_id="c", event_type="OrderPlaced", expected_fields=[])  # type: ignore[arg-type]

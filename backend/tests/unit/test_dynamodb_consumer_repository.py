@@ -156,3 +156,28 @@ class TestDynamoConsumerContractRepository:
         }
         with pytest.raises(InvalidContractError, match="Missing or invalid 'required'"):
             self.repo.get_consumer("billing-service")
+
+
+class TestConsumerCatalogItem:
+    def setup_method(self):
+        self.mock_table = MagicMock()
+        self.mock_resource = MagicMock()
+        self.mock_resource.Table.return_value = self.mock_table
+        self.repo = DynamoConsumerContractRepository(
+            table_name="test-consumer-contracts", dynamodb_resource=self.mock_resource
+        )
+
+    def test_missing_catalog_item_returns_no_consumers(self):
+        self.mock_table.get_item.return_value = {}
+        assert self.repo.list_all_consumers() == []
+        self.mock_table.query.assert_not_called()
+
+    def test_catalog_entry_without_an_item_is_skipped(self):
+        listed = {"consumerId": "METADATA#CATALOG", "consumerIds": ["ghost", "billing-service"]}
+        billing = {
+            "consumerId": "billing-service",
+            "eventType": "OrderPlaced",
+            "expectedFields": {"orderId": {"type": "string", "required": True}},
+        }
+        self.mock_table.get_item.side_effect = [{"Item": listed}, {}, {"Item": billing}]
+        assert [c.consumer_id for c in self.repo.list_all_consumers()] == ["billing-service"]

@@ -90,3 +90,34 @@ def test_get_consumer_detail_not_found(catalog_service):
 def test_get_consumer_detail_empty_input(catalog_service):
     with pytest.raises(InvalidAnalysisRequestError):
         catalog_service.get_consumer_detail("   ")
+
+
+class _FailingVersionsRepo(JsonEventContractRepository):
+    def get_event_versions(self, event_type: str) -> list[int]:
+        if event_type == "PaymentCompleted":
+            raise RuntimeError("storage unavailable")
+        return super().get_event_versions(event_type)
+
+
+class _EmptyContractsRepo(JsonEventContractRepository):
+    def list_event_contracts(self, event_type: str):
+        return []
+
+
+def test_catalog_skips_an_event_type_that_fails_to_load():
+    contracts_dir = get_contracts_dir()
+    service = ContractCatalogService(
+        event_repo=_FailingVersionsRepo(contracts_dir),
+        consumer_repo=JsonConsumerContractRepository(contracts_dir),
+    )
+    assert [c.event_type for c in service.get_event_catalog()] == ["OrderPlaced", "UserCreated"]
+
+
+def test_event_detail_with_no_contracts_is_not_found():
+    contracts_dir = get_contracts_dir()
+    service = ContractCatalogService(
+        event_repo=_EmptyContractsRepo(contracts_dir),
+        consumer_repo=JsonConsumerContractRepository(contracts_dir),
+    )
+    with pytest.raises(ContractNotFoundError):
+        service.get_event_detail("OrderPlaced")
