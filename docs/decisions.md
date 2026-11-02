@@ -55,3 +55,20 @@ Short records of the choices that shape EventGate, with what each one costs.
 **Decision:** local development uses a Python virtual environment and the Lambda is a zip package; there is no Dockerfile.
 **Why:** fewer moving parts for a single-service project; `sam local` covers Lambda emulation when Docker is available.
 **Cost:** running outside AWS Lambda (ECS, Kubernetes) would need a container image.
+
+## 10. Tuned values
+
+Limits and timings that recent changes set, with the rule each one follows and where the number came from. The code, `template.yaml` and the other docs state the same values; change them together.
+
+| Value | Set in | Rule | Source |
+| --- | --- | --- | --- |
+| 20 req/s, burst 40 | `template.yaml` (`DefaultRouteSettings`) | API Gateway default route throttling for the public, unauthenticated API | Decision (commit 90cf929). Not load-tested against API Gateway. |
+| History list `limit` 1–200, default 50 | `backend/src/eventgate/api/routes/history.py` | Newest first; out-of-range values return 422 | Decision (commit cf81336). |
+| CLI `history --limit` default 20 | `backend/src/eventgate/cli/main.py` | Records printed by `eventgate history` | Decision. |
+| Console loads 100 records | `frontend/src/services/api.ts` (`listHistory`) | The History page works on the newest 100 | Decision (commit 6a4a71a). |
+| History shows 25 at a time | `frontend/src/components/history/ReleaseHistoryView.tsx` (`PAGE_SIZE`) | First render and each "Show more" add 25 rows | Decision made with the mobile History fix (commit cf7e290). That fix's measured gain (Lighthouse mobile LCP 3.9 s to 0.8 s) came from bundling pages eagerly, not from the page size. |
+| Health check every 60 s | `frontend/src/services/queries.ts` (`useHealth`) | Each open console polls `/health` once a minute | Decision (commit 6a4a71a). |
+| `X-Request-ID` up to 128 characters | `backend/src/eventgate/api/request_id.py` | Characters other than letters, digits, `-` and `_` are removed, then the ID is cut to 128; a UUID is used when nothing is left | Decision (commit a824cbb). |
+| JSON history store: cached parse, compact write | `backend/src/eventgate/infrastructure/repositories/release_review_repository.py` | Parsed records are reused while the file's mtime and size are unchanged; the file is written as one compact string | Locust measurement (commit 026c35d), 20 users for 60 s against local uvicorn: p50 900 to 95 ms, p95 2300 to 310 ms, 12.5 to 26.6 req/s, 0 errors. Applies to local storage only; the deployed API uses DynamoDB. |
+| Coverage gates: backend 85% lines; frontend 80% lines and statements, 75% functions, 70% branches | `pyproject.toml`, `frontend/vite.config.ts` | `pytest --cov` and `vitest --coverage` fail below these | Decision (backend: commit 5297203; frontend: commit 7e56d7d, when frontend line coverage was 93%). Current coverage is in [TESTING.md](TESTING.md). |
+

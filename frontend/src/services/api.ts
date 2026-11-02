@@ -120,6 +120,8 @@ export const eventGateApi = {
     return validateResponse(ConsumerDetailSchema, data, 'consumer detail')
   },
 
+  // The console loads the newest 100 records (the API allows 1-200, default 50);
+  // History shows them 25 at a time. See docs/decisions.md, section 10.
   async listHistory(eventType?: string, limit = 100): Promise<ReleaseRecord[]> {
     const params = new URLSearchParams({ limit: String(limit) })
     if (eventType) params.set('eventType', eventType)

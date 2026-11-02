@@ -52,7 +52,7 @@ eventgate catalog --event OrderPlaced # versions and subscribed consumers of one
 eventgate history --event OrderPlaced --limit 10
 ```
 
-Lists recorded reviews from the configured history store (`.eventgate/history.json` locally, DynamoDB when `EVENTGATE_STORAGE_BACKEND=dynamodb`).
+Lists recorded reviews from the configured history store (`.eventgate/history.json` locally, DynamoDB when `EVENTGATE_STORAGE_BACKEND=dynamodb`), newest first. `--limit`/`-n` defaults to 20.
 
 ## Pull request gate
 

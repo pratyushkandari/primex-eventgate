@@ -144,7 +144,7 @@ The first E2E run needs `npx playwright install chromium` in `frontend/`.
 | Frontend components, hooks, API client (Vitest + Testing Library) | `npm run test:coverage` | 154 | 94% lines |
 | End-to-end + axe accessibility, desktop and mobile Chromium | `npm run test:e2e` | 40 (37 run, 3 desktop-only) | - |
 
-Load test (Locust, 20 concurrent users for 60 s against local uvicorn with the JSON history store): 26.6 req/s, p50 95 ms, p95 310 ms, 0 errors.
+Load test (Locust, 20 concurrent users for 60 s against local uvicorn with the JSON history store, measured at commit 026c35d): 26.6 req/s, p50 95 ms, p95 310 ms, 0 errors. The deployed API uses DynamoDB, so this figure does not describe it.
 
 ```bash
 locust -f perf/locustfile.py --host http://127.0.0.1:8000 --headless -u 20 -r 5 -t 60s

@@ -88,7 +88,7 @@ The rule `…-order-placed-rule` matches `detail.eventType = OrderPlaced` and ta
 
 ## Requests and errors
 
-Middleware assigns every request an ID (the caller's `X-Request-ID` when it contains only letters, digits, `-` and `_`, up to 128 characters; otherwise a UUID) and returns it in the `X-Request-ID` header. Domain errors, validation errors, unknown routes and unexpected exceptions all return:
+Middleware assigns every request an ID (the caller's `X-Request-ID` with every character other than letters, digits, `-` and `_` removed and cut to 128 characters; a UUID when no header was sent or nothing is left) and returns it in the `X-Request-ID` header. Domain errors, validation errors, unknown routes and unexpected exceptions all return:
 
 ```json
 {"error": {"code": "CONTRACT_NOT_FOUND", "message": "…", "requestId": "…"}}

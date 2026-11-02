@@ -141,6 +141,7 @@ Resources:
     Properties:
       StageName: $default
       # The API is public and unauthenticated; throttling caps abuse and cost.
+      # 20 req/s, burst 40 is a decision, not a load-test result (docs/decisions.md, 10).
       DefaultRouteSettings:
         ThrottlingRateLimit: 20
         ThrottlingBurstLimit: 40
