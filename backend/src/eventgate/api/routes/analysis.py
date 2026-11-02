@@ -182,7 +182,7 @@ def _to_response(result: AnalysisResult) -> AnalysisResponse:
         "Evaluate a proposed event contract against the contracts registered "
         "by downstream consumers. Evaluates release policy for the target "
         "environment and returns per-consumer findings, policy reasons, and an "
-        "authoritative ALLOW / REVIEW / BLOCK decision."
+        "ALLOW / REVIEW / BLOCK decision."
     ),
 )
 def analyze_event(

@@ -3,7 +3,7 @@
 Layout: contracts/events/{event-type-slug}/v{version}.json, where the slug is the
 event type in kebab case (OrderPlaced -> order-placed). A file may carry a
 description after the version, e.g. v2-safe.json; the version and eventType
-inside the file are authoritative and must match the request.
+inside the file must match the requested event type and version.
 """
 
 from __future__ import annotations

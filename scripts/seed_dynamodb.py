@@ -121,7 +121,7 @@ def seed_dynamodb(
     event_table = dynamodb_resource.Table(event_table_name)
     consumer_table = dynamodb_resource.Table(consumer_table_name)
 
-    # 1. Seed Event Contracts
+    # Seed Event Contracts
     events_dir = contracts_dir / "events"
     event_files = sorted(events_dir.rglob("*.json")) if events_dir.is_dir() else []
     if not event_files:
@@ -147,7 +147,7 @@ def seed_dynamodb(
             logger.error("Failed to seed event contract from %s: %s", file_path, exc)
             raise
 
-    # 2. Seed Consumer Contracts
+    # Seed Consumer Contracts
     consumers_dir = contracts_dir / "consumers"
     consumer_files = sorted(consumers_dir.rglob("*.json")) if consumers_dir.is_dir() else []
     if not consumer_files:

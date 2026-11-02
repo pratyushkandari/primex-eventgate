@@ -84,26 +84,21 @@ class EventAnalysisService:
             request_id,
         )
 
-        # 1. Load contracts.
         current_contract = self._event_repo.get_event_contract(event_type, current_version)
         proposed_contract = self._event_repo.get_event_contract(event_type, proposed_version)
 
-        # 2. Compute structural diff.
         change_set = compute_change_set(current_contract, proposed_contract)
 
-        # 3. Load consumers.
         consumers = self._consumer_repo.list_consumers(event_type)
 
-        # 4. Evaluate each consumer.
         all_findings: list[Finding] = []
         for consumer in consumers:
             consumer_findings = self._engine.evaluate(current_contract, proposed_contract, consumer)
             all_findings.extend(consumer_findings)
 
-        # Sort all findings for determinism.
+        # Stable order so identical inputs give identical responses and reports.
         all_findings.sort(key=lambda f: (f.consumer_id, f.field, f.rule_id))
 
-        # 5. Aggregate findings into one compatibility verdict.
         compat_decision, severity = aggregate_decision(all_findings)
         summary = generate_summary(decision=compat_decision, findings=all_findings)
 
@@ -113,7 +108,6 @@ class EventAnalysisService:
             else ("RISK" if severity == Severity.MEDIUM else "SAFE")
         )
 
-        # 6. Evaluate release policy for the target environment.
         policy_eval = self._policy_engine.evaluate(
             compatibility_result=compat_result,
             severity=severity,

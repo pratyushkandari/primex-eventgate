@@ -182,7 +182,7 @@ class CompatibilityEngine:
         """Produce candidate findings for a single consumer based on the change set."""
         findings: list[Finding] = []
 
-        # 1. Check removed fields that the consumer depends on.
+        # Removed fields the consumer reads: required -> EVT003, optional -> EVT006.
         for field_name in change_set.removed_fields:
             if field_name not in consumer.expected_fields:
                 continue
@@ -224,7 +224,7 @@ class CompatibilityEngine:
                     )
                 )
 
-        # 2. Check type changes on fields the consumer depends on.
+        # Retyped fields are judged against the consumer's expected type, not the old type.
         for tc in change_set.type_changes:
             if tc.field not in consumer.expected_fields:
                 continue
@@ -248,7 +248,7 @@ class CompatibilityEngine:
                     )
                 )
 
-        # 3. Check requiredness changes on fields the consumer depends on.
+        # Any requiredness change on a field the consumer reads is flagged (see EVT004).
         for rc in change_set.requiredness_changes:
             if rc.field not in consumer.expected_fields:
                 continue
@@ -272,7 +272,7 @@ class CompatibilityEngine:
                 )
             )
 
-        # 4. Check added fields — BREAK only if consumer declares them with a type conflict.
+        # Added fields matter only if the consumer already declares them with another type.
         for field_name in change_set.added_fields:
             if field_name not in consumer.expected_fields:
                 continue
@@ -296,7 +296,8 @@ class CompatibilityEngine:
                     )
                 )
 
-        # 5. Check consumer-required fields that are entirely missing from proposed.
+        # Required fields absent from the proposal, including ones never in the current
+        # version; overlaps with the removed-field check are deduplicated later.
         for field_name, consumer_field in consumer.expected_fields.items():
             if consumer_field.required and field_name not in proposed.fields:
                 findings.append(

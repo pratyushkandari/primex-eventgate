@@ -1,5 +1,6 @@
-// PrimeX EventGate Authoritative Release Policy Definition (Cedar Language)
-// Evaluates environment-scoped compatibility, risk, and publication boundaries.
+// EventGate release policy in Cedar. Same matrix as StandardReleasePolicyEngine:
+// BREAK (HIGH) is blocked everywhere, RISK (MEDIUM) needs review in staging and
+// production and is allowed in development, SAFE (LOW) is allowed everywhere.
 
 // Rule 1: Strictly block breaking changes in any environment
 @id("PROD_BLOCK_BREAK")

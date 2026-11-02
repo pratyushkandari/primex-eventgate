@@ -35,7 +35,7 @@ def affected_consumer_ids(findings: Iterable[Finding]) -> list[str]:
 
 @dataclass(frozen=True)
 class ReleaseRecord:
-    """Authoritative audit record of an event release evaluation."""
+    """One analysis of a contract change and, if attempted, its publication outcome."""
 
     record_id: str
     analysis_id: str
