@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -92,6 +92,10 @@ class EventPublishService:
             environment=env,
             request_id=request_id,
         )
+        if analysis_id:
+            # The re-run gets a fresh ID; keep the one the client reviewed so the
+            # event, the response and the history record all point to one record.
+            analysis_result = replace(analysis_result, analysis_id=analysis_id)
 
         published = False
         event_bridge_event_id: str | None = None

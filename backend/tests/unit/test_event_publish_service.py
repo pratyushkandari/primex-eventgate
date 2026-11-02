@@ -236,3 +236,41 @@ def test_invalid_payload_does_not_call_publisher(
     # Neither analysis nor publisher should be called on payload error
     mock_analysis_service.analyze.assert_not_called()
     mock_publisher.publish.assert_not_called()
+
+
+def test_publish_with_analysis_id_keeps_that_id(
+    mock_event_repo: MagicMock,
+    mock_analysis_service: MagicMock,
+    mock_publisher: MagicMock,
+) -> None:
+    """The event, the result and the history record all carry the reviewed analysis ID."""
+    mock_analysis_service.analyze.return_value = AnalysisResult(
+        analysis_id="ana-rerun",
+        event_type="OrderPlaced",
+        current_version=1,
+        proposed_version=2,
+        change_set=ChangeSet(),
+        findings=[],
+        decision=Decision.ALLOW,
+        severity=Severity.LOW,
+        summary="Safe change",
+    )
+    history = MagicMock()
+    service = EventPublishService(
+        event_repo=mock_event_repo,
+        analysis_service=mock_analysis_service,
+        publisher=mock_publisher,
+        history_service=history,
+    )
+
+    result = service.publish_event(
+        event_type="OrderPlaced",
+        current_version=1,
+        proposed_version=2,
+        payload={"orderId": "O100", "amount": 250.0},
+        analysis_id="ana-reviewed",
+    )
+
+    assert result.analysis_result.analysis_id == "ana-reviewed"
+    assert mock_publisher.publish.call_args[1]["analysis_id"] == "ana-reviewed"
+    assert history.record_publish.call_args[1]["analysis_id"] == "ana-reviewed"
