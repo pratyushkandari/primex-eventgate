@@ -30,7 +30,9 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: process.env.CI ? 1 : 0,
-  reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
+  reporter: process.env.CI
+    ? [['list'], ['html', { open: 'never' }], ['junit', { outputFile: '../reports/playwright-junit.xml' }]]
+    : 'list',
   timeout: 30_000,
   use: {
     baseURL: `http://localhost:${WEB_PORT}`,

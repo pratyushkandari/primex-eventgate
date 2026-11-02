@@ -40,6 +40,7 @@ npm-debug.log*
 .eventgate/
 
 # Test, coverage and audit output
+reports/
 frontend/coverage/
 frontend/playwright-report/
 frontend/test-results/

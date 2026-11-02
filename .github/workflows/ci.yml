@@ -26,6 +26,12 @@ jobs:
           cache: pip
       - run: pip install -e ".[dev]"
       - run: python scripts/check.py --only backend
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-reports-py${{ matrix.python-version }}
+          path: reports/
+          retention-days: 14
 
   frontend:
     name: Frontend (lint, types, tests, build)
@@ -43,6 +49,33 @@ jobs:
         with:
           python-version: '3.12'
       - run: python scripts/check.py --only frontend
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frontend-reports
+          path: |
+            reports/
+            frontend/coverage/
+          retention-days: 14
+
+  backend-e2e:
+    name: Backend end-to-end (HTTP, DynamoDB Local)
+    runs-on: ubuntu-latest
+    needs: [backend]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: python scripts/check.py --only backend-e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-e2e-reports
+          path: reports/
+          retention-days: 14
 
   e2e:
     name: End-to-end (Playwright + axe)
@@ -66,8 +99,10 @@ jobs:
         working-directory: frontend
       - run: python scripts/check.py --only e2e
       - uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
         with:
-          name: playwright-report
-          path: frontend/playwright-report
-          retention-days: 7
+          name: playwright-reports
+          path: |
+            reports/
+            frontend/playwright-report/
+          retention-days: 14
