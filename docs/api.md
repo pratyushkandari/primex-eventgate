@@ -89,7 +89,7 @@ Response body (200 and 409):
 }
 ```
 
-`analysisId` is optional. With it, the publish outcome is written onto that analysis's history record; without it, a new record is created.
+`analysisId` is optional. With it, the publish outcome is written onto that analysis's history record, and the response and the published event carry the same `analysisId`; without it, a new record is created.
 
 ## Contracts
 

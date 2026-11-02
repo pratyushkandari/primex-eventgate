@@ -49,3 +49,16 @@ def test_runtime_configuration_does_not_expose_server_paths(client):
     data = client.get("/api/v1/config/runtime").json()
     assert "contractsDirectory" not in data
     assert ":\\" not in str(data) and "/home/" not in str(data)
+
+
+def test_policies_report_missing_cedar_file(client, monkeypatch):
+    from eventgate.api.routes import policies as policies_route
+    from eventgate.domain.errors import ConfigurationError
+
+    def unreadable():
+        raise ConfigurationError("Cannot read Cedar policy")
+
+    monkeypatch.setattr(policies_route, "load_cedar_policy_text", unreadable)
+    data = client.get("/api/v1/policies").json()
+    assert data["cedarPolicyAvailable"] is False
+    assert data["cedarPolicyText"] is None

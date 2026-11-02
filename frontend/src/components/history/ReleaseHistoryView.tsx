@@ -25,6 +25,8 @@ interface ReleaseHistoryViewProps {
 }
 
 type SortKey = 'timestamp' | 'decision'
+// Records rendered at first and per "Show more"; a decision made with the mobile
+// History fix, not measured on its own (docs/decisions.md, section 10).
 const PAGE_SIZE = 25
 const DECISION_ORDER: Record<Decision, number> = { BLOCK: 0, REVIEW: 1, ALLOW: 2 }
 

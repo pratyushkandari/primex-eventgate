@@ -83,4 +83,39 @@ describe('Contracts page', () => {
     fireEvent.change(await screen.findByLabelText('Filter consumers'), { target: { value: 'fraud' } })
     expect(screen.queryByRole('button', { name: /billing-service/ })).toBeNull()
   })
+
+  it('shows the event detail error with a retry', async () => {
+    vi.mocked(eventGateApi.getEventDetail).mockRejectedValue(new Error('HTTP 500'))
+    renderWithProviders(<ContractsHub onOpenReview={vi.fn()} />)
+    expect(await screen.findByText('Could not load OrderPlaced')).toBeInTheDocument()
+    vi.mocked(eventGateApi.getEventDetail).mockImplementation(async () => (await import('./fixtures')).orderPlacedDetail)
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(await screen.findByRole('table', { name: /Fields of OrderPlaced v4/ })).toBeInTheDocument()
+  })
+
+  it('shows consumer list and detail errors and an empty registry', async () => {
+    vi.mocked(eventGateApi.listConsumers).mockRejectedValueOnce(new Error('HTTP 503'))
+    renderWithProviders(<ContractsHub onOpenReview={vi.fn()} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Consumer contracts' }))
+    expect(await screen.findByText('Could not load consumer contracts')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    vi.mocked(eventGateApi.getConsumerDetail).mockRejectedValue(new Error('HTTP 404'))
+    expect(await screen.findByText('Could not load billing-service')).toBeInTheDocument()
+  })
+
+  it('explains how to add consumers when none are registered', async () => {
+    vi.mocked(eventGateApi.listConsumers).mockResolvedValue([])
+    renderWithProviders(<ContractsHub onOpenReview={vi.fn()} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Consumer contracts' }))
+    expect(await screen.findByText('No consumer contracts registered')).toBeInTheDocument()
+  })
+
+  it('clears an empty consumer filter', async () => {
+    renderWithProviders(<ContractsHub onOpenReview={vi.fn()} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Consumer contracts' }))
+    fireEvent.change(await screen.findByLabelText('Filter consumers'), { target: { value: 'zzz' } })
+    expect(screen.getByText('No consumers match "zzz"')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Clear filter' }))
+    expect(screen.getByRole('button', { name: /billing-service/ })).toBeInTheDocument()
+  })
 })

@@ -1,7 +1,9 @@
 """Request ID propagation.
 
-Each request gets an ID: the caller's X-Request-ID header when it is safe to
-reuse (alphanumerics, '-' and '_', at most 128 chars), otherwise a new UUID.
+Each request gets an ID: the caller's X-Request-ID header with every character
+other than letters, digits, '-' and '_' removed and cut to 128 characters, or a
+new UUID when no header was sent or nothing is left. 128 is a decision (see
+docs/decisions.md, section 10).
 The ID is stored on request.state, echoed in the X-Request-ID response header,
 written into analysis results and history records, and logged.
 """

@@ -1,11 +1,13 @@
 """Run every check the CI runs: lint, type checks, tests with coverage, build, E2E.
 
     python scripts/check.py              # everything
-    python scripts/check.py --skip-e2e   # without Playwright (no browser needed)
-    python scripts/check.py --only backend|frontend|e2e
+    python scripts/check.py --skip-e2e   # without the end-to-end suites (no Docker or browser)
+    python scripts/check.py --only backend|frontend|backend-e2e|e2e
 
-Uses the current Python interpreter for backend tools, so run it from the
-project's virtual environment. Stops at the first failing step.
+backend-e2e needs Docker (it starts DynamoDB Local); e2e needs Playwright's
+Chromium. JUnit XML and coverage reports go to reports/ (gitignored) and
+frontend/coverage/. Uses the current Python interpreter for backend tools, so
+run it from the project's virtual environment. Stops at the first failing step.
 """
 
 from __future__ import annotations
@@ -33,15 +35,43 @@ STEPS: dict[str, list[tuple[str, list[str], Path]]] = {
         ("mypy", [PY, "-m", "mypy"], ROOT),
         (
             "pytest + coverage",
-            [PY, "-m", "pytest", "--cov=eventgate", "--cov-report=term", "-q"],
+            [
+                PY,
+                "-m",
+                "pytest",
+                "--cov=eventgate",
+                "--cov-report=term",
+                "--cov-report=xml:reports/backend-coverage.xml",
+                "--junitxml=reports/backend-junit.xml",
+                "-q",
+            ],
             ROOT,
         ),
     ],
     "frontend": [
         ("oxlint", [NPM, "run", "lint"], FRONTEND),
         ("tsc", [NPM, "run", "typecheck"], FRONTEND),
-        ("vitest + coverage", [NPM, "run", "test:coverage"], FRONTEND),
+        (
+            "vitest + coverage",
+            [
+                NPM,
+                "run",
+                "test:coverage",
+                "--",
+                "--reporter=default",
+                "--reporter=junit",
+                "--outputFile.junit=../reports/frontend-junit.xml",
+            ],
+            FRONTEND,
+        ),
         ("vite build", [NPM, "run", "build"], FRONTEND),
+    ],
+    "backend-e2e": [
+        (
+            "pytest -m e2e (HTTP, DynamoDB Local)",
+            [PY, "scripts/run_backend_e2e.py", "-q", "--junitxml=reports/backend-e2e-junit.xml"],
+            ROOT,
+        ),
     ],
     "e2e": [
         ("playwright", [NPM, "run", "test:e2e"], FRONTEND),
@@ -51,11 +81,15 @@ STEPS: dict[str, list[tuple[str, list[str], Path]]] = {
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--skip-e2e", action="store_true", help="skip the Playwright suite")
+    parser.add_argument("--skip-e2e", action="store_true", help="skip both end-to-end suites")
     parser.add_argument("--only", choices=sorted(STEPS), help="run one group")
     args = parser.parse_args()
 
-    groups = [args.only] if args.only else [g for g in STEPS if not (g == "e2e" and args.skip_e2e)]
+    groups = (
+        [args.only]
+        if args.only
+        else [g for g in STEPS if not (g.endswith("e2e") and args.skip_e2e)]
+    )
     results: list[tuple[str, float]] = []
     for group in groups:
         for name, cmd, cwd in STEPS[group]:

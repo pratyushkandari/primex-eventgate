@@ -1,6 +1,12 @@
 import '@testing-library/jest-dom/vitest'
 import { afterEach, vi } from 'vitest'
-import { cleanup } from '@testing-library/react'
+import { cleanup, configure } from '@testing-library/react'
+
+// findBy*/waitFor give up after 1 s by default. The first render of the whole
+// console can take longer when coverage and parallel workers load the machine,
+// which failed tests on main as well; wait up to 5 s (still well under the 15 s
+// test timeout in vite.config.ts).
+configure({ asyncUtilTimeout: 5000 })
 
 // jsdom has no ResizeObserver; @xyflow/react needs one.
 class ResizeObserverMock {

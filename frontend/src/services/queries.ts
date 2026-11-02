@@ -22,6 +22,7 @@ export function useHealth() {
     queryKey: queryKeys.health,
     queryFn: () => eventGateApi.checkHealth(),
     retry: false,
+    // One health check a minute per open console (docs/decisions.md, section 10).
     refetchInterval: 60_000,
   })
 }

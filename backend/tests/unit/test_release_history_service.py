@@ -190,3 +190,45 @@ def test_reports_generation(history_service: ReleaseHistoryService):
     parsed = json.loads(json_str)
     assert parsed["record_id"] == "rec-report-01"
     assert parsed["published"] is True
+
+
+@pytest.mark.parametrize("record_id", ["", "   "])
+def test_blank_record_id_is_rejected(history_service: ReleaseHistoryService, record_id: str):
+    from eventgate.domain.errors import InvalidAnalysisRequestError
+
+    with pytest.raises(InvalidAnalysisRequestError, match="must not be empty"):
+        history_service.get_review(record_id)
+
+
+def test_export_rejects_unknown_report_format(history_service: ReleaseHistoryService):
+    from eventgate.domain.errors import InvalidAnalysisRequestError
+
+    with pytest.raises(InvalidAnalysisRequestError, match="Unsupported report format 'xml'"):
+        history_service.export_report("any-id", format_type="xml")
+
+
+def test_markdown_report_includes_publication_time_and_error():
+    from datetime import UTC, datetime
+
+    record = ReleaseRecord(
+        record_id="rec-1",
+        analysis_id="rec-1",
+        event_type="OrderPlaced",
+        current_version=1,
+        proposed_version=2,
+        environment="production",
+        compatibility_result="SAFE",
+        severity="LOW",
+        policy_name="StandardReleasePolicy",
+        policy_reason="ok",
+        decision="ALLOW",
+        affected_consumers=[],
+        findings_summary=[],
+        published=False,
+        attempted_publish=True,
+        published_at=datetime(2026, 11, 2, 8, 0, tzinfo=UTC),
+        error="Publication failed: The event could not be published.",
+    )
+    md = generate_markdown_report(record)
+    assert "**Published Timestamp:** `2026-11-02T08:00:00+00:00`" in md
+    assert "**Enforcement Detail:** Publication failed" in md

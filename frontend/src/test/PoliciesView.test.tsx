@@ -1,4 +1,4 @@
-import { fireEvent, screen, within } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { PoliciesView } from '@/components/policies/PoliciesView'
 import { SettingsView } from '@/components/settings/SettingsView'
@@ -77,5 +77,25 @@ describe('SettingsView', () => {
     vi.mocked(eventGateApi.getRuntimeConfig).mockRejectedValue(new Error('down'))
     renderWithProviders(<SettingsView />)
     expect(await screen.findByText('Could not load the runtime configuration')).toBeInTheDocument()
+  })
+
+  it('refreshes on demand and retries after an error', async () => {
+    vi.mocked(eventGateApi.getRuntimeConfig).mockRejectedValueOnce(new Error('down'))
+    renderWithProviders(<SettingsView />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry' }))
+    expect(await screen.findByText('Local JSON files')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    await waitFor(() => expect(eventGateApi.getRuntimeConfig).toHaveBeenCalledTimes(3))
+  })
+})
+
+describe('PoliciesView retry', () => {
+  beforeEach(() => Object.assign(eventGateApi, mockApi()))
+
+  it('loads the policy after a retry', async () => {
+    vi.mocked(eventGateApi.getPolicies).mockRejectedValueOnce(new Error('HTTP 500')).mockResolvedValue(policy)
+    renderWithProviders(<PoliciesView />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry' }))
+    expect(await screen.findByRole('table', { name: /Release decision by environment/ })).toBeInTheDocument()
   })
 })

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { describeError, eventGateApi } from '@/services/api'
 import { API_CONFIG } from '@/config/env'
 import { EventGateApiError } from '@/types/api'
-import { analysis, publishResponse, record } from './fixtures'
+import { analysis, catalog, publishResponse, record, runtimeConfig } from './fixtures'
 
 function respond(status: number, body: unknown) {
   return vi.fn().mockResolvedValue({
@@ -130,3 +130,26 @@ describe('describeError', () => {
     expect(describeError('weird')).toMatch(/Something went wrong/)
   })
 })
+
+describe('eventGateApi read endpoints', () => {
+  it.each([
+    ['listEventCatalog', catalog, '/api/v1/contracts/events'],
+    ['listConsumers', [{ consumerId: 'a', eventType: 'OrderPlaced', expectedFieldsCount: 1 }], '/api/v1/contracts/consumers'],
+    ['getRuntimeConfig', runtimeConfig, '/api/v1/config/runtime'],
+    [
+      'getPolicies',
+      { activeEngine: 'standard', engineName: 'Standard', description: 'd', matrix: [], cedarPolicyAvailable: false, cedarPolicyText: null },
+      '/api/v1/policies',
+    ],
+  ] as const)('%s calls %s and validates the result', async (method, body, path) => {
+    globalThis.fetch = respond(200, body)
+    await expect(eventGateApi[method]()).resolves.toEqual(body)
+    expect(vi.mocked(globalThis.fetch).mock.calls[0][0]).toBe(`${API_CONFIG.baseUrl}${path}`)
+  })
+
+  it('rejects a catalog entry missing its versions', async () => {
+    globalThis.fetch = respond(200, [{ eventType: 'OrderPlaced' }])
+    await expect(eventGateApi.listEventCatalog()).rejects.toThrow(/Unexpected event catalog response/)
+  })
+})
+

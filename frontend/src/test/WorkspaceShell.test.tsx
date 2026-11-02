@@ -215,4 +215,52 @@ describe('App shell and Review workflow', () => {
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Publish event' })))
     expect(await screen.findByText('eb-real-1')).toBeInTheDocument()
   })
+
+  it('downloads the stored report from the Review page and reports failures', async () => {
+    Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:x'), revokeObjectURL: vi.fn() })
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    await renderApp()
+    await analyzeTo('Safe to publish')
+    fireEvent.click(screen.getByRole('button', { name: 'Export report' }))
+    const dialog = screen.getByRole('dialog', { name: 'Export release report' })
+
+    await act(async () => fireEvent.click(within(dialog).getByRole('button', { name: 'Download JSON' })))
+    expect(eventGateApi.getReport).toHaveBeenCalledWith('an-allow', 'json')
+    expect(await screen.findByText('Report downloaded')).toBeInTheDocument()
+
+    vi.mocked(eventGateApi.getReport).mockRejectedValueOnce(new Error('Release record not found'))
+    await act(async () => fireEvent.click(within(dialog).getByRole('button', { name: 'Download Markdown' })))
+    expect(await screen.findByText('Could not download the report')).toBeInTheDocument()
+
+    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) } })
+    await act(async () => fireEvent.click(within(dialog).getByRole('button', { name: 'Copy Markdown' })))
+    expect(await screen.findByText('Could not copy the report')).toBeInTheDocument()
+  })
+
+  it('runs palette actions: environment, reset and analyze', async () => {
+    await renderApp()
+    fireEvent.change(editor(), { target: { value: '{"orderId": "edited"}' } })
+
+    fireEvent.keyDown(window, { key: 'k', ctrlKey: true })
+    fireEvent.click(screen.getByText('Reset payload'))
+    expect(JSON.parse(editor().value)).toHaveProperty('metadata')
+
+    fireEvent.keyDown(window, { key: 'k', ctrlKey: true })
+    fireEvent.click(screen.getByText('Target staging'))
+    expect(screen.getByLabelText('Release target environment')).toHaveValue('staging')
+
+    fireEvent.keyDown(window, { key: 'k', ctrlKey: true })
+    fireEvent.click(screen.getByText('Analyze compatibility', { selector: 'p' }))
+    expect(await screen.findByText('Safe to publish')).toBeInTheDocument()
+    expect(eventGateApi.analyzeCompatibility).toHaveBeenCalledWith(expect.objectContaining({ environment: 'staging' }))
+  })
+
+  it('changes the proposed version and clears the result', async () => {
+    await renderApp()
+    await analyzeTo('Safe to publish')
+    fireEvent.change(screen.getByLabelText('Proposed version'), { target: { value: '3' } })
+    expect(screen.getByText('No analysis yet')).toBeInTheDocument()
+    expect(JSON.parse(editor().value).shippingMethod).toEqual({ carrier: 'express', trackingNumber: 'TRK-987' })
+  })
 })
+

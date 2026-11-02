@@ -45,6 +45,10 @@ eventgate = ["policies/*.cedar"]
 [tool.pytest.ini_options]
 testpaths = ["backend/tests"]
 pythonpath = ["backend/src", "."]
+# End-to-end tests start real servers; they stay out of the default run.
+# Run them with: python scripts/run_backend_e2e.py (or pytest -m e2e)
+addopts = "-m 'not e2e'"
+markers = ["e2e: real HTTP tests against a running uvicorn process"]
 
 [tool.coverage.run]
 source = ["eventgate"]

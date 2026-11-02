@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import json
 import threading
 import time
 from pathlib import Path
 
 import pytest
 
+from eventgate.domain.errors import ReleaseRecordNotFoundError
 from eventgate.domain.history import ReleaseRecord
 from eventgate.infrastructure.repositories.release_review_repository import (
     HistoryStoreCorruptedError,
+    InMemoryReleaseReviewRepository,
     JsonReleaseReviewRepository,
 )
 
@@ -144,3 +147,54 @@ def test_save_cost_stays_flat_as_history_grows(tmp_path: Path):
     for i in range(20):
         repo.save_review(_record(f"late-{i}"))
     assert (time.perf_counter() - start) / 20 < 0.1
+
+
+def test_file_holding_a_json_object_is_corrupt(tmp_path: Path):
+    path = tmp_path / "history.json"
+    path.write_text('{"record_id": "x"}', encoding="utf-8")
+    with pytest.raises(HistoryStoreCorruptedError, match="not a list"):
+        JsonReleaseReviewRepository(path).list_reviews()
+
+
+def test_unreadable_records_are_skipped_when_listing(tmp_path: Path):
+    path = tmp_path / "history.json"
+    repo = JsonReleaseReviewRepository(path)
+    repo.save_review(_record("good"))
+    records = json.loads(path.read_text(encoding="utf-8"))
+    records.append({"record_id": "bad"})
+    path.write_text(json.dumps(records), encoding="utf-8")
+
+    assert [r.record_id for r in JsonReleaseReviewRepository(path).list_reviews()] == ["good"]
+
+
+def test_listing_filters_by_event_type(tmp_path: Path):
+    repo = JsonReleaseReviewRepository(tmp_path / "history.json")
+    repo.save_review(_record("a", "OrderPlaced"))
+    repo.save_review(_record("b", "UserCreated"))
+    assert [r.record_id for r in repo.list_reviews(event_type="UserCreated")] == ["b"]
+
+
+def test_failed_rename_removes_the_temporary_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    store = tmp_path / "store"
+    repo = JsonReleaseReviewRepository(store / "history.json")
+
+    def failing_replace(src, dst):
+        raise PermissionError("file locked")
+
+    monkeypatch.setattr("os.replace", failing_replace)
+    with pytest.raises(PermissionError):
+        repo.save_review(_record("a"))
+    assert list(store.iterdir()) == []
+
+
+class TestInMemoryStore:
+    def test_save_replaces_by_record_id_and_finds_by_analysis_id(self):
+        repo = InMemoryReleaseReviewRepository([_record("a")])
+        repo.save_review(_record("a"))
+        repo.save_review(_record("b"))
+        assert len(repo.list_reviews()) == 2
+        assert repo.get_review("b").analysis_id == "b"
+
+    def test_unknown_record_is_not_found(self):
+        with pytest.raises(ReleaseRecordNotFoundError):
+            InMemoryReleaseReviewRepository().get_review("missing")

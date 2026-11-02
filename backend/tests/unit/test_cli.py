@@ -260,3 +260,19 @@ def test_cli_check_without_persist_leaves_history_untouched(isolate_history_for_
     runner = CliRunner()
     runner.invoke(main, ["check", "-e", "OrderPlaced", "-c", "1", "-p", "3"])
     assert isolate_history_for_tests.read_text(encoding="utf-8") == before
+
+
+def test_cli_check_prints_policy_warnings_in_development():
+    runner = CliRunner()
+    result = runner.invoke(
+        main, ["check", "-e", "OrderPlaced", "-c", "1", "-p", "4", "--env", "development"]
+    )
+    assert result.exit_code == 0
+    assert "[WARNING] Medium-risk change permitted in development environment." in result.output
+
+
+def test_cli_history_with_no_records_says_so(isolate_history_for_tests):
+    runner = CliRunner()
+    result = runner.invoke(main, ["history"])
+    assert result.exit_code == 0
+    assert "No release evaluations recorded in history." in result.output

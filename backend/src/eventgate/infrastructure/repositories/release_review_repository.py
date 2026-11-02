@@ -8,7 +8,8 @@ empty, so a bad read can never cause the next save to overwrite the history.
 
 Parsed records are cached and reused while the file's mtime and size are
 unchanged, and the file is written as one compact JSON string; rewriting it
-with json.dump(indent=2) made each save cost ~0.5 s at a few hundred records.
+with json.dump(indent=2) made each save cost ~0.5 s at ~600 records. Measured
+with Locust (perf/locustfile.py); results in docs/decisions.md, section 10.
 """
 
 from __future__ import annotations

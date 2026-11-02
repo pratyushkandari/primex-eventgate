@@ -180,3 +180,32 @@ class TestDynamoEventContractRepository:
         }
         with pytest.raises(InvalidContractError, match="Missing or invalid 'required'"):
             self.repo.get_event_contract("OrderPlaced", 1)
+
+
+class TestEventCatalogItem:
+    def setup_method(self):
+        self.mock_table = MagicMock()
+        self.mock_resource = MagicMock()
+        self.mock_resource.Table.return_value = self.mock_table
+        self.repo = DynamoEventContractRepository(
+            table_name="test-event-contracts", dynamodb_resource=self.mock_resource
+        )
+
+    def test_missing_catalog_item_returns_no_event_types(self):
+        self.mock_table.get_item.return_value = {}
+        assert self.repo.list_event_types() == []
+        self.mock_table.query.assert_not_called()
+
+    def test_catalog_item_lists_event_types_sorted(self):
+        self.mock_table.get_item.return_value = {
+            "Item": {
+                "eventType": "METADATA#CATALOG",
+                "version": Decimal(0),
+                "eventTypes": ["UserCreated", "OrderPlaced"],
+            }
+        }
+        assert self.repo.list_event_types() == ["OrderPlaced", "UserCreated"]
+
+    def test_unknown_event_type_has_no_versions(self):
+        self.mock_table.query.return_value = {"Items": []}
+        assert self.repo.get_event_versions("Nope") == []

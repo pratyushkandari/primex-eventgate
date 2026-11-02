@@ -133,3 +133,21 @@ def test_boolean_passed_to_integer_field_raises(sample_contract: EventContract) 
         InvalidEventPayloadError, match="Field 'itemCount' must be of type 'integer', got 'boolean'"
     ):
         validate_event_payload(payload, sample_contract)
+
+
+def test_null_typed_field_accepts_only_null() -> None:
+    assert check_field_type(None, "null") is True
+    assert check_field_type(0, "null") is False
+    assert check_field_type(None, "string") is False
+
+
+def test_unknown_type_never_matches() -> None:
+    assert check_field_type("x", "date") is False
+
+
+def test_null_value_for_required_string_field_is_rejected(sample_contract: EventContract) -> None:
+    payload = {"orderId": None, "amount": 10.0}
+    with pytest.raises(
+        InvalidEventPayloadError, match="'orderId' must be of type 'string', got 'NoneType'"
+    ):
+        validate_event_payload(payload, sample_contract)

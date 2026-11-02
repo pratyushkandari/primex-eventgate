@@ -64,6 +64,14 @@ class TestEventAnalysisService:
         with pytest.raises(InvalidAnalysisRequestError):
             self.service.analyze("OrderPlaced", 0, 1)
 
+    def test_invalid_zero_proposed_version(self):
+        with pytest.raises(InvalidAnalysisRequestError, match="Proposed version"):
+            self.service.analyze("OrderPlaced", 1, 0)
+
+    def test_unknown_environment_is_rejected(self):
+        with pytest.raises(InvalidAnalysisRequestError, match="Unknown environment 'qa'"):
+            self.service.analyze("OrderPlaced", 1, 2, environment="qa")
+
     def test_invalid_same_versions(self):
         with pytest.raises(InvalidAnalysisRequestError):
             self.service.analyze("OrderPlaced", 1, 1)

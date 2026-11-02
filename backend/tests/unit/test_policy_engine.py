@@ -176,3 +176,22 @@ def test_cedar_and_standard_engines_agree(environment, severity):
     cedar = CedarReleasePolicyEngine().evaluate(compat, severity, environment, findings)
     assert standard.decision == cedar.decision
     assert bool(standard.warnings) == bool(cedar.warnings)
+
+
+def test_cedar_engine_without_cedarpy_is_configuration_error(monkeypatch):
+    import sys
+
+    monkeypatch.setitem(sys.modules, "cedarpy", None)
+    with pytest.raises(ConfigurationError, match="cedarpy"):
+        CedarReleasePolicyEngine().evaluate("SAFE", Severity.LOW, "production", [])
+
+
+def test_cedar_evaluation_failure_is_configuration_error(monkeypatch):
+    import cedarpy
+
+    def broken(**kwargs):
+        raise ValueError("policy parse error")
+
+    monkeypatch.setattr(cedarpy, "is_authorized", broken)
+    with pytest.raises(ConfigurationError, match="policy parse error"):
+        CedarReleasePolicyEngine().evaluate("SAFE", Severity.LOW, "production", [])

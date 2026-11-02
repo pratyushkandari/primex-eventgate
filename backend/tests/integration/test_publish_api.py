@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from eventgate.api.dependencies import get_event_publisher
 from eventgate.domain.errors import EventPublishFailedError
+from eventgate.infrastructure.publishers.local_publisher import LocalEventPublisher
 from eventgate.main import app
 
 
@@ -217,3 +218,32 @@ class TestPublishEndpointErrors:
             assert data["error"]["requestId"] == "test-pub-fail"
         finally:
             app.dependency_overrides.pop(get_event_publisher, None)
+
+
+def test_publish_with_analysis_id_reports_and_publishes_that_id(client: TestClient):
+    """The response, the published event and the history record share the reviewed ID."""
+    change = {"eventType": "OrderPlaced", "currentVersion": 1, "proposedVersion": 2}
+    analysis_id = client.post("/api/v1/analyze", json=change).json()["analysisId"]
+    publisher = LocalEventPublisher()
+    app.dependency_overrides[get_event_publisher] = lambda: publisher
+    try:
+        resp = client.post(
+            "/api/v1/events/publish",
+            json={
+                **change,
+                "analysisId": analysis_id,
+                "payload": {
+                    "orderId": "O1002",
+                    "amount": 75,
+                    "items": [{"sku": "SKU-002", "quantity": 3}],
+                    "shippingMethod": "UPS",
+                },
+            },
+        )
+    finally:
+        app.dependency_overrides.pop(get_event_publisher, None)
+
+    assert resp.status_code == 200
+    assert resp.json()["analysis"]["analysisId"] == analysis_id
+    assert publisher.published_events[0].analysis_id == analysis_id
+    assert client.get(f"/api/v1/history/{analysis_id}").json()["eventId"] == resp.json()["eventId"]

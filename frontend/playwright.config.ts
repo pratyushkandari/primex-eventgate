@@ -2,15 +2,18 @@
  * End-to-end tests against the real FastAPI backend (local JSON storage, an
  * in-memory publisher and a throwaway history file) and the Vite dev server.
  * No AWS access is needed. Ports differ from the defaults so a running dev
- * setup does not collide with the test servers.
+ * setup (API 8000, Vite 5173) does not collide with the test servers.
+ *
+ * A second API (BUS_DOWN_PORT) uses the EventBridge publisher with every AWS
+ * endpoint pointed at a closed local port, so a publish fails the way it does
+ * when the bus is unreachable: a real HTTP 503 from the real backend.
  */
 import { defineConfig, devices } from '@playwright/test'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { API_PORT, BUS_DOWN_PORT, WEB_PORT } from './e2e/ports.ts'
 
-const API_PORT = 8017
-const WEB_PORT = 4399
 const repoRoot = path.resolve(import.meta.dirname, '..')
 
 function pythonExecutable(): string {
@@ -19,14 +22,17 @@ function pythonExecutable(): string {
   return fs.existsSync(venv) ? venv : 'python'
 }
 
-const historyFile = path.join(os.tmpdir(), `eventgate-e2e-${process.pid}-${Date.now()}.json`)
+const runId = `${process.pid}-${Date.now()}`
+const historyFile = path.join(os.tmpdir(), `eventgate-e2e-${runId}.json`)
 
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
   workers: 1,
   retries: process.env.CI ? 1 : 0,
-  reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
+  reporter: process.env.CI
+    ? [['list'], ['html', { open: 'never' }], ['junit', { outputFile: '../reports/playwright-junit.xml' }]]
+    : 'list',
   timeout: 30_000,
   use: {
     baseURL: `http://localhost:${WEB_PORT}`,
@@ -42,6 +48,24 @@ export default defineConfig({
       cwd: repoRoot,
       url: `http://127.0.0.1:${API_PORT}/health`,
       env: { PYTHONPATH: path.join(repoRoot, 'backend', 'src'), EVENTGATE_HISTORY_FILE: historyFile },
+      reuseExistingServer: false,
+      timeout: 60_000,
+    },
+    {
+      command: `"${pythonExecutable()}" -m uvicorn eventgate.main:app --port ${BUS_DOWN_PORT}`,
+      cwd: repoRoot,
+      url: `http://127.0.0.1:${BUS_DOWN_PORT}/health`,
+      env: {
+        PYTHONPATH: path.join(repoRoot, 'backend', 'src'),
+        EVENTGATE_HISTORY_FILE: path.join(os.tmpdir(), `eventgate-e2e-bus-down-${runId}.json`),
+        EVENTGATE_EVENT_PUBLISHER: 'eventbridge',
+        AWS_ENDPOINT_URL: 'http://127.0.0.1:9',
+        AWS_MAX_ATTEMPTS: '1',
+        AWS_ACCESS_KEY_ID: 'e2e',
+        AWS_SECRET_ACCESS_KEY: 'e2e',
+        AWS_SHARED_CREDENTIALS_FILE: path.join(os.tmpdir(), 'eventgate-e2e-no-credentials'),
+        AWS_CONFIG_FILE: path.join(os.tmpdir(), 'eventgate-e2e-no-config'),
+      },
       reuseExistingServer: false,
       timeout: 60_000,
     },

@@ -1,4 +1,5 @@
-import { expect, test, type Page } from '@playwright/test'
+import type { Page } from '@playwright/test'
+import { expect, test } from './fixtures.ts'
 
 async function selectEnvironment(page: Page, env: string) {
   await page.getByLabel('Release target environment').selectOption(env)
@@ -57,7 +58,8 @@ test.describe('Review workflow', () => {
     await expect(page.getByText('Published to the local in-memory publisher')).toBeVisible()
   })
 
-  test('a payload missing a required field is rejected with guidance', async ({ page }) => {
+  test('a payload missing a required field is rejected with guidance', async ({ page, consoleGuard }) => {
+    consoleGuard.allow(/status of 422/)
     await selectEnvironment(page, 'staging')
     await page.getByLabel('Event payload (JSON)').fill('{"orderId": "ord-1"}')
     await analyze(page)
