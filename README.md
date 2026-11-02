@@ -130,19 +130,20 @@ Errors share one shape, `{"error": {"code", "message", "requestId", "details?"}}
 
 ## Tests
 
-One command runs everything CI runs (lint, type checks, unit and integration tests with coverage, production build, Playwright end-to-end):
+One command runs everything CI runs (lint, type checks, unit and integration tests with coverage, production build, backend HTTP end-to-end, Playwright end-to-end):
 
 ```bash
-python scripts/check.py              # add --skip-e2e to skip the browser tests
+python scripts/check.py              # add --skip-e2e to skip both end-to-end suites
 ```
 
-The first E2E run needs `npx playwright install chromium` in `frontend/`.
+The backend end-to-end suite needs Docker (it starts DynamoDB Local); the first Playwright run needs `npx playwright install chromium` in `frontend/`. What each suite covers, the latest results and the manual checks are in [docs/TESTING.md](docs/TESTING.md).
 
 | Layer | Command | Count | Coverage |
 | --- | --- | --- | --- |
-| Backend unit + integration (pytest, moto for DynamoDB/EventBridge) | `pytest --cov=eventgate` | 362 | 96% lines |
-| Frontend components, hooks, API client (Vitest + Testing Library) | `npm run test:coverage` | 154 | 94% lines |
-| End-to-end + axe accessibility, desktop and mobile Chromium | `npm run test:e2e` | 40 (37 run, 3 desktop-only) | - |
+| Backend unit + integration (pytest, moto for DynamoDB/EventBridge) | `pytest --cov=eventgate` | 424 | 99.8% of statements |
+| Frontend components, hooks, API client (Vitest + Testing Library) | `npm run test:coverage` | 168 | 96.9% of lines |
+| Backend over HTTP: uvicorn with local storage and with DynamoDB Local | `python scripts/run_backend_e2e.py` | 45 | - |
+| Browser end-to-end + axe accessibility, desktop and mobile Chromium | `npm run test:e2e` | 62 (59 run, 3 desktop-only) | - |
 
 Load test (Locust, 20 concurrent users for 60 s against local uvicorn with the JSON history store, measured at commit 026c35d): 26.6 req/s, p50 95 ms, p95 310 ms, 0 errors. The deployed API uses DynamoDB, so this figure does not describe it.
 
@@ -150,7 +151,7 @@ Load test (Locust, 20 concurrent users for 60 s against local uvicorn with the J
 locust -f perf/locustfile.py --host http://127.0.0.1:8000 --headless -u 20 -r 5 -t 60s
 ```
 
-CI (`.github/workflows/ci.yml`) runs the backend on Python 3.12 and 3.14, the frontend on Node 22, then the E2E suite, on every push and pull request. AWS calls are emulated with moto, so CI needs no secrets. A second workflow, `eventgate-contract-check.yml`, runs the release gate on pull requests that change files under `contracts/`.
+CI (`.github/workflows/ci.yml`) runs the backend on Python 3.12 and 3.14, the frontend on Node 22, then the backend HTTP suite and the Playwright suite, on every push and pull request, and uploads JUnit and coverage reports from each job. AWS calls are emulated with moto or DynamoDB Local, so CI needs no secrets. A second workflow, `eventgate-contract-check.yml`, runs the release gate on pull requests that change files under `contracts/`.
 
 ## Deployment
 
