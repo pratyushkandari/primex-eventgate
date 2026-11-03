@@ -4,7 +4,7 @@ EventGate checks a proposed version of an event contract against the fields ever
 
 ![Review page showing a blocked change: inventory-service reads shippingMethod as a string and v3 makes it an object](docs/images/review-block.png)
 
-Live deployment (AWS, `ap-south-1`): console at <https://main.d1etyxeqf0w3wz.amplifyapp.com>, API at <https://ux8bwi3i8l.execute-api.ap-south-1.amazonaws.com>. The deployment reflects `main` as of its last `sam deploy`.
+Live deployment (AWS, `ap-south-1`): console at <https://main.d1etyxeqf0w3wz.amplifyapp.com>, API at <https://ux8bwi3i8l.execute-api.ap-south-1.amazonaws.com>. Pushes to `main` redeploy both: Amplify rebuilds the console, and after CI passes the Deploy API workflow runs `sam deploy`.
 
 ## Why
 
@@ -140,7 +140,7 @@ The backend end-to-end suite needs Docker (it starts DynamoDB Local); the first 
 
 | Layer | Command | Count | Coverage |
 | --- | --- | --- | --- |
-| Backend unit + integration (pytest, moto for DynamoDB/EventBridge) | `pytest --cov=eventgate` | 426 | 99.8% of statements |
+| Backend unit + integration (pytest, moto for DynamoDB/EventBridge) | `pytest --cov=eventgate` | 430 | 99.8% of statements |
 | Frontend components, hooks, API client (Vitest + Testing Library) | `npm run test:coverage` | 168 | 96.9% of lines |
 | Backend over HTTP: uvicorn with local storage and with DynamoDB Local | `python scripts/run_backend_e2e.py` | 45 | - |
 | Browser end-to-end + axe accessibility, desktop and mobile Chromium | `npm run test:e2e` | 62 (59 run, 3 desktop-only) | - |
@@ -161,7 +161,7 @@ python scripts/seed_dynamodb.py --region ap-south-1
 python scripts/aws_smoke_test.py <ApiUrl>
 ```
 
-Amplify builds `frontend/` with `amplify.yml` on every push to `main` and adds the response headers in `customHttp.yml`. Step-by-step instructions, including the live enforcement smoke test, are in [docs/deployment.md](docs/deployment.md).
+Amplify builds `frontend/` with `amplify.yml` on every push to `main` and adds the response headers in `customHttp.yml`. After CI passes on `main`, `.github/workflows/deploy.yml` runs the same `sam build`, `sam deploy` and seed steps using an IAM role that GitHub assumes without stored keys (`infra/github-deploy-role.yaml`). Step-by-step instructions, including the live enforcement smoke test, are in [docs/deployment.md](docs/deployment.md).
 
 ## Known limitations
 
@@ -183,6 +183,7 @@ frontend/                React console; e2e/ holds the Playwright tests
 scripts/                 check.py, DynamoDB seeding, CI contract diff, AWS smoke tests
 perf/                    Locust load profile
 template.yaml            AWS SAM stack
+infra/                   IAM role GitHub Actions uses to deploy the stack
 ```
 
 ## License

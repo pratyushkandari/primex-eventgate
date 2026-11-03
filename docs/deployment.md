@@ -14,7 +14,31 @@ The AWS stack is defined in `template.yaml` (AWS SAM) and deployed as `primex-ev
 
 The Lambda environment sets `EVENTGATE_STORAGE_BACKEND=dynamodb`, `EVENTGATE_EVENT_PUBLISHER=eventbridge` and the table and bus names. To use the Cedar engine, add `EVENTGATE_POLICY_ENGINE: cedar` to the function's environment.
 
-## Deploy the backend
+## How changes reach the live stack
+
+| What changed | What deploys it | When |
+| --- | --- | --- |
+| `frontend/`, `amplify.yml`, `customHttp.yml` | Amplify Hosting (auto-build on `main`) | Every push to `main` |
+| `backend/src/`, `template.yaml`, `contracts/` | `.github/workflows/deploy.yml` (`sam deploy`, then the seed script) | After CI passes on a push to `main` |
+
+Other branches are not deployed. The manual steps below still work and are the fallback when the workflow is not set up.
+
+## Automatic deploys
+
+`.github/workflows/deploy.yml` runs when the CI workflow finishes successfully for a push to `main`, or by hand from the Actions tab (Deploy API, Run workflow). It runs `sam build` and `sam deploy` for `primex-eventgate-dev`, loads `contracts/` with `scripts/seed_dynamodb.py`, and checks `/health` and the error envelope on the deployed API. Deploys never run in parallel and are never cancelled midway.
+
+GitHub gets AWS access through the IAM role in `infra/github-deploy-role.yaml`; no AWS keys are stored in GitHub. Only jobs on the `main` branch of this repository can assume the role, and it can only change this stack's resources (functions, tables, event bus, HTTP API and the functions' roles, all named `primex-eventgate-dev-*`). It cannot delete DynamoDB tables or change its own permissions. Anyone who can push to `main` can change what the stack's function roles allow, so protect `main` (require pull requests) if others get write access.
+
+One-time setup, with an administrator's credentials:
+
+```bash
+aws cloudformation deploy --template-file infra/github-deploy-role.yaml --stack-name primex-eventgate-github-deploy --capabilities CAPABILITY_NAMED_IAM --region ap-south-1
+aws cloudformation describe-stacks --stack-name primex-eventgate-github-deploy --region ap-south-1 --query "Stacks[0].Outputs[0].OutputValue" --output text
+```
+
+Then in GitHub, Settings, Secrets and variables, Actions, Variables, add `AWS_DEPLOY_ROLE_ARN` with the role ARN printed by the second command. Until the variable exists the deploy job is skipped. Deleting the `primex-eventgate-github-deploy` stack removes the role and GitHub's access.
+
+## Deploy the backend by hand
 
 Prerequisites: AWS CLI with credentials for the target account (`aws sts get-caller-identity`), SAM CLI, Python 3.14 (or Docker for `sam build --use-container`).
 
