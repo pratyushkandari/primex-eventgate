@@ -140,7 +140,7 @@ The backend end-to-end suite needs Docker (it starts DynamoDB Local); the first 
 
 | Layer | Command | Count | Coverage |
 | --- | --- | --- | --- |
-| Backend unit + integration (pytest, moto for DynamoDB/EventBridge) | `pytest --cov=eventgate` | 424 | 99.8% of statements |
+| Backend unit + integration (pytest, moto for DynamoDB/EventBridge) | `pytest --cov=eventgate` | 426 | 99.8% of statements |
 | Frontend components, hooks, API client (Vitest + Testing Library) | `npm run test:coverage` | 168 | 96.9% of lines |
 | Backend over HTTP: uvicorn with local storage and with DynamoDB Local | `python scripts/run_backend_e2e.py` | 45 | - |
 | Browser end-to-end + axe accessibility, desktop and mobile Chromium | `npm run test:e2e` | 62 (59 run, 3 desktop-only) | - |
@@ -161,7 +161,7 @@ python scripts/seed_dynamodb.py --region ap-south-1
 python scripts/aws_smoke_test.py <ApiUrl>
 ```
 
-Amplify builds `frontend/` with `amplify.yml` on every push to `main`. Step-by-step instructions, including the live enforcement smoke test, are in [docs/deployment.md](docs/deployment.md).
+Amplify builds `frontend/` with `amplify.yml` on every push to `main` and adds the response headers in `customHttp.yml`. Step-by-step instructions, including the live enforcement smoke test, are in [docs/deployment.md](docs/deployment.md).
 
 ## Known limitations
 

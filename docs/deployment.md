@@ -1,6 +1,6 @@
 # Deployment
 
-The AWS stack is defined in `template.yaml` (AWS SAM) and deployed as `primex-eventgate-dev` in `ap-south-1` using the defaults in `samconfig.toml`. The console is hosted on AWS Amplify and built from `frontend/` by `amplify.yml`.
+The AWS stack is defined in `template.yaml` (AWS SAM) and deployed as `primex-eventgate-dev` in `ap-south-1` using the defaults in `samconfig.toml`. The console is hosted on AWS Amplify, built from `frontend/` by `amplify.yml`, with response headers from `customHttp.yml`.
 
 ## Resources
 
@@ -53,4 +53,4 @@ With Docker running, `sam local invoke EventGateFunction -e events/analyze-v2.js
 
 ## Console (Amplify)
 
-The Amplify app builds on every push to `main`: `npm ci` and `npm run build` in `frontend/`, publishing `frontend/dist` with `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` and `Referrer-Policy: strict-origin-when-cross-origin`. Production builds call the deployed API URL in `frontend/src/config/env.ts` unless `VITE_EVENTGATE_API_URL` is set in the Amplify environment. Pages use hash URLs (`#/history`), so no rewrite rules are needed.
+The Amplify app builds on every push to `main`: `npm ci` and `npm run build` in `frontend/`, publishing `frontend/dist`. `customHttp.yml` at the repository root adds `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` and `Referrer-Policy: strict-origin-when-cross-origin` to every response. Amplify ignores headers placed in `amplify.yml`, and a header change takes effect on the next build. Production builds call the deployed API URL in `frontend/src/config/env.ts` unless `VITE_EVENTGATE_API_URL` is set in the Amplify environment. Pages use hash URLs (`#/history`), so no rewrite rules are needed.
