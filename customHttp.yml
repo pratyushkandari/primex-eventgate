@@ -1,0 +1,14 @@
+# Response headers for the console on Amplify Hosting. Amplify reads this file
+# from the repository root; headers placed in amplify.yml (the build spec) are
+# not applied. Changes take effect on the next build of the branch.
+applications:
+  - appRoot: frontend
+    customHeaders:
+      - pattern: '**/*'
+        headers:
+          - key: 'X-Frame-Options'
+            value: 'DENY'
+          - key: 'X-Content-Type-Options'
+            value: 'nosniff'
+          - key: 'Referrer-Policy'
+            value: 'strict-origin-when-cross-origin'
