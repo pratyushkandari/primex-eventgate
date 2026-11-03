@@ -1,0 +1,59 @@
+name: Deploy API
+
+# Deploys the SAM stack (API Lambda, consumer Lambdas, tables, event bus, HTTP
+# API) after CI passes on main, then loads contracts/ into DynamoDB. The console
+# is deployed separately: Amplify Hosting rebuilds it on every push to main.
+#
+# AWS access comes from the role in infra/github-deploy-role.yaml, assumed with
+# GitHub's OIDC token; no AWS keys are stored in GitHub. The job is skipped until
+# the repository variable AWS_DEPLOY_ROLE_ARN is set (docs/deployment.md).
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-primex-eventgate-dev
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy primex-eventgate-dev
+    runs-on: ubuntu-latest
+    if: >-
+      vars.AWS_DEPLOY_ROLE_ARN != '' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push'))
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - uses: aws-actions/setup-sam@v2
+        with:
+          use-installer: true
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ap-south-1
+      - run: sam build
+      - run: sam deploy --no-confirm-changeset --no-fail-on-empty-changeset
+      - run: pip install -e .
+      - run: python scripts/seed_dynamodb.py --region ap-south-1
+      - name: Check the live API
+        run: |
+          url=$(aws cloudformation describe-stacks --stack-name primex-eventgate-dev \
+            --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" --output text)
+          curl -sf "$url/health"
+          curl -s "$url/api/v1/nope" | grep -q '"code":"NOT_FOUND"'
+          echo "Deployed ${{ github.event.workflow_run.head_sha || github.sha }} to $url"
