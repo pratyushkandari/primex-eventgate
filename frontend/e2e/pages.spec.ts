@@ -104,6 +104,10 @@ test.describe('Accessibility (axe, WCAG 2.1 AA)', () => {
     expect(results.violations.map((v) => v.id)).toEqual([])
 
     await page.getByRole('button', { name: 'Export report' }).click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+    // The dialog fades and slides in (160-200 ms). Scanning mid-animation measured
+    // half-transparent text and failed color-contrast on slower CI runners.
+    await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished)))
     results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()
     expect(results.violations.map((v) => v.id)).toEqual([])
   })
