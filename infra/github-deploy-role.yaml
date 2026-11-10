@@ -7,8 +7,10 @@ Description: >-
 Parameters:
   GitHubRepository:
     Type: String
-    Default: pratyushkandari/primex-eventgate
-    Description: owner/name of the repository whose main branch may deploy
+    Default: pratyushkandari@142193293/primex-eventgate@1374248901
+    Description: >-
+      Repository as GitHub writes it in the OIDC subject, owner@ownerId/name@repoId.
+      The IDs tie the role to this repository even if a namesake is created later.
   StackPrefix:
     Type: String
     Default: primex-eventgate-dev
